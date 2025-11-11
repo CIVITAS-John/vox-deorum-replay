@@ -115,7 +115,7 @@ var Replay = function(file, size) {
 				}
 			}
 		},
-		_7: 'int32',
+		// _7: 'int32', // this is not present in VP saves
 		events: {
 			type: 'array',
 			items: {

@@ -43,6 +43,8 @@ BinaryParser.prototype.parseItems = function(itemConfigs, includeJunk) {
 		try {
 			var value = this.parseItem(type, includeJunk)
 
+			if (key == "events") console.log(`Parsed ${value.length} events`);
+
 			// Bail if we don't want to include junk data
 			if (key.startsWith('_') && includeJunk === false) {return}
 
