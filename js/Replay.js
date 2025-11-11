@@ -41,7 +41,8 @@ var Replay = function(file, size) {
 		_2:            'varstr', // 00 00 00 00
 		_3:            'varstr', // 00 00 00 00
 		playerColor:   'varstr',
-		_4:            {type: 'byte', length: 0x08}, // 01 00 00 00 00 00 00 00
+		// 4 bytes for Vox Populi - not sure why, instead of 8
+		_4:            {type: 'byte', length: 4}, 
 		mapScript2:    'varstr',
 		_5: function() {
 			// Heuristic to get around something I don't understand :-(
@@ -74,6 +75,7 @@ var Replay = function(file, size) {
 
 			// We've hit the start year, need to rewind
 			this.view.seek(this.view.tell() - 7)
+			console.log(`Found the start year: ${this.decToHex(this.view.tell())}`);
 		},
 		startTurn:     'int32',
 		startYear:     'int32',

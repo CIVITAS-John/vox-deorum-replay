@@ -38,14 +38,28 @@ BinaryParser.prototype.parseItems = function(itemConfigs, includeJunk) {
 	var data = {}
 
 	_.each(itemConfigs, (type, key) => {
-		var value = this.parseItem(type, includeJunk)
+		var pointer = this.tell();
 
-		// Bail if we don't want to include junk data
-		if (key.startsWith('_') && includeJunk === false) {return}
+		try {
+			var value = this.parseItem(type, includeJunk)
 
-		data[key] = value
+			// Bail if we don't want to include junk data
+			if (key.startsWith('_') && includeJunk === false) {return}
+
+			data[key] = value
+		} catch (e) {
+			// Seek back to the pointer
+			this.view.seek(pointer);
+			console.error(`Error parsing key "${key}" at position ${this.decToHex(pointer)}: ${e}`);
+			// Print the next 200 bytes
+			console.log(`Next 200 bytes: ${this.getBytes(200).toHex().toUpperCase()}`);
+			// Print the current data
+			console.log(data);
+			throw(e);
+		}
 	})
 
+	// console.log(data);
 	return data
 }
 
@@ -54,11 +68,19 @@ BinaryParser.prototype.tell = function() {
 }
 
 BinaryParser.prototype.getBytes = function(length) {
-	return this.view.getBytes(length)
+	try {
+		return this.view.getBytes(length)
+	} catch (e) {
+		throw new Error(`Unable to read ${length} bytes at position ${this.decToHex(this.tell())}`)
+	}
 }
 
 BinaryParser.prototype.getString = function(length) {
-	return this.view.getString(length)
+	try {
+		return this.view.getString(length)
+	} catch (e) {
+		throw new Error(`Unable to read string of length ${length} at position ${this.decToHex(this.tell())}`)
+	}
 }
 
 BinaryParser.prototype.getInt32 = function() {
@@ -110,4 +132,9 @@ BinaryParser.prototype.getArray = function(config, includeJunk) {
 	}
 
 	return records
+}
+
+BinaryParser.prototype.decToHex = function(dec) {
+	// arbitrary length decimal to hex conversion
+	return parseInt(dec).toString(16).toUpperCase().padStart(2, '0');
 }
