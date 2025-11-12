@@ -13,6 +13,7 @@
       "Bash(npm install:*)",
       "Bash(npx tsc:*)",
       "Bash(find:*)",
+      "Bash(WebFetch)",
       "Bash(WebSearch)"
     ],
     "deny": [],

@@ -28,9 +28,12 @@ export class EventLog {
 		this.types = [];
 
 		const eventSelect = document.getElementById('event-select');
-		eventSelect.addEventListener('change', (e: Event) => {
-			// Bootstrap selectpicker still needs jQuery, so we'll get value through its API
-			this.setTypes(($(e.target) as any).val());
+
+		// Bootstrap selectpicker requires different event handling
+		$(eventSelect).on('changed.bs.select', (e: any) => {
+			const selectedValues = $(e.target).val() || [];
+			console.log('Event filter changed:', selectedValues);
+			this.setTypes(selectedValues);
 		});
 
 		this.setTypes(($(eventSelect) as any).selectpicker('val'));
@@ -135,12 +138,15 @@ export class EventLog {
 	setTypes(types: string[] | number[]) {
 		// Convert to EventType array (handles both string and number inputs)
 		this.types = types.map(t => Number(t) as EventType);
+		console.log('Setting types:', this.types);
 
 		const messages = this.messagesEl.querySelectorAll('.message');
+		console.log('Total messages:', messages.length);
 		messages.forEach((msg: Element) => msg.classList.add('hidden'));
 
 		this.types.forEach(type => {
 			const typeMessages = this.messagesEl.querySelectorAll(`[type="${type}"]`);
+			console.log(`Type ${type} messages:`, typeMessages.length);
 			typeMessages.forEach((msg: Element) => msg.classList.remove('hidden'));
 		});
 	}

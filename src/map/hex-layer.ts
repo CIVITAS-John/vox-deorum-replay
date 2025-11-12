@@ -1,7 +1,8 @@
 /**
  * hex-layer.ts
  * Custom Leaflet layer for rendering hexagonal tile maps
- * Extends Leaflet's Canvas TileLayer to draw hexagonal grids for Civilization V maps
+ * Extends Leaflet's GridLayer to draw hexagonal grids for Civilization V maps
+ * Migrated from L.TileLayer.Canvas (Leaflet 0.7.x) to L.GridLayer (Leaflet 1.x+)
  */
 
 declare const L: any;
@@ -9,19 +10,40 @@ declare const _: any;
 
 /**
  * HexLayer - Custom layer for rendering hexagonal tiles
- * @extends L.TileLayer.Canvas
+ * @extends L.GridLayer
  */
-export const HexLayer = L.TileLayer.Canvas.extend({
+export const HexLayer = L.GridLayer.extend({
 	/**
 	 * Initialize the hex layer with configuration
 	 * @param {Object} config - Configuration object containing hexes, dimensions, and drawing options
 	 */
 	initialize: function (config: any) {
-		this.options = _.clone(this.options, true);
+		// Call parent constructor with options
+		const options = _.extend({}, config);
 
-		this.config = config;
+		// Extract non-standard options into config
+		this.config = {
+			hexes: config.hexes,
+			height: config.height,
+			width: config.width,
+			drawHex: config.drawHex,
+			overdraw: config.overdraw,
+			gridStyle: config.gridStyle,
+			cacheKeySuffix: config.cacheKeySuffix,
+			nocache: config.nocache
+		};
+
+		// Keep standard Leaflet options
+		const leafletOptions: any = {};
+		if (config.opacity !== undefined) leafletOptions.opacity = config.opacity;
+		if (config.zIndex !== undefined) leafletOptions.zIndex = config.zIndex;
+		if (config.minZoom !== undefined) leafletOptions.minZoom = config.minZoom;
+		if (config.maxZoom !== undefined) leafletOptions.maxZoom = config.maxZoom;
+
+		// Call parent initialize
+		L.GridLayer.prototype.initialize.call(this, leafletOptions);
+
 		this.tileCache = {};
-
 		this.hexes = this.config.hexes;
 
 		if (this.config.hexes) {
@@ -44,26 +66,49 @@ export const HexLayer = L.TileLayer.Canvas.extend({
 		this.baseHexHeight = 2;
 		this.baseHexWidth = Math.sqrt(3) / 2 * this.baseHexHeight; // ~13.856406464
 
-		if (this.config.opacity) {
-			this.setOpacity(this.config.opacity);
-		}
-
 		if (this.config.drawHex) {
 			this.config.drawHex = this.config.drawHex.bind(this);
 		}
 
-		if (this.config.zIndex) {
-			this.setZIndex(this.config.zIndex);
-		}
-
 		this.tileCache = {};
+
+		// Store turnState reference for dynamic layers
+		this.turnState = null;
 	},
 
-	drawTile: function (tileCanvas: any, tilePoint: any, zoom: number) {
+	/**
+	 * Create a tile element (required by L.GridLayer)
+	 * @param {Object} coords - Tile coordinates with x, y, z properties
+	 * @returns {HTMLCanvasElement} The canvas element for this tile
+	 */
+	createTile: function (coords: any) {
+		// Create canvas element
+		const tile = document.createElement('canvas') as HTMLCanvasElement;
+		const size = this.getTileSize();
+		tile.width = size.x;
+		tile.height = size.y;
+
+		// Draw the tile content
+		this._drawTile(tile, coords);
+
+		return tile;
+	},
+
+	/**
+	 * Internal method to draw tile content (migrated from drawTile)
+	 * @param {HTMLCanvasElement} tileCanvas - The canvas element to draw on
+	 * @param {Object} coords - Tile coordinates with x, y, z properties
+	 */
+	_drawTile: function (tileCanvas: HTMLCanvasElement, coords: any) {
 		if (!this.config.drawHex) { return; }
 
 		// Get canvas context for drawing
 		var ctx = tileCanvas.getContext('2d');
+		if (!ctx) return;
+
+		// Convert GridLayer coords to old TileLayer.Canvas format
+		var zoom = coords.z;
+		var tilePoint = { x: coords.x, y: coords.y };
 
 		// Calculate scaling factor
 		var scalingFactor = Math.pow(2, zoom);
@@ -126,10 +171,6 @@ export const HexLayer = L.TileLayer.Canvas.extend({
 		gridCellsX += 1;
 		gridCellsY += 1;
 
-		// ctx.fillStyle = 'rgba(0, 255, 0, 0.3)'
-		// ctx.fillRect(0, 0, tileCanvas.width, tileCanvas.height)
-		// ctx.fillStyle = null
-
 		// Loop through the grid cells we want to render
 		for (var gridX = startHexX; gridX < startHexX + gridCellsX + 1; gridX++) {
 			for (var gridY = startHexY; gridY < startHexY + gridCellsY + 1; gridY++) {
@@ -163,26 +204,6 @@ export const HexLayer = L.TileLayer.Canvas.extend({
 				ctx.restore();
 			}
 		}
-
-		// Grid
-		// ctx.strokeStyle = 'white'
-		// ctx.strokeRect(0, 0, tileCanvas.width, tileCanvas.height)
-
-		// Labels to help visualize the way tiles are laid out
-		// ctx.font      = '24px serif'
-		// ctx.fillStyle = 'white'
-		//
-		// var textHeight = 25
-		// var textIndex  = 0
-		// ctx.fillText('zoom: '       + zoom,        20, textHeight * textIndex); textIndex++
-		// ctx.fillText('x: '          + tilePoint.x, 20, textHeight * textIndex); textIndex++
-		// ctx.fillText('y: '          + tilePoint.y, 20, textHeight * textIndex); textIndex++
-		// ctx.fillText('gridCellsX: ' + gridCellsX,  20, textHeight * textIndex); textIndex++
-		// ctx.fillText('gridCellsY: ' + gridCellsY,  20, textHeight * textIndex); textIndex++
-		// ctx.fillText('startHexX: '  + startHexX,   20, textHeight * textIndex); textIndex++
-		// ctx.fillText('startHexY: '  + startHexY,   20, textHeight * textIndex); textIndex++
-		// ctx.fillText('offsetX: '    + offsetX,     20, textHeight * textIndex); textIndex++
-		// ctx.fillText('offsetY: '    + offsetY,     20, textHeight * textIndex); textIndex++
 
 		this.tileCache[cacheKey] = ctx.getImageData(0, 0, tileCanvas.width, tileCanvas.height);
 	},
