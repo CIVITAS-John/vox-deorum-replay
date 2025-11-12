@@ -32,6 +32,7 @@
 	--control-border: #E3C37D;
 	--slider-border-top: #E3D1AA;
 	--slider-border-bottom: #856B36;
+	--right-column-width: 400px; /* Increased from 300px */
 }
 
 /* ============================================
@@ -248,18 +249,18 @@ input[type=checkbox]:checked {
 
 .top-left {
 	left: 38px;
-	width: 300px;
+	width: var(--right-column-width);
 }
 
 .top-right {
 	right: 38px;
-	width: 280px;
+	width: calc(var(--right-column-width) - 20px); /* Adjusted to match wider column */
 }
 
 .top-left-split {
 	position: absolute;
 	top: 0;
-	left: 338px; /* 38px + 300px */
+	left: calc(38px + var(--right-column-width)); /* 38px + right column width */
 	width: 3px;
 	height: 100%;
 	background-image: url(./ui/border_top_split.png);
@@ -268,8 +269,8 @@ input[type=checkbox]:checked {
 .top-middle {
 	position: absolute;
 	top: 0;
-	left: 341px; /* 38px + 300px + 3px */
-	width: calc(100% - 661px); /* 341px + 5px + 279px + 38px */
+	left: calc(38px + var(--right-column-width) + 3px); /* 38px + right column width + 3px */
+	width: calc(100% - 38px - var(--right-column-width) - 3px - 5px - var(--right-column-width) + 20px - 38px); /* dynamic calculation */
 	height: 100%;
 	background-image: url(./ui/border_top_middle.png);
 }
@@ -277,7 +278,7 @@ input[type=checkbox]:checked {
 .top-right-split {
 	position: absolute;
 	top: 0;
-	right: 317px; /* 38px + 279px */
+	right: calc(38px + var(--right-column-width) - 20px); /* Adjusted for wider column */
 	width: 5px;
 	height: 100%;
 	background-image: url(./ui/border_top_right_split.png);
@@ -303,7 +304,7 @@ input[type=checkbox]:checked {
 }
 
 .split-border {
-	right: 311px; /* sidebar width + border */
+	right: calc(var(--right-column-width) + 11px); /* sidebar width + border */
 }
 
 /* Bottom Border Elements */
@@ -367,7 +368,7 @@ input[type=checkbox]:checked {
 	position: absolute;
 	top: 38px;
 	left: 11px;
-	width: calc(100% - 330px); /* sidebar + borders */
+	width: calc(100% - var(--right-column-width) - 30px); /* sidebar + borders */
 	height: calc(100% - 92px); /* top + bottom borders */
 	border-right: 1px solid var(--border-dark);
 }
@@ -384,7 +385,7 @@ input[type=checkbox]:checked {
 	position: absolute;
 	top: 38px;
 	right: 11px;
-	width: 300px;
+	width: var(--right-column-width);
 	height: calc(100% - 92px); /* top + bottom borders */
 }
 
@@ -482,7 +483,7 @@ input[type=checkbox]:checked {
 	position: absolute;
 	top: 37px;
 	left: 0;
-	width: calc(100% - 300px);
+	width: calc(100% - var(--right-column-width));
 	height: 50px;
 	border-bottom: 1px solid var(--border-dark);
 	background-size: contain;
