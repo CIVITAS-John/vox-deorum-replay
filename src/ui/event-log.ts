@@ -14,10 +14,10 @@ import { EventFilter, MessageElement } from '../types/ui.types';
  * @param {Array} events - Array of game events to display
  */
 export class EventLog {
-	logContainer: HTMLElement;
-	messagesEl: HTMLElement;
-	events: GameEvent[];
-	types: EventFilter[];
+	logContainer: HTMLElement;      // Main container element for the log
+	messagesEl: HTMLElement;         // Element containing message list
+	events: GameEvent[];             // Array of all game events
+	types: EventFilter[];            // Currently selected event type filters
 
 	constructor(events: GameEvent[]) {
 		this.logContainer = document.querySelector('.log-container');
@@ -41,6 +41,7 @@ export class EventLog {
 		this.renderTurn(events[0].turn);
 	}
 
+	// Add a single event to the log
 	add(event: GameEvent) {
 		// Occasionally a message is blank? Just don't include it
 		if (event.type == 'MESSAGE' && !event.text) {
@@ -64,18 +65,22 @@ export class EventLog {
 		this.messagesEl.appendChild(msg);
 	}
 
+	// Add all events to the log
 	addAll(events?: GameEvent[]) {
 		this.removeAll();
 		_.each(this.events, this.add.bind(this));
 	}
 
+	// Remove a single event (not implemented)
 	remove() {
 	}
 
+	// Clear all events from the log
 	removeAll() {
 		this.messagesEl.innerHTML = '';
 	}
 
+	// Update log display to show events up to specified turn
 	renderTurn(turn: number) {
 		const messages = this.messagesEl.querySelectorAll('.message');
 
@@ -101,6 +106,7 @@ export class EventLog {
 		}
 	}
 
+	// Smooth scroll animation to target position
 	smoothScroll(element: HTMLElement, target: number, duration: number) {
 		const start = element.scrollTop;
 		const distance = target - start;
@@ -125,6 +131,7 @@ export class EventLog {
 		requestAnimationFrame(animateScroll);
 	}
 
+	// Set visible event types based on filter selection
 	setTypes(types: string[]) {
 		this.types = types;
 

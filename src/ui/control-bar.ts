@@ -13,15 +13,15 @@ import { ControlBarConfig } from '../types/ui.types';
  * @param {Object} config - Configuration with start/end turns and onChange callback
  */
 export class ControlBar {
-	config: ControlBarConfig & { start: number; end: number; initial?: number };
-	playPauseBtn: HTMLElement;
-	playIntervals: number[];
-	playInterval: number;
-	speedSliderEl: HTMLElement;
-	speedSlider: any; // Bootstrap slider instance
-	turnSliderEl: HTMLElement;
-	turnSlider: any; // Bootstrap slider instance
-	playTimer: number | null;
+	config: ControlBarConfig & { start: number; end: number; initial?: number };  // Extended configuration with turn range
+	playPauseBtn: HTMLElement;      // Play/pause button element
+	playIntervals: number[];         // Available playback speed intervals in ms
+	playInterval: number;            // Current playback interval in ms
+	speedSliderEl: HTMLElement;      // Speed control slider element
+	speedSlider: any;                // Bootstrap slider instance for speed
+	turnSliderEl: HTMLElement;       // Turn navigation slider element
+	turnSlider: any;                 // Bootstrap slider instance for turns
+	playTimer: number | null;        // Timer ID for playback animation
 
 	constructor(config: ControlBarConfig & { start: number; end: number; initial?: number }) {
 		this.config = config;
@@ -94,14 +94,17 @@ export class ControlBar {
 		this.setTurn(this.config.initial);
 	}
 
+	// Get current turn number from slider
 	getTurn() {
 		return this.turnSlider.getValue();
 	}
 
+	// Set turn number on slider
 	setTurn(turn: number) {
 		this.turnSlider.setValue(turn, true);
 	}
 
+	// Step forward/backward by specified number of turns
 	step(step?: number) {
 		if (step === undefined) {
 			step = 1;
@@ -118,6 +121,7 @@ export class ControlBar {
 		}
 	}
 
+	// Start automatic playback
 	play() {
 		if (this.playTimer) { return; }
 
@@ -126,6 +130,7 @@ export class ControlBar {
 		}, this.playInterval);
 	}
 
+	// Pause automatic playback
 	pause() {
 		if (!this.playTimer) { return; }
 
@@ -133,6 +138,7 @@ export class ControlBar {
 		this.playTimer = null;
 	}
 
+	// Toggle between play and pause states
 	togglePlay() {
 		const icon = this.playPauseBtn.querySelector('i');
 		if (this.playTimer) {
@@ -147,6 +153,7 @@ export class ControlBar {
 		}
 	}
 
+	// Set playback speed (0-4 scale)
 	setSpeed(speed: number) {
 		speed = speed || 0;
 

@@ -19,15 +19,15 @@ import {
 // External library accessed as global (lodash) - type defined in globals.d.ts
 
 export class Replay {
-  private parser: BinaryParser;
-  public meta: ReplayMetadata = {} as ReplayMetadata;
-  public civs: Civilization[] = [];
-  public cities: Record<string, City> = {};
-  public events: GameEvent[] = [];
-  public datasets: Record<string, DatasetValues> = {};
-  public tiles: Tile[][] = [];
-  private rawData: RawReplayData;
-  private fileConfig: FileConfig;
+  private parser: BinaryParser;                          // Binary parser instance for reading replay file
+  public meta: ReplayMetadata = {} as ReplayMetadata;    // Game metadata (turn range, map size)
+  public civs: Civilization[] = [];                      // List of civilizations in the game
+  public cities: Record<string, City> = {};              // Map of city names to city data
+  public events: GameEvent[] = [];                       // All game events by turn
+  public datasets: Record<string, DatasetValues> = {};   // Statistical datasets (scores, culture, etc.)
+  public tiles: Tile[][] = [];                           // 2D array of map tiles [y][x]
+  private rawData: RawReplayData;                        // Raw parsed data from file
+  private fileConfig: FileConfig;                        // Binary file format configuration
 
   constructor(file: ArrayBuffer, size: number) {
     this.parser = new BinaryParser(file, size);
@@ -152,6 +152,7 @@ export class Replay {
     };
   }
 
+  // Main processing method that parses the replay file
   process(): void {
     // Do initial basic parsing
     this.rawData = this.parser.parseItems(this.fileConfig, false) as RawReplayData;

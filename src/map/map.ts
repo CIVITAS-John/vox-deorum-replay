@@ -16,12 +16,12 @@ import { Tile, GameEvent } from '../types/replay.types';
  * Creates and initializes the Leaflet map instance
  */
 export class Map {
-	map: any; // Leaflet Map instance
-	turn: number;
-	turnStates: TurnState[];
-	turnState: TurnState;
-	layers: Record<string, MapLayer>;
-	controls: Record<string, MapControl>;
+	map: any;                             // Leaflet Map instance
+	turn: number;                         // Current turn being displayed
+	turnStates: TurnState[];              // Array of tile states for each turn
+	turnState: TurnState;                 // Current turn's tile state
+	layers: Record<string, MapLayer>;    // Map visualization layers by name
+	controls: Record<string, MapControl>; // Map UI controls by name
 
 	constructor() {
 		this.map = L.map(document.querySelector('.map'), {
@@ -32,6 +32,7 @@ export class Map {
 		this.turn = 0;
 	}
 
+	// Initialize map layers and process turn states from events
 	initLayers(tiles: Tile[][], events: GameEvent[]) {
 		var self = this;
 
@@ -241,6 +242,7 @@ export class Map {
 		this.map.fitBounds(bounds);
 	}
 
+	// Update map display for specified turn
 	renderTurn(turn: number) {
 		this.turn = turn;
 		this.turnState = this.turnStates[turn];

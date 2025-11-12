@@ -17,12 +17,12 @@ import { MapLayer, MapControl } from '../types/map.types';
  * Initializes the replay viewer and sets up file handling
  */
 export class ReplayViewer {
-	map: Map;
-	file: string;
-	turn: string;
-	replay: Replay;
-	eventLog: EventLog;
-	controlBar: ControlBar;
+	map: Map;                    // Map visualization instance
+	file: string;                // File path/URL from query parameters
+	turn: string;                // Initial turn from query parameters
+	replay: Replay;              // Replay data processor instance
+	eventLog: EventLog;          // Event log UI component
+	controlBar: ControlBar;      // Playback control UI component
 
 	constructor() {
 		this.init();
@@ -141,6 +141,7 @@ export class ReplayViewer {
 		reader.readAsArrayBuffer(file);
 	}
 
+	// Load replay file from Dropbox URL
 	loadFromDropbox(file: string) {
 		// e.g. https://dl.dropboxusercontent.com/1/view/hrbho1q4dtro8pa/Ramesses%20II_0267%20AD-1987_42%20(9).Civ5Replay
 		// file = 'hrbho1q4dtro8pa/Ramesses%20II_0267%20AD-1987_42%20(9).Civ5Replay'
@@ -158,6 +159,7 @@ export class ReplayViewer {
 		xhr.send();
 	}
 
+	// Process loaded replay data and initialize UI components
 	process(data: ArrayBuffer, length: number) {
 		// Replay
 		if (this.replay) { delete this.replay; }

@@ -13,20 +13,12 @@ export interface HexLayerConfig {
   drawHex?: (ctx: CanvasRenderingContext2D, hex: HexData, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) => void;  // Custom hex drawing function
 }
 
-// Hex data structure
+// Hex data structure (mirrors Tile interface for map rendering)
 export interface HexData {
   x: number;                                               // X coordinate on hex grid
   y: number;                                               // Y coordinate on hex grid
-  terrain?: number;                                        // Terrain type ID
-  owner?: number;                                          // Owning civilization ID
-  city?: number;                                           // City ID if present
-  improvement?: number;                                    // Improvement ID (farm, mine, etc.)
-  route?: number;                                          // Route type ID (road, railroad)
-  visibility?: number[];                                   // Civilizations that can see this hex
-  resource?: number;                                       // Resource ID if present
   feature?: number | string;                               // Feature (forest, jungle) - ID or name
   type?: number | string;                                  // Tile type - ID or name
-  natural_wonder?: number;                                 // Natural wonder ID if present
   [key: string]: number | number[] | string | undefined;   // Allow additional properties
 }
 

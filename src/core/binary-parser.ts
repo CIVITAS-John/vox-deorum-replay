@@ -9,12 +9,13 @@ import { ItemConfig, ParserConfig } from '../types/parser.types';
 // External libraries accessed as globals - types defined in globals.d.ts
 
 export class BinaryParser {
-  public view: jDataView;
+  public view: jDataView;  // jDataView instance for reading binary data with little-endian byte order
 
   constructor(file: ArrayBuffer, size: number) {
-    this.view = new jDataView(file, 0, size, false);
+    this.view = new jDataView(file, 0, size, false);  // Initialize view with file buffer, false = little-endian
   }
 
+  // Parse a single data item based on its configuration
   parseItem(itemConfig: ParserConfig, includeJunk?: boolean): unknown {
     if (typeof itemConfig === 'string') {
       itemConfig = { type: itemConfig };
@@ -42,6 +43,7 @@ export class BinaryParser {
     }
   }
 
+  // Parse multiple items from a configuration object or array
   parseItems(itemConfigs: any, includeJunk?: boolean): unknown {
     if (typeof itemConfigs === 'object' && 'type' in itemConfigs && itemConfigs.type === 'array') {
       return this.parseItem(itemConfigs as ParserConfig, includeJunk);
@@ -79,10 +81,12 @@ export class BinaryParser {
     return data;
   }
 
+  // Get current position in the buffer
   tell(): number {
     return this.view.tell();
   }
 
+  // Read specified number of bytes from current position
   getBytes(length: number): Uint8Array {
     try {
       return this.view.getBytes(length);
@@ -91,6 +95,7 @@ export class BinaryParser {
     }
   }
 
+  // Read fixed-length string from current position
   getString(length: number): string {
     try {
       return this.view.getString(length);
@@ -99,18 +104,22 @@ export class BinaryParser {
     }
   }
 
+  // Read 32-bit integer (little-endian)
   getInt32(): number {
     return this.view.getInt32(this.tell(), true);
   }
 
+  // Read 16-bit integer (little-endian)
   getInt16(): number {
     return this.view.getInt16(this.tell(), true);
   }
 
+  // Read 8-bit integer
   getInt8(): number {
     return this.view.getInt8(this.tell());
   }
 
+  // Read bytes until a specific value is encountered
   getUntil(test: number): number[] {
     const result: number[] = [];
     let val: number | null = null;
@@ -123,6 +132,7 @@ export class BinaryParser {
     return result;
   }
 
+  // Read variable-length string (length prefix as 32-bit int)
   getVarString(): string {
     // Variable-length string - uses first four bytes to specify length
     const length = this.getInt32();
@@ -130,6 +140,7 @@ export class BinaryParser {
     return value;
   }
 
+  // Read array of items (length prefix as 32-bit int)
   getArray(config: ParserConfig, includeJunk?: boolean): unknown[] {
     const length = this.getInt32();
     const records: unknown[] = [];
@@ -150,6 +161,7 @@ export class BinaryParser {
     return records;
   }
 
+  // Convert decimal number to hexadecimal string (for debugging)
   decToHex(dec: number): string {
     // arbitrary length decimal to hex conversion
     return parseInt(dec.toString()).toString(16).toUpperCase().padStart(2, '0');
