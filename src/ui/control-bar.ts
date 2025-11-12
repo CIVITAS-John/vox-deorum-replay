@@ -67,8 +67,15 @@ export class ControlBar {
 
 		this.turnSlider = $(this.turnSliderEl).data().slider;
 
-		$(this.turnSliderEl).on('change', (e: any) => this.config.onChange(e.value.newValue as number));
-		$(this.turnSliderEl).on('slide', (e: any) => this.config.onChange(e.value as unknown as number));
+		// Listen for slider change events (fires when user releases the slider)
+		$(this.turnSliderEl).on('change', (e: any) => {
+			this.config.onChange(e.value.newValue);
+		});
+
+		// Listen for slide events (fires continuously while dragging)
+		$(this.turnSliderEl).on('slide', (e: any) => {
+			this.config.onChange(e.value);
+		});
 
 		// Listen for spacebar to toggle play/pause
 		document.addEventListener('keydown', (e: KeyboardEvent) => {
@@ -101,7 +108,7 @@ export class ControlBar {
 
 	// Set turn number on slider
 	setTurn(turn: number) {
-		this.turnSlider.setValue(turn, true);
+		this.turnSlider.setValue(turn, true, true);
 	}
 
 	// Step forward/backward by specified number of turns

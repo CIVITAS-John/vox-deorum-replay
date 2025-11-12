@@ -7,6 +7,7 @@
 import { GameEvent, EventType } from '../types/replay.types';
 import { Replay } from '../core/replay';
 import { parseStrategyEvent, renderStrategyEvent } from '../utils/strategy-parser';
+import { formatGameText, hasGameMarkup } from '../utils/text-formatter';
 
 // External libraries accessed as globals - types defined in globals.d.ts
 
@@ -142,13 +143,18 @@ export class EventLog {
 
 		// Add event text
 		if (event.text) {
-			// Try to parse as strategy event
+			// Try to parse as strategy event first
 			const parsed = parseStrategyEvent(event.text);
 
 			if (parsed) {
 				// Render as formatted strategy change
 				const strategyElement = renderStrategyEvent(parsed);
 				msg.appendChild(strategyElement);
+			} else if (hasGameMarkup(event.text)) {
+				// Check if text contains game markup (icons/colors)
+				const formattedElement = formatGameText(event.text);
+				formattedElement.classList.add('event-text');
+				msg.appendChild(formattedElement);
 			} else {
 				// Render as plain text
 				const eventText = document.createElement('div');

@@ -32,7 +32,8 @@
 	--control-border: #E3C37D;
 	--slider-border-top: #E3D1AA;
 	--slider-border-bottom: #856B36;
-	--right-column-width: 400px; /* Increased from 300px */
+	--top-left-width: 300px; /* Width for top-left section */
+	--right-column-width: 400px; /* Width for right column */
 }
 
 /* ============================================
@@ -249,7 +250,7 @@ input[type=checkbox]:checked {
 
 .top-left {
 	left: 38px;
-	width: var(--right-column-width);
+	width: var(--top-left-width);
 }
 
 .top-right {
@@ -260,7 +261,7 @@ input[type=checkbox]:checked {
 .top-left-split {
 	position: absolute;
 	top: 0;
-	left: calc(38px + var(--right-column-width)); /* 38px + right column width */
+	left: calc(38px + var(--top-left-width)); /* 38px + top-left width */
 	width: 3px;
 	height: 100%;
 	background-image: url(./ui/border_top_split.png);
@@ -269,8 +270,8 @@ input[type=checkbox]:checked {
 .top-middle {
 	position: absolute;
 	top: 0;
-	left: calc(38px + var(--right-column-width) + 3px); /* 38px + right column width + 3px */
-	width: calc(100% - 38px - var(--right-column-width) - 3px - 5px - var(--right-column-width) + 20px - 38px); /* dynamic calculation */
+	left: calc(38px + var(--top-left-width) + 3px); /* 38px + top-left width + 3px */
+	width: calc(100% - 38px - var(--top-left-width) - 3px - 5px - var(--right-column-width) + 20px - 38px); /* dynamic calculation */
 	height: 100%;
 	background-image: url(./ui/border_top_middle.png);
 }
@@ -456,6 +457,34 @@ input[type=checkbox]:checked {
 	line-height: 1.4;
 }
 
+/* Formatted game text with icons and colors */
+.formatted-text {
+	line-height: 1.6;
+	display: inline;
+}
+
+.formatted-text .game-icon {
+	margin: 0 3px;
+	font-size: 1.1em;
+	vertical-align: middle;
+	display: inline-block;
+}
+
+/* Special styling for gold icons to look like coins */
+.formatted-text .game-icon.fa-circle {
+	text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
+}
+
+/* Color text styling */
+.formatted-text .colored-text {
+	font-weight: 500;
+}
+
+/* Ensure colored text inherits active/inactive states */
+.message:not(.active) .formatted-text .colored-text {
+	opacity: 0.7;
+}
+
 /* Strategy Change Styling */
 .strategy-change {
 	margin-top: 4px;
@@ -622,7 +651,11 @@ input[type=checkbox]:checked {
 }
 
 #playPause > .fa-play {
-	margin-left: 1px;
+	margin-left: -2px;
+}
+
+#playPause > .fa-pause {
+	margin-left: -3px;
 }
 
 /* ============================================

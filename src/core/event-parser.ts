@@ -147,7 +147,7 @@ export class EventParser {
     // Find the mistakenly encoded UTF8 arrow and replace it
     if (event.text.includes("â")) {
       event.text = event.text.replace(/â\u0086\u0092/g, "→");
-      event.type = EventType.Reasoning;
+      event.type = EventType.Strategies;
     }
   }
 

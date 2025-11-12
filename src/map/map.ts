@@ -26,6 +26,7 @@ export class ReplayMap {
 	controls: Record<string, MapControl>; // Map UI controls by name
 	replay: Replay | null;               // Reference to replay instance for civ name lookups
 	mapBounds: any;                       // Stored bounds for refitting the map
+	startTurn: number;                    // First turn number in the replay
 
 	constructor(replay?: Replay) {
 		this.replay = replay || null;
@@ -35,7 +36,7 @@ export class ReplayMap {
 			zoomSnap: 0.2          // Allow fractional zoom levels with 0.25 increments
 		}).setView([0, 0], 0);
 
-		this.turn = 0;
+		this.turn = -1; // Initialize to -1 so first renderTurn always triggers a redraw
 	}
 
 	// Initialize map layers and process turn states from events
@@ -45,6 +46,9 @@ export class ReplayMap {
 			this.replay = replay;
 		}
 		var self = this;
+
+		// Store the start turn for proper indexing
+		this.startTurn = events[0].turn;
 
 		// Track the state of each tile at every turn
 		this.turnStates = [];
@@ -268,8 +272,11 @@ export class ReplayMap {
 	// Get hexes that have changed between two turns
 	getChangedHexes(fromTurn: number, toTurn: number): string[] {
 		const changedHexes: string[] = [];
-		const fromState = this.turnStates[fromTurn] || {};
-		const toState = this.turnStates[toTurn] || {};
+		// Convert turn numbers to array indices
+		const fromIndex = fromTurn - this.startTurn;
+		const toIndex = toTurn - this.startTurn;
+		const fromState = this.turnStates[fromIndex] || {};
+		const toState = this.turnStates[toIndex] || {};
 
 		// Check for changes in toState
 		for (const hexKey in toState) {
@@ -298,28 +305,28 @@ export class ReplayMap {
 	renderTurn(turn: number) {
 		const previousTurn = this.turn;
 		this.turn = turn;
-		this.turnState = this.turnStates[turn];
+		// Convert turn number to array index
+		const turnIndex = turn - this.startTurn;
+		this.turnState = this.turnStates[turnIndex];
 
 		this.layers.city.turnState = this.turnState;
 		this.layers.territory.turnState = this.turnState;
 
-		// Only redraw changed hexes if we have a valid previous turn
-		if (previousTurn >= 0 && previousTurn < this.turnStates.length) {
-			const changedHexes = this.getChangedHexes(previousTurn, turn);
+		// Skip if turn hasn't changed
+		if (previousTurn === turn) {
+			return;
+		}
 
-			if (changedHexes.length > 0) {
-				// Use selective redraw for changed hexes only
-				if (this.layers.city._map) {
-					this.layers.city.redrawHexes(changedHexes);
-				}
-				if (this.layers.territory._map) {
-					this.layers.territory.redrawHexes(changedHexes);
-				}
-			}
-		} else {
-			// Full redraw for initial load or invalid turns
-			if (this.layers.city._map) { this.layers.city.redraw(); }
-			if (this.layers.territory._map) { this.layers.territory.redraw(); }
+		// For layers with dynamic content (city, territory), we always need to redraw
+		// because the cache key includes the turn number
+		// Clear the cache and force redraw for these layers
+		if (this.layers.city && this.layers.city._map) {
+			(this.layers.city as any).tileCache = {};
+			this.layers.city.redraw();
+		}
+		if (this.layers.territory && this.layers.territory._map) {
+			(this.layers.territory as any).tileCache = {};
+			this.layers.territory.redraw();
 		}
 	}
 

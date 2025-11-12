@@ -12,7 +12,7 @@ export enum EventType {
   CityRazed = 4,
   ReligionFounded = 5,
   PantheonSelected = 6,
-  Reasoning = 7
+  Strategies = 7
 }
 
 // Elevation type enum
