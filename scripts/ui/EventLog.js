@@ -1,7 +1,7 @@
-window.EventLog = function(events) {
-	this.$log      = $('.log-container')
+window.EventLog = function (events) {
+	this.$log = $('.log-container')
 	this.$messages = this.$log.find('.log-messages')
-	this.events    = events
+	this.events = events
 
 	// Types
 	this.types = []
@@ -20,16 +20,16 @@ window.EventLog = function(events) {
 	return this
 }
 
-EventLog.prototype.add = function(event) {
+EventLog.prototype.add = function (event) {
 	// Occasionally a message is blank? Just don't include it
 	if (event.type == 'MESSAGE' && !event.text) {
 		return
 	}
 
 	var $msg = $('<li>').addClass('message')
-		.attr('type',  event.type)
+		.attr('type', event.type)
 		.attr('civid', event.civId)
-		.attr('turn',  event.turn)
+		.attr('turn', event.turn)
 		.text(event.text)
 		.data(event)
 
@@ -40,35 +40,35 @@ EventLog.prototype.add = function(event) {
 	$msg.appendTo(this.$messages)
 }
 
-EventLog.prototype.addAll = function() {
+EventLog.prototype.addAll = function () {
 	this.removeAll()
 	_.each(this.events, this.add.bind(this))
 }
 
-EventLog.prototype.remove = function() {
+EventLog.prototype.remove = function () {
 }
 
-EventLog.prototype.removeAll = function() {
+EventLog.prototype.removeAll = function () {
 	this.$messages.empty()
 }
 
-EventLog.prototype.renderTurn = function(turn) {
-	this.$messages.find('.message').removeClass('active').filter(function() {
+EventLog.prototype.renderTurn = function (turn) {
+	this.$messages.find('.message').removeClass('active').filter(function () {
 		return $(this).attr('turn') <= turn
 	}).addClass('active')
 
-	var $lastMessage  = this.$messages.find('.message.active').last()
+	var $lastMessage = this.$messages.find('.message.active').last()
 	var messageOffset = $lastMessage.offset().top
-	var listOffset    = this.$messages.offset().top
-	var listScroll    = this.$messages.scrollTop()
-	var listHeight    = this.$messages.height()
+	var listOffset = this.$messages.offset().top
+	var listScroll = this.$messages.scrollTop()
+	var listHeight = this.$messages.height()
 
 	this.$messages.finish().animate({
 		scrollTop: turn ? (listScroll + (messageOffset - listOffset) - (listHeight / 2)) : 0
 	}, 200)
 }
 
-EventLog.prototype.setTypes = function(types) {
+EventLog.prototype.setTypes = function (types) {
 	this.types = types
 
 	this.$messages.find('.message').addClass('hidden')

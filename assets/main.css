@@ -1,103 +1,142 @@
+/* ============================================
+   TABLE OF CONTENTS
+   ============================================
+   1. CSS Variables & Custom Properties
+   2. Reset & Base Styles
+   3. Typography
+   4. Form Elements & Inputs
+   5. Bootstrap Select Customization
+   6. Page Layout & Structure
+   7. UI Borders & Decorative Elements
+   8. Map Container & Controls
+   9. Log Container & Messages
+   10. Control Bar & Media Controls
+   11. Sliders & Interactive Elements
+   12. Leaflet Map Customization
+   13. Utility Classes
+   ============================================ */
+
+/* ============================================
+   1. CSS VARIABLES & CUSTOM PROPERTIES
+   ============================================ */
+:root {
+	--primary-color: #ffffc8;
+	--bg-primary: black;
+	--bg-gradient-start: #0e5d54;
+	--bg-gradient-end: #35746c;
+	--border-gold: #A58B4C;
+	--border-dark: #666;
+	--text-inactive: #3D3D30;
+	--message-border: #07201F;
+	--control-bg: #0D3630;
+	--control-border: #E3C37D;
+	--slider-border-top: #E3D1AA;
+	--slider-border-bottom: #856B36;
+}
+
+/* ============================================
+   2. RESET & BASE STYLES
+   ============================================ */
+* {
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+}
+
+*:focus,
+*:focus-visible {
+	outline: none !important;
+}
+
 body {
 	width: 100%;
 	height: 100%;
-	background-color: black !important;
-	color: #ffffc8;
+	background-color: var(--bg-primary) !important;
+	color: var(--primary-color);
 	font-family: Lato, Verdana, sans-serif;
 	overflow: hidden;
-	padding: 0;
-	margin: 0;
 }
 
+/* ============================================
+   3. TYPOGRAPHY
+   ============================================ */
 h1, h2, h3, h4, h5, h6 {
 	font-family: 'EB Garamond', serif;
-	color: #FFFFC8;
+	color: var(--primary-color);
 	margin: 0;
 	padding: 0;
 }
 
-*,
-*:focus,
-.bootstrap-select .dropdown-toggle:focus {
-	outline: none !important;
-	outline-color: initial !important;
-	outline-style: none !important;
-	outline-width: initial !important;
+a {
+	color: var(--primary-color) !important;
+	text-decoration: underline;
 }
 
+/* ============================================
+   4. FORM ELEMENTS & INPUTS
+   ============================================ */
+/* Custom Checkbox Styling */
 input[type=checkbox] {
 	-webkit-appearance: none;
+	appearance: none;
 	width: 10px;
 	height: 10px;
 	background-image: url(ui/checkbox-empty.png);
 	background-size: cover;
 	background-repeat: no-repeat;
+	cursor: pointer;
 }
 
 input[type=checkbox]:checked {
 	background-image: url(ui/checkbox-checked.png);
 }
 
-.bootstrap-select {
-	color: #FFFFC8 !important;
+/* ============================================
+   5. BOOTSTRAP SELECT CUSTOMIZATION
+   ============================================ */
+.bootstrap-select,
+.bootstrap-select .dropdown-toggle,
+.bootstrap-select span {
+	color: var(--primary-color) !important;
 	background: transparent !important;
 	outline: none !important;
 	box-shadow: none !important;
+}
+
+.bootstrap-select {
 	margin-left: 12px !important;
 	margin-top: 3px !important;
 }
 
 .bootstrap-select .dropdown-toggle {
-	color: #FFFFC8 !important;
-	background: transparent !important;
-	outline: none !important;
-	box-shadow: none !important;
 	border: none !important;
-	outline-color: transparent !important;
 }
 
-.bootstrap-select .dropdown-menu.open {
-	color: #FFFFC8 !important;
-	background: black !important;
+.bootstrap-select .dropdown-toggle:focus {
 	outline: none !important;
-	box-shadow: none !important;
-	border: 1px solid #A58B4C !important;
-	border-top-right-radius: 0px;
-	border-top-left-radius: 0px;
+}
+
+/* Dropdown Menu Styling */
+.bootstrap-select .dropdown-menu.open {
+	background: var(--bg-primary) !important;
+	border: 1px solid var(--border-gold) !important;
+	border-top: none !important;
+	border-radius: 0 0 4px 4px;
 	top: 1px;
 	position: relative;
-	border-top-style: none !important;
 }
 
 .bootstrap-select .dropdown-menu.inner {
-	color: #FFFFC8 !important;
-	background: black !important;
-	outline: none !important;
-	box-shadow: none !important;
+	background: var(--bg-primary) !important;
 }
 
-.bootstrap-select span {
-	color: #FFFFC8 !important;
-	background: transparent !important;
-	outline: none !important;
-	box-shadow: none !important;
-}
-
+/* Dropdown Hover State */
 .bootstrap-select a:hover,
 .bootstrap-select a:hover span {
-	/* Permalink - use to edit and share this gradient: http://colorzilla.com/gradient-editor/#0e5d54+0,35746c+100 */
-	background: #0e5d54 !important;
-	/* Old browsers */
-	background: -moz-linear-gradient(top, #0e5d54 0%, #35746c 100%) !important;
-	/* FF3.6-15 */
-	background: -webkit-linear-gradient(top, #0e5d54 0%, #35746c 100%) !important;
-	/* Chrome10-25,Safari5.1-6 */
-	background: linear-gradient(to bottom, #0e5d54 0%, #35746c 100%) !important;
-	/* W3C, IE10+, FF16+, Chrome26+, Opera12+, Safari7+ */
-	filter: progid:DXImageTransform.Microsoft.gradient(startColorstr='#0e5d54', endColorstr='#35746c', GradientType=0) !important;
-	/* IE6-9 */
+	background: linear-gradient(to bottom, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%) !important;
 }
 
+/* Custom Checkmark Icon */
 .glyphicon.glyphicon-ok.check-mark {
 	background-image: url(ui/checkbox-checked.png) !important;
 	width: 10px;
@@ -109,6 +148,10 @@ input[type=checkbox]:checked {
 	content: "";
 }
 
+/* ============================================
+   6. PAGE LAYOUT & STRUCTURE
+   ============================================ */
+/* Header Area */
 .page-header-area {
 	position: absolute;
 	top: 0;
@@ -118,26 +161,34 @@ input[type=checkbox]:checked {
 	font-size: 20px;
 	text-align: center;
 	line-height: 26px;
-	background-image: url(./ui/header.png);
-	background-size: contain;
-	background-repeat: no-repeat;
-	background-position: center;
+	background: url(./ui/header.png) center/contain no-repeat;
 }
 
-.page-header-area a {
-	color: #ffffc8 !important;
-	text-decoration: underline;
-}
-
+/* Main Container */
 .main-container {
 	position: absolute;
 	top: 50px;
 	left: 20px;
 	width: calc(100% - 40px);
-	height: calc(100% - 50px - 35px);
-	/* page header, legal */
+	height: calc(100% - 85px); /* header + legal footer */
 }
 
+/* Disclaimer Footer */
+.disclaimer {
+	position: absolute;
+	bottom: 0;
+	left: 50%;
+	transform: translateX(-50%);
+	width: 1000px;
+	height: 32px;
+	text-align: center;
+	font-size: 11px;
+}
+
+/* ============================================
+   7. UI BORDERS & DECORATIVE ELEMENTS
+   ============================================ */
+/* Top Border Elements */
 .top-bar {
 	position: absolute;
 	top: 0;
@@ -146,28 +197,45 @@ input[type=checkbox]:checked {
 	height: 38px;
 }
 
-.top-left-corner {
+.top-left-corner,
+.top-right-corner {
 	position: absolute;
 	top: 0;
-	left: 0;
 	width: 38px;
 	height: 100%;
-	background-image: url(./ui/border_top_corner.png);
+	background: url(./ui/border_top_corner.png) center/contain no-repeat;
+}
+
+.top-left-corner {
+	left: 0;
+}
+
+.top-right-corner {
+	right: 0;
+}
+
+.top-left,
+.top-right {
+	position: absolute;
+	top: 0;
+	height: 100%;
+	background-image: url(./ui/border_top_side.png);
 }
 
 .top-left {
-	position: absolute;
-	top: 0;
 	left: 38px;
 	width: 300px;
-	height: 100%;
-	background-image: url(./ui/border_top_side.png);
+}
+
+.top-right {
+	right: 38px;
+	width: 280px;
 }
 
 .top-left-split {
 	position: absolute;
 	top: 0;
-	left: calc(38px + 300px);
+	left: 338px; /* 38px + 300px */
 	width: 3px;
 	height: 100%;
 	background-image: url(./ui/border_top_split.png);
@@ -176,8 +244,8 @@ input[type=checkbox]:checked {
 .top-middle {
 	position: absolute;
 	top: 0;
-	left: calc(38px + 300px + 3px);
-	width: calc(100% - (38px + 300px + 3px + 5px + 279px + 38px));
+	left: 341px; /* 38px + 300px + 3px */
+	width: calc(100% - 661px); /* 341px + 5px + 279px + 38px */
 	height: 100%;
 	background-image: url(./ui/border_top_middle.png);
 }
@@ -185,33 +253,13 @@ input[type=checkbox]:checked {
 .top-right-split {
 	position: absolute;
 	top: 0;
-	right: calc(38px + 279px);
+	right: 317px; /* 38px + 279px */
 	width: 5px;
 	height: 100%;
 	background-image: url(./ui/border_top_right_split.png);
 }
 
-.top-right {
-	position: absolute;
-	top: 0;
-	right: 38px;
-	width: 280px;
-	height: 100%;
-	background-image: url(./ui/border_top_side.png);
-}
-
-.top-right-corner {
-	position: absolute;
-	top: 0;
-	right: 0;
-	width: 38px;
-	height: 100%;
-	background-image: url(./ui/border_top_corner.png);
-	background-size: contain;
-	background-repeat: no-repeat;
-	background-position: center;
-}
-
+/* Side Borders */
 .border {
 	position: absolute;
 	top: 38px;
@@ -219,44 +267,107 @@ input[type=checkbox]:checked {
 	height: calc(100% - 38px - 54px);
 	/* top bar, bottom border */
 	background-image: url(./ui/border_side.png);
-	background-repeat-x: no-repeat;
-	background-repeat-y: repeat;
+	background-repeat: repeat-y;
 }
 
 .left-border {
-	left: 0;
+	left: 2px;
 }
 
+.right-border {
+	right: 2px;
+}
+
+.split-border {
+	right: 311px; /* sidebar width + border */
+}
+
+/* Bottom Border Elements */
+.bottom-border {
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	width: 100%;
+	height: 54px;
+}
+
+.bottom-left-corner,
+.bottom-right-corner {
+	position: absolute;
+	top: 0;
+	width: 38px;
+	height: 100%;
+}
+
+.bottom-left-corner {
+	left: 0;
+	background-image: url(./ui/border_bottom_corner.png);
+}
+
+.bottom-right-corner {
+	right: 0;
+	background-image: url(./ui/border_bottom_corner.png);
+}
+
+.bottom-left,
+.bottom-right {
+	position: absolute;
+	top: 0;
+	width: calc((100% - 368px) / 2); /* (total - corners - middle) / 2 */
+	height: 100%;
+	background-image: url(./ui/border_bottom_side.png);
+}
+
+.bottom-left {
+	left: 38px;
+}
+
+.bottom-right {
+	right: 38px;
+}
+
+.bottom-middle {
+	position: absolute;
+	top: 0;
+	left: 50%;
+	transform: translateX(-50%);
+	width: 292px;
+	height: 100%;
+	background-image: url(./ui/border_bottom_middle.png);
+}
+
+/* ============================================
+   8. MAP CONTAINER & CONTROLS
+   ============================================ */
 .map-container {
 	position: absolute;
 	top: 38px;
 	left: 11px;
-	width: calc(100% - 300px - 33px);
-	/* side bar, borders */
-	height: calc(100% - 38px - 54px);
-	/* top bar, bottom border */
-	/*background-color: red;*/
-	border-right: 1px solid #666;
+	width: calc(100% - 330px); /* sidebar + borders */
+	height: calc(100% - 92px); /* top + bottom borders */
+	border-right: 1px solid var(--border-dark);
 }
 
-.split-border {
-	right: calc(300px + 11px);
-	/* side bar, right border */
+.map {
+	width: 100%;
+	height: 100%;
 }
 
+/* ============================================
+   9. LOG CONTAINER & MESSAGES
+   ============================================ */
 .log-container {
 	position: absolute;
 	top: 38px;
 	right: 11px;
 	width: 300px;
-	height: calc(100% - 38px - 54px);
-	/* top bar, bottom border */
+	height: calc(100% - 92px); /* top + bottom borders */
 }
 
 .log-filter-container {
 	height: 30px;
 	width: 100%;
-	border-bottom: 1px solid #666;
+	border-bottom: 1px solid var(--border-dark);
 }
 
 .log-messages {
@@ -267,163 +378,66 @@ input[type=checkbox]:checked {
 	padding: 0;
 }
 
+/* Message Styling */
 .message {
-	padding: 0px 10px;
-	background-color: #f4f4f4;
-	background-color: black;
-	border-bottom: 2px solid #07201F;
+	padding: 3px 10px;
+	background-color: var(--bg-primary);
+	border-bottom: 2px solid var(--message-border);
 }
 
 .message:not(.active) {
-	color: #3D3D30;
+	color: var(--text-inactive);
 }
 
 .message.active:hover {
-	/* Permalink - use to edit and share this gradient: http://colorzilla.com/gradient-editor/#0e5d54+0,35746c+100 */
-	background: #0e5d54;
-	/* Old browsers */
-	background: -moz-linear-gradient(top, #0e5d54 0%, #35746c 100%);
-	/* FF3.6-15 */
-	background: -webkit-linear-gradient(top, #0e5d54 0%, #35746c 100%);
-	/* Chrome10-25,Safari5.1-6 */
-	background: linear-gradient(to bottom, #0e5d54 0%, #35746c 100%);
-	/* W3C, IE10+, FF16+, Chrome26+, Opera12+, Safari7+ */
-	filter: progid:DXImageTransform.Microsoft.gradient(startColorstr='#0e5d54', endColorstr='#35746c', GradientType=0);
-	/* IE6-9 */
+	background: linear-gradient(to bottom, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
 }
 
 .message.hidden {
 	display: none;
 }
 
-.right-border {
-	right: 0;
-}
-
-.flipped {
-	-moz-transform: scaleX(-1);
-	-o-transform: scaleX(-1);
-	-webkit-transform: scaleX(-1);
-	transform: scaleX(-1);
-	filter: FlipH;
-	-ms-filter: "FlipH";
-}
-
-.bottom-border {
-	position: absolute;
-	bottom: 0;
-	left: 0;
-	width: 100%;
-	height: 54px;
-}
-
-.bottom-left-corner {
-	position: absolute;
-	top: 0;
-	left: 0;
-	width: 38px;
-	height: 100%;
-	background-image: url(./ui/border_bottom_corner.png);
-}
-
-.bottom-left {
-	position: absolute;
-	top: 0;
-	left: 38px;
-	width: calc((100% - (38px * 2) - 292px) / 2);
-	height: 100%;
-	background-image: url(./ui/border_bottom_side.png);
-}
-
-.bottom-middle {
-	position: absolute;
-	top: 0;
-	left: calc(38px + (100% - (38px * 2) - 292px) / 2);
-	width: 292px;
-	height: 100%;
-	background-image: url(./ui/border_bottom_middle.png);
-}
-
-.bottom-right {
-	position: absolute;
-	top: 0;
-	right: 38px;
-	width: calc((100% - (38px * 2) - 292px) / 2);
-	height: 100%;
-	background-image: url(./ui/border_bottom_side.png);
-}
-
-.bottom-right-corner {
-	position: absolute;
-	top: 0;
-	right: 0;
-	width: 38px;
-	height: 100%;
-	background-image: url(./ui/border_bottom_corner.png);
-}
-
-.disclaimer {
-	position: absolute;
-	bottom: 0;
-	left: calc((100% - 1000px) / 2);
-	width: 1000px;
-	height: 32px;
-	text-align: center;
-	font-size: 10px;
-}
-
-.disclaimer a {
-	text-decoration: underline;
-	color: #ffffc8 !important;
-}
-
+/* ============================================
+   10. CONTROL BAR & MEDIA CONTROLS
+   ============================================ */
 .control-bar {
 	position: absolute;
 	top: 37px;
 	left: 0;
 	width: calc(100% - 300px);
 	height: 50px;
-	/*background-color: blue;*/
-	border-bottom: 1px solid #666;
-	/*background-image: url(./ui/header.png);*/
+	border-bottom: 1px solid var(--border-dark);
 	background-size: contain;
 	background-repeat: no-repeat;
 }
 
-.map {
-	width: 100%;
-	height: 100%;
-}
-
-.leaflet-container {
-	background: black !important;
-}
-
+/* Play/Pause Button */
 #playPause {
 	position: absolute;
 	left: 10px;
-	background-image: url(ui/button_black.png);
-	background-color: transparent;
-	border: none;
-	background-size: contain;
-	background-repeat: no-repeat;
+	top: 6px;
 	width: 33px;
 	height: 27px;
-	top: 6px;
+	background: url(ui/button_black.png) 4px center/contain no-repeat;
+	background-color: transparent;
+	border: none;
 	font-size: 13px;
-	background-position: center;
-	background-position-x: 4px;
 	color: #F9FBC5;
+	cursor: pointer;
 }
 
 #playPause:hover {
 	background-image: url(ui/button_green.png);
 }
 
-#playPause>.fa-play {
+#playPause > .fa-play {
 	margin-left: 1px;
 }
 
+/* ============================================
+   11. SLIDERS & INTERACTIVE ELEMENTS
+   ============================================ */
+/* Speed Slider */
 #speedSlider {
 	position: absolute;
 	top: 10px;
@@ -431,6 +445,7 @@ input[type=checkbox]:checked {
 	width: 200px;
 }
 
+/* Turn Slider */
 #turnSlider {
 	position: absolute;
 	width: calc(100% - 30px);
@@ -438,9 +453,10 @@ input[type=checkbox]:checked {
 	top: 9px;
 }
 
+/* Slider Base Styling */
 .slider {
-	border-top: 2px solid #E3D1AA;
-	border-bottom: 1px solid #856B36;
+	border-top: 2px solid var(--slider-border-top);
+	border-bottom: 1px solid var(--slider-border-bottom);
 	border-radius: 20px;
 }
 
@@ -455,14 +471,15 @@ input[type=checkbox]:checked {
 .slider-selection,
 .tick-slider-selection,
 .slider-track-high {
-	background-color: black !important;
+	background-color: var(--bg-primary) !important;
 	background-image: none !important;
 	border-radius: 20px;
 }
 
+/* Slider Ticks */
 .slider-tick,
 .slider-tick.in-selection {
-	background-color: #0e5d54 !important;
+	background-color: var(--bg-gradient-start) !important;
 	background-image: none;
 	width: 5px;
 	height: 5px;
@@ -471,60 +488,81 @@ input[type=checkbox]:checked {
 	margin-top: 1px !important;
 }
 
-.slider-track-high+.slider-tick,
-.slider-tick+.slider-tick+.slider-tick+.slider-tick+.slider-tick {
+.slider-track-high + .slider-tick,
+.slider-tick:nth-child(5n) {
 	display: none;
 }
 
+/* Slider Handle */
 .slider-handle {
 	width: 29px;
 	height: 29px;
-	background-image: url(ui/slider_handle.png);
+	background: url(ui/slider_handle.png) no-repeat;
+	background-color: transparent !important;
 	border-radius: 0 !important;
 	border: none !important;
-	background-color: transparent !important;
 	margin-left: -15px !important;
 	margin-top: -7px !important;
 	box-shadow: none !important;
 }
 
-.textures {
-	display: none;
+/* ============================================
+   12. LEAFLET MAP CUSTOMIZATION
+   ============================================ */
+.leaflet-container {
+	background: var(--bg-primary) !important;
 }
 
+/* Zoom Controls */
 .leaflet-control-zoom-in,
 .leaflet-control-zoom-out {
-	background-color: #0D3630 !important;
-	color: #ffffc8 !important;
-	border: 1px solid #E3C37D !important;
+	background-color: var(--control-bg) !important;
+	color: var(--primary-color) !important;
+	border: 1px solid var(--control-border) !important;
 }
 
 .leaflet-control-zoom-in {
 	border-bottom: none !important;
 }
 
+/* Layers Control */
 .leaflet-control-layers {
 	background-color: transparent !important;
 	box-shadow: none !important;
 }
 
 .leaflet-control-layers-toggle {
-	background-image: url(ui/layers.png);
-	background-size: cover;
-	width: 64;
-	height: 64;
+	width: 64px;
+	height: 64px;
+	background: url(ui/layers.png) center/cover no-repeat;
 	background-color: rgba(12, 53, 48, 0.85);
 	border-radius: 5px;
-	border: 1px solid #E3C37D !important;
+	border: 1px solid var(--control-border) !important;
 }
 
 .leaflet-control-layers-list {
 	background: rgba(12, 53, 48, 0.85);
 	padding: 10px 10px 5px 10px;
 	border-radius: 5px;
-	border: 1px solid #E3C37D !important;
+	border: 1px solid var(--control-border) !important;
 }
 
 .leaflet-control-layers-list label {
-	color: #ffffc8;
+	color: var(--primary-color);
+}
+
+/* ============================================
+   13. UTILITY CLASSES
+   ============================================ */
+.flipped {
+	transform: scaleX(-1);
+	-webkit-transform: scaleX(-1);
+	-moz-transform: scaleX(-1);
+	-o-transform: scaleX(-1);
+	filter: FlipH;
+	-ms-filter: "FlipH";
+}
+
+.textures {
+	display: none;
 }
