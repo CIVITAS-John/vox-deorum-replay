@@ -8,20 +8,21 @@ import { Map } from '../map/map';
 import { EventLog } from '../ui/event-log';
 import { ControlBar } from '../ui/control-bar';
 import { Replay } from './replay';
+import { MapLayer, MapControl } from '../types/map.types';
 
-declare const _: any;
+// External libraries accessed as globals - types defined in globals.d.ts
 
 /**
  * ReplayViewer class
  * Initializes the replay viewer and sets up file handling
  */
 export class ReplayViewer {
-	map: any;
+	map: Map;
 	file: string;
 	turn: string;
-	replay: any;
-	eventLog: any;
-	controlBar: any;
+	replay: Replay;
+	eventLog: EventLog;
+	controlBar: ControlBar;
 
 	constructor() {
 		this.init();
@@ -61,22 +62,22 @@ export class ReplayViewer {
 		const self = this;
 
 		// Prevent default drag behaviors
-		const preventDefaults = (e: any) => {
+		const preventDefaults = (e: DragEvent) => {
 			e.preventDefault();
 			e.stopPropagation();
 		};
 
 		// Highlight drop zone when item is dragged over it
-		const highlight = (e: any) => {
+		const highlight = (e: DragEvent) => {
 			dropZone.classList.add('drag-over');
 		};
 
-		const unhighlight = (e: any) => {
+		const unhighlight = (e: DragEvent) => {
 			dropZone.classList.remove('drag-over');
 		};
 
 		// Handle dropped files
-		const handleDrop = (e: any) => {
+		const handleDrop = (e: DragEvent) => {
 			const dt = e.dataTransfer;
 			const files = dt.files;
 
@@ -102,15 +103,16 @@ export class ReplayViewer {
 		dropZone.addEventListener('drop', handleDrop, false);
 
 		// Also support file input through a click (optional enhancement)
-		dropZone.addEventListener('click', (e: any) => {
+		dropZone.addEventListener('click', (e: MouseEvent) => {
 			// Only trigger file dialog if clicking on the body background, not on other elements
 			if (e.target === dropZone) {
 				const input = document.createElement('input');
 				input.type = 'file';
 				input.accept = '.Civ5Replay';
-				input.onchange = (e: any) => {
-					if (e.target.files.length > 0) {
-						self.handleFile(e.target.files[0]);
+				input.onchange = (e: Event) => {
+					const target = e.target as HTMLInputElement;
+					if (target.files && target.files.length > 0) {
+						self.handleFile(target.files[0]);
 					}
 				};
 				input.click();
@@ -122,15 +124,15 @@ export class ReplayViewer {
 	 * Handle a dropped or selected file
 	 * @param {File} file - The file to process
 	 */
-	handleFile(file: any) {
+	handleFile(file: File) {
 		const reader = new FileReader();
 		const self = this;
 
-		reader.onloadend = function(e: any) {
-			self.process(e.target.result, file.size);
+		reader.onloadend = function(e: ProgressEvent<FileReader>) {
+			self.process(e.target!.result as ArrayBuffer, file.size);
 		};
 
-		reader.onerror = function(e: any) {
+		reader.onerror = function(e: ProgressEvent<FileReader>) {
 			console.error('Error reading file:', e);
 			alert('Error reading file: ' + e.target.error);
 		};
@@ -149,14 +151,14 @@ export class ReplayViewer {
 		xhr.open('GET', 'https://dl.dropboxusercontent.com/1/view/' + file, true);
 		xhr.responseType = 'arraybuffer';
 
-		xhr.onload = function (e: any) {
+		xhr.onload = function (e: ProgressEvent<XMLHttpRequest>) {
 			self.process(this.response, e.total);
 		};
 
 		xhr.send();
 	}
 
-	process(data: any, length: number) {
+	process(data: ArrayBuffer, length: number) {
 		// Replay
 		if (this.replay) { delete this.replay; }
 
@@ -175,11 +177,11 @@ export class ReplayViewer {
 		this.eventLog = new EventLog(this.replay.events);
 
 		// Map
-		_.each(this.map.layers, (layer: any) => {
+		_.each(this.map.layers, (layer: MapLayer) => {
 			this.map.map.removeLayer(layer);
 		});
 
-		_.each(this.map.controls, (control: any) => {
+		_.each(this.map.controls, (control: MapControl) => {
 			this.map.map.removeControl(control);
 		});
 

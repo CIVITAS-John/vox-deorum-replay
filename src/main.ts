@@ -10,7 +10,7 @@ import { HexLayer } from './map/hex-layer';
 import { ControlBar } from './ui/control-bar';
 import { EventLog } from './ui/event-log';
 
-declare const $: any;
+// External libraries accessed as globals - types defined in globals.d.ts
 
 // Init event selectpicker
 // Note: Bootstrap components require jQuery, so we keep it for vendor libraries only
@@ -50,11 +50,11 @@ $('#turnSlider').slider({
 });
 
 // Create the replay viewer instance
-(window as any).replayViewer = new ReplayViewer();
+window.replayViewer = new ReplayViewer();
 
 // Export classes to window for backward compatibility
-(window as any).ReplayViewer = ReplayViewer;
-(window as any).Map = Map;
-(window as any).HexLayer = HexLayer;
-(window as any).ControlBar = ControlBar;
-(window as any).EventLog = EventLog;
+window.ReplayViewer = ReplayViewer;
+window.Map = Map;
+window.HexLayer = HexLayer;
+window.ControlBar = ControlBar;
+window.EventLog = EventLog;

@@ -5,20 +5,29 @@
  */
 
 import { BinaryParser } from './binary-parser';
+import {
+  ReplayMetadata,
+  Civilization,
+  City,
+  GameEvent,
+  Tile,
+  RawReplayData,
+  DatasetValues,
+  FileConfig
+} from '../types';
 
-// External library accessed as global
-declare const _: any;
+// External library accessed as global (lodash) - type defined in globals.d.ts
 
 export class Replay {
   private parser: BinaryParser;
-  public meta: any = {};
-  public civs: any[] = [];
-  public cities: any = {};
-  public events: any[] = [];
-  public datasets: any = {};
-  public tiles: any[][] = [];
-  private rawData: any;
-  private fileConfig: any;
+  public meta: ReplayMetadata = {} as ReplayMetadata;
+  public civs: Civilization[] = [];
+  public cities: Record<string, City> = {};
+  public events: GameEvent[] = [];
+  public datasets: Record<string, DatasetValues> = {};
+  public tiles: Tile[][] = [];
+  private rawData: RawReplayData;
+  private fileConfig: FileConfig;
 
   constructor(file: ArrayBuffer, size: number) {
     this.parser = new BinaryParser(file, size);
@@ -69,8 +78,8 @@ export class Replay {
         }
 
         // We've hit the start year, need to rewind
-        (this as any).view.seek((this as any).view.tell() - 7);
-        console.log(`Found the start year: ${this.decToHex((this as any).view.tell())}`);
+        (this.view as any).seek((this.view as any).tell() - 7);
+        console.log(`Found the start year: ${this.decToHex((this.view as any).tell())}`);
       },
       startTurn: 'int32',
       startYear: 'int32',
@@ -145,7 +154,7 @@ export class Replay {
 
   process(): void {
     // Do initial basic parsing
-    this.rawData = this.parser.parseItems(this.fileConfig, false);
+    this.rawData = this.parser.parseItems(this.fileConfig, false) as RawReplayData;
 
     // Store everything but civs / tiles / datasets / events in this.meta
     this.meta = _.omit(this.rawData, ['civs', 'datasets', 'datasetValues', 'events', 'tiles']);
@@ -165,7 +174,7 @@ export class Replay {
     this.cities = {};
     this.events = [];
 
-    _.each(this.rawData.events, (event: any, i: number) => {
+    _.each(this.rawData.events, (event: GameEvent, i: number) => {
       // There may be multiple events combined into one to save space
       let eventsToAdd = [event];
 
@@ -203,7 +212,7 @@ export class Replay {
         event.text = `${event.city.name} has been burned to the ground by ${event.civ}!`;
 
         // Mass razings are compounded into one event; we want to separate them
-        _.each(event.tiles.slice(1), (tile: any) => {
+        _.each(event.tiles.slice(1), (tile: Tile) => {
           const eventCopy = Object.assign({}, event);
           eventCopy.x = tile.x;
           eventCopy.y = tile.y;
@@ -213,7 +222,7 @@ export class Replay {
         });
       }
       else if (event.type === 'CITIES_TRANSFERRED') {
-        const cityNames = _.map(event.tiles, (tile: any) => {
+        const cityNames = _.map(event.tiles, (tile: Tile) => {
           return this.cities[tile.x + ',' + tile.y].name;
         });
 
@@ -240,7 +249,7 @@ export class Replay {
     });
 
     // Add human-readable stuff to tiles
-    this.tiles = _.each(this.rawData.tiles, (tile: any, i: number) => {
+    this.tiles = _.each(this.rawData.tiles, (tile: Tile, i: number) => {
       switch (tile.elevationId) {
         case 0: tile.elevation = 'MOUNTAIN'; break;
         case 1: tile.elevation = 'HILLS'; break;

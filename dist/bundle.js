@@ -239,7 +239,7 @@
      * Colors are defined as RGB arrays [R, G, B] with values 0-255
      * Note: Replay files don't include color data, so these are hardcoded defaults
      */
-    const CIV_COLORS = {
+    const CivColors = {
         America: { city: [255, 255, 255], territory: [31, 51, 120] },
         Arabia: { city: [146, 221, 9], territory: [43, 87, 45] },
         Assyria: { city: [255, 168, 12], territory: [255, 243, 173] },
@@ -290,6 +290,7 @@
      * Manages the Leaflet map display for the replay viewer
      * Handles rendering of terrain, cities, territories, and turn-based state changes
      */
+    // External libraries accessed as globals - types defined in globals.d.ts
     /**
      * Map class
      * Creates and initializes the Leaflet map instance
@@ -412,8 +413,8 @@
                         if (!state) {
                             return;
                         }
-                        if (state.owner && hex.type != 'COAST' && hex.type != 'OCEAN') {
-                            var civColors = CIV_COLORS[state.owner];
+                        if (state.owner && hex.type !== 'COAST' && hex.type !== 'OCEAN') {
+                            var civColors = CivColors[state.owner];
                             var color = civColors ? civColors.territory : [0, 0, 0];
                             ctx.fillStyle = `rgba(${color.join(',')}, 0.85)`;
                             ctx.fill();
@@ -435,7 +436,7 @@
                             return;
                         }
                         if (state.city) {
-                            var civColors = CIV_COLORS[state.owner];
+                            var civColors = CivColors[state.owner];
                             var color = civColors ? civColors.city : [255, 255, 255];
                             ctx.fillStyle = `rgba(${color.join(',')}, 0.85)`;
                             ctx.fill();
@@ -497,6 +498,7 @@
      * Manages the event log display for game events
      * Shows filtered messages and events from the replay based on turn and event type
      */
+    // External libraries accessed as globals - types defined in globals.d.ts
     /**
      * EventLog class
      * @param {Array} events - Array of game events to display
@@ -525,13 +527,13 @@
             }
             const msg = document.createElement('li');
             msg.className = 'message';
-            msg.setAttribute('type', event.type);
-            msg.setAttribute('civid', event.civId);
-            msg.setAttribute('turn', event.turn);
-            msg.textContent = event.text;
+            msg.setAttribute('type', String(event.type));
+            msg.setAttribute('civid', String(event.civId || ''));
+            msg.setAttribute('turn', String(event.turn));
+            msg.textContent = event.text || '';
             // Store event data on element
             msg._eventData = event;
-            if (this.types.indexOf(event.type) == -1) {
+            if (this.types.indexOf(String(event.type)) == -1) {
                 msg.classList.add('hidden');
             }
             this.messagesEl.appendChild(msg);
@@ -599,6 +601,7 @@
      * UI control bar for replay playback
      * Manages play/pause, speed control, and turn navigation
      */
+    // External libraries accessed as globals - types defined in globals.d.ts
     /**
      * ControlBar class
      * @param {Object} config - Configuration with start/end turns and onChange callback
@@ -752,6 +755,7 @@
      * Handles parsing of binary replay files for Civilization V
      * Uses jDataView library to read binary data with proper byte order handling
      */
+    // External libraries accessed as globals - types defined in globals.d.ts
     class BinaryParser {
         constructor(file, size) {
             this.view = new jDataView(file, 0, size, false);
@@ -778,7 +782,7 @@
             }
         }
         parseItems(itemConfigs, includeJunk) {
-            if (itemConfigs.type === 'array') {
+            if (typeof itemConfigs === 'object' && 'type' in itemConfigs && itemConfigs.type === 'array') {
                 return this.parseItem(itemConfigs, includeJunk);
             }
             // Takes dictionary of configs
@@ -787,7 +791,7 @@
                 const pointer = this.tell();
                 try {
                     const value = this.parseItem(type, includeJunk);
-                    if (key === "events")
+                    if (key === "events" && Array.isArray(value))
                         console.log(`Parsed ${value.length} events`);
                     // Bail if we don't want to include junk data
                     if (key.startsWith('_') && includeJunk === false) {
@@ -800,7 +804,9 @@
                     this.view.seek(pointer);
                     console.error(`Error parsing key "${key}" at position ${this.decToHex(pointer)}: ${e}`);
                     // Print the next 200 bytes
-                    console.log(`Next 200 bytes: ${this.getBytes(200).toHex().toUpperCase()}`);
+                    const bytes = this.getBytes(200);
+                    const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+                    console.log(`Next 200 bytes: ${hex.toUpperCase()}`);
                     // Print the current data
                     console.log(data);
                     throw (e);
@@ -834,7 +840,7 @@
             return this.view.getInt16(this.tell(), true);
         }
         getInt8() {
-            return this.view.getInt8(this.tell(), true);
+            return this.view.getInt8(this.tell());
         }
         getUntil(test) {
             const result = [];
@@ -877,6 +883,7 @@
      * Core replay file parser for Civilization V (Vox Populi) replay files
      * Handles parsing game metadata, player data, map data, and turn events
      */
+    // External library accessed as global (lodash) - type defined in globals.d.ts
     class Replay {
         constructor(file, size) {
             this.meta = {};
@@ -1201,6 +1208,7 @@
      * Main controller for the replay viewer application
      * Handles file loading, replay processing, and coordinates map visualization and UI controls
      */
+    // External libraries accessed as globals - types defined in globals.d.ts
     /**
      * ReplayViewer class
      * Initializes the replay viewer and sets up file handling
@@ -1276,8 +1284,9 @@
                     input.type = 'file';
                     input.accept = '.Civ5Replay';
                     input.onchange = (e) => {
-                        if (e.target.files.length > 0) {
-                            self.handleFile(e.target.files[0]);
+                        const target = e.target;
+                        if (target.files && target.files.length > 0) {
+                            self.handleFile(target.files[0]);
                         }
                     };
                     input.click();
@@ -1355,6 +1364,7 @@
      * Entry point for the Civilization V replay viewer application
      * Initializes UI components and creates the main ReplayViewer instance
      */
+    // External libraries accessed as globals - types defined in globals.d.ts
     // Init event selectpicker
     // Note: Bootstrap components require jQuery, so we keep it for vendor libraries only
     $('#event-select').selectpicker({

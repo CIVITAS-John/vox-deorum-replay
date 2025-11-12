@@ -4,25 +4,18 @@
  * Uses jDataView library to read binary data with proper byte order handling
  */
 
-// External library accessed as global
-declare const jDataView: any;
-declare const _: any;
+import { ItemConfig, ParserConfig } from '../types/parser.types';
 
-interface ItemConfig {
-  type: string;
-  length?: number;
-  value?: any;
-  items?: any;
-}
+// External libraries accessed as globals - types defined in globals.d.ts
 
 export class BinaryParser {
-  private view: any;
+  public view: jDataView;
 
   constructor(file: ArrayBuffer, size: number) {
     this.view = new jDataView(file, 0, size, false);
   }
 
-  parseItem(itemConfig: string | ItemConfig | Function, includeJunk?: boolean): any {
+  parseItem(itemConfig: ParserConfig, includeJunk?: boolean): unknown {
     if (typeof itemConfig === 'string') {
       itemConfig = { type: itemConfig };
     }
@@ -41,29 +34,29 @@ export class BinaryParser {
       case 'int32': return this.getInt32();
       case 'int16': return this.getInt16();
       case 'int8': return this.getInt8();
-      case 'until': return this.getUntil(config.value);
+      case 'until': return this.getUntil(config.value as number);
       case 'tell': return this.tell();
-      case 'array': return this.getArray(config.items, includeJunk);
+      case 'array': return this.getArray(config.items as any, includeJunk);
       default:
         break;
     }
   }
 
-  parseItems(itemConfigs: any, includeJunk?: boolean): any {
-    if (itemConfigs.type === 'array') {
-      return this.parseItem(itemConfigs, includeJunk);
+  parseItems(itemConfigs: any, includeJunk?: boolean): unknown {
+    if (typeof itemConfigs === 'object' && 'type' in itemConfigs && itemConfigs.type === 'array') {
+      return this.parseItem(itemConfigs as ParserConfig, includeJunk);
     }
 
     // Takes dictionary of configs
-    const data: any = {};
+    const data: Record<string, unknown> = {};
 
-    _.each(itemConfigs, (type: any, key: string) => {
+    _.each(itemConfigs as Record<string, ParserConfig>, (type: ParserConfig, key: string) => {
       const pointer = this.tell();
 
       try {
         const value = this.parseItem(type, includeJunk);
 
-        if (key === "events") console.log(`Parsed ${value.length} events`);
+        if (key === "events" && Array.isArray(value)) console.log(`Parsed ${value.length} events`);
 
         // Bail if we don't want to include junk data
         if (key.startsWith('_') && includeJunk === false) { return; }
@@ -74,7 +67,9 @@ export class BinaryParser {
         this.view.seek(pointer);
         console.error(`Error parsing key "${key}" at position ${this.decToHex(pointer)}: ${e}`);
         // Print the next 200 bytes
-        console.log(`Next 200 bytes: ${this.getBytes(200).toHex().toUpperCase()}`);
+        const bytes = this.getBytes(200);
+        const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+        console.log(`Next 200 bytes: ${hex.toUpperCase()}`);
         // Print the current data
         console.log(data);
         throw (e);
@@ -88,7 +83,7 @@ export class BinaryParser {
     return this.view.tell();
   }
 
-  getBytes(length: number): any {
+  getBytes(length: number): Uint8Array {
     try {
       return this.view.getBytes(length);
     } catch (e) {
@@ -113,7 +108,7 @@ export class BinaryParser {
   }
 
   getInt8(): number {
-    return this.view.getInt8(this.tell(), true);
+    return this.view.getInt8(this.tell());
   }
 
   getUntil(test: number): number[] {
@@ -135,12 +130,12 @@ export class BinaryParser {
     return value;
   }
 
-  getArray(config: any, includeJunk?: boolean): any[] {
+  getArray(config: ParserConfig, includeJunk?: boolean): unknown[] {
     const length = this.getInt32();
-    const records: any[] = [];
+    const records: unknown[] = [];
 
     for (let i = 0; i < length; i++) {
-      let record: any = {};
+      let record: unknown = {};
 
       if (typeof config === 'function') {
         record = config(i, includeJunk);

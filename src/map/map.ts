@@ -5,22 +5,23 @@
  */
 
 import { HexLayer } from './hex-layer';
-import { CIV_COLORS } from '../config/civ-colors';
+import { CivColors } from '../config/civ-colors';
+import { TurnState, MapLayer, MapControl, HexData } from '../types/map.types';
+import { Tile, GameEvent } from '../types/replay.types';
 
-declare const L: any;
-declare const _: any;
+// External libraries accessed as globals - types defined in globals.d.ts
 
 /**
  * Map class
  * Creates and initializes the Leaflet map instance
  */
 export class Map {
-	map: any;
+	map: any; // Leaflet Map instance
 	turn: number;
-	turnStates: any[];
-	turnState: any;
-	layers: any;
-	controls: any;
+	turnStates: TurnState[];
+	turnState: TurnState;
+	layers: Record<string, MapLayer>;
+	controls: Record<string, MapControl>;
 
 	constructor() {
 		this.map = L.map(document.querySelector('.map'), {
@@ -31,13 +32,13 @@ export class Map {
 		this.turn = 0;
 	}
 
-	initLayers(tiles: any, events: any) {
+	initLayers(tiles: Tile[][], events: GameEvent[]) {
 		var self = this;
 
 		// Track the state of each tile at every turn
 		this.turnStates = [];
 		var eventsByTurn = _.groupBy(events, 'turn');
-		var lastState: any = {};
+		var lastState: TurnState = {} as TurnState;
 
 		for (var t = events[0].turn; t <= events[events.length - 1].turn; t++) {
 			// Start by copying last state
@@ -102,7 +103,7 @@ export class Map {
 			terrain: new HexLayer({
 				hexes: tiles,
 				zIndex: 10,
-				drawHex: function (ctx: any, hex: any, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) {
+				drawHex: function (ctx: CanvasRenderingContext2D, hex: HexData, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) {
 					switch (hex.type) {
 						case 'GRASSLAND':
 						case 'PLAINS':
@@ -122,7 +123,7 @@ export class Map {
 			feature: new HexLayer({
 				hexes: tiles,
 				zIndex: 20,
-				drawHex: function (ctx: any, hex: any, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) {
+				drawHex: function (ctx: CanvasRenderingContext2D, hex: HexData, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) {
 					switch (hex.feature) {
 						case 'ICE':
 						case 'JUNGLE':
@@ -141,7 +142,7 @@ export class Map {
 			elevation: new HexLayer({
 				hexes: tiles,
 				zIndex: 20,
-				drawHex: function (ctx: any, hex: any, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) {
+				drawHex: function (ctx: CanvasRenderingContext2D, hex: HexData, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) {
 					switch (hex.elevation) {
 						case 'MOUNTAIN':
 						case 'HILLS':
@@ -160,13 +161,13 @@ export class Map {
 				cacheKeySuffix: function () {
 					return '-territory-' + self.turn;
 				},
-				drawHex: function (ctx: any, hex: any, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) {
+				drawHex: function (ctx: CanvasRenderingContext2D, hex: HexData, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) {
 					if (!this.turnState) { return; }
 					var state = this.turnState[hex.x + ',' + hex.y];
 					if (!state) { return; }
 
-					if (state.owner && hex.type != 'COAST' && hex.type != 'OCEAN') {
-						var civColors = CIV_COLORS[state.owner];
+					if (state.owner && hex.type !== 'COAST' && hex.type !== 'OCEAN') {
+						var civColors = CivColors[state.owner];
 						var color = civColors ? civColors.territory : [0, 0, 0];
 						ctx.fillStyle = `rgba(${color.join(',')}, 0.85)`;
 						ctx.fill();
@@ -180,13 +181,13 @@ export class Map {
 				cacheKeySuffix: function () {
 					return '-city-' + self.turn;
 				},
-				drawHex: function (ctx: any, hex: any, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) {
+				drawHex: function (ctx: CanvasRenderingContext2D, hex: HexData, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) {
 					if (!this.turnState) { return; }
 					var state = this.turnState[hex.x + ',' + hex.y];
 					if (!state) { return; }
 
 					if (state.city) {
-						var civColors = CIV_COLORS[state.owner];
+						var civColors = CivColors[state.owner];
 						var color = civColors ? civColors.city : [255, 255, 255];
 						ctx.fillStyle = `rgba(${color.join(',')}, 0.85)`;
 						ctx.fill();
@@ -199,11 +200,11 @@ export class Map {
 				width: tiles[0].length,
 				height: tiles.length,
 				gridStyle: 'rgba(255, 255, 255, 0.1)',
-				drawHex: function (ctx: any, hex: any, cx: number, cy: number) { }
+				drawHex: function (ctx: CanvasRenderingContext2D, hex: HexData, cx: number, cy: number) { }
 			})
 		};
 
-		_.each(this.layers, (layer: any) => layer.addTo(this.map));
+		_.each(this.layers, (layer: MapLayer) => layer.addTo(this.map));
 
 		// Add layer switcher
 		var overlays = {

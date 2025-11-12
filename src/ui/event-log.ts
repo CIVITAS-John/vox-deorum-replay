@@ -4,20 +4,22 @@
  * Shows filtered messages and events from the replay based on turn and event type
  */
 
-declare const $: any;
-declare const _: any;
+import { GameEvent } from '../types/replay.types';
+import { EventFilter, MessageElement } from '../types/ui.types';
+
+// External libraries accessed as globals - types defined in globals.d.ts
 
 /**
  * EventLog class
  * @param {Array} events - Array of game events to display
  */
 export class EventLog {
-	logContainer: any;
-	messagesEl: any;
-	events: any[];
-	types: string[];
+	logContainer: HTMLElement;
+	messagesEl: HTMLElement;
+	events: GameEvent[];
+	types: EventFilter[];
 
-	constructor(events: any[]) {
+	constructor(events: GameEvent[]) {
 		this.logContainer = document.querySelector('.log-container');
 		this.messagesEl = this.logContainer.querySelector('.log-messages');
 		this.events = events;
@@ -26,7 +28,7 @@ export class EventLog {
 		this.types = [];
 
 		const eventSelect = document.getElementById('event-select');
-		eventSelect.addEventListener('change', (e: any) => {
+		eventSelect.addEventListener('change', (e: Event) => {
 			// Bootstrap selectpicker still needs jQuery, so we'll get value through its API
 			this.setTypes($(e.target).val());
 		});
@@ -39,7 +41,7 @@ export class EventLog {
 		this.renderTurn(events[0].turn);
 	}
 
-	add(event: any) {
+	add(event: GameEvent) {
 		// Occasionally a message is blank? Just don't include it
 		if (event.type == 'MESSAGE' && !event.text) {
 			return;
@@ -47,22 +49,22 @@ export class EventLog {
 
 		const msg = document.createElement('li');
 		msg.className = 'message';
-		msg.setAttribute('type', event.type);
-		msg.setAttribute('civid', event.civId);
-		msg.setAttribute('turn', event.turn);
-		msg.textContent = event.text;
+		msg.setAttribute('type', String(event.type));
+		msg.setAttribute('civid', String(event.civId || ''));
+		msg.setAttribute('turn', String(event.turn));
+		msg.textContent = event.text || '';
 
 		// Store event data on element
-		(msg as any)._eventData = event;
+		(msg as MessageElement)._eventData = event;
 
-		if (this.types.indexOf(event.type) == -1) {
+		if (this.types.indexOf(String(event.type) as EventFilter) == -1) {
 			msg.classList.add('hidden');
 		}
 
 		this.messagesEl.appendChild(msg);
 	}
 
-	addAll(events?: any[]) {
+	addAll(events?: GameEvent[]) {
 		this.removeAll();
 		_.each(this.events, this.add.bind(this));
 	}
@@ -77,7 +79,7 @@ export class EventLog {
 	renderTurn(turn: number) {
 		const messages = this.messagesEl.querySelectorAll('.message');
 
-		messages.forEach((msg: any) => {
+		messages.forEach((msg: MessageElement) => {
 			msg.classList.remove('active');
 			if (parseInt(msg.getAttribute('turn')) <= turn) {
 				msg.classList.add('active');
@@ -85,7 +87,7 @@ export class EventLog {
 		});
 
 		const activeMessages = this.messagesEl.querySelectorAll('.message.active');
-		const lastMessage = activeMessages[activeMessages.length - 1] as any;
+		const lastMessage = activeMessages[activeMessages.length - 1] as MessageElement;
 
 		if (lastMessage) {
 			const messageOffset = lastMessage.offsetTop;
@@ -99,7 +101,7 @@ export class EventLog {
 		}
 	}
 
-	smoothScroll(element: any, target: number, duration: number) {
+	smoothScroll(element: HTMLElement, target: number, duration: number) {
 		const start = element.scrollTop;
 		const distance = target - start;
 		const startTime = performance.now();
@@ -127,11 +129,11 @@ export class EventLog {
 		this.types = types;
 
 		const messages = this.messagesEl.querySelectorAll('.message');
-		messages.forEach((msg: any) => msg.classList.add('hidden'));
+		messages.forEach((msg: Element) => msg.classList.add('hidden'));
 
 		types.forEach(type => {
 			const typeMessages = this.messagesEl.querySelectorAll(`[type="${type}"]`);
-			typeMessages.forEach((msg: any) => msg.classList.remove('hidden'));
+			typeMessages.forEach((msg: Element) => msg.classList.remove('hidden'));
 		});
 	}
 }

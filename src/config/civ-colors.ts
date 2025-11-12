@@ -13,7 +13,7 @@ interface CivColor {
   territory: RGB;
 }
 
-export const CIV_COLORS: Record<string, CivColor> = {
+export const CivColors: Record<string, CivColor> = {
   America: { city: [255, 255, 255], territory: [31, 51, 120] },
   Arabia: { city: [146, 221, 9], territory: [43, 87, 45] },
   Assyria: { city: [255, 168, 12], territory: [255, 243, 173] },

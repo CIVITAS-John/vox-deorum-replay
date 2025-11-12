@@ -4,24 +4,26 @@
  * Manages play/pause, speed control, and turn navigation
  */
 
-declare const $: any;
+import { ControlBarConfig } from '../types/ui.types';
+
+// External libraries accessed as globals - types defined in globals.d.ts
 
 /**
  * ControlBar class
  * @param {Object} config - Configuration with start/end turns and onChange callback
  */
 export class ControlBar {
-	config: any;
-	playPauseBtn: any;
+	config: ControlBarConfig & { start: number; end: number; initial?: number };
+	playPauseBtn: HTMLElement;
 	playIntervals: number[];
 	playInterval: number;
-	speedSliderEl: any;
-	speedSlider: any;
-	turnSliderEl: any;
-	turnSlider: any;
-	playTimer: any;
+	speedSliderEl: HTMLElement;
+	speedSlider: any; // Bootstrap slider instance
+	turnSliderEl: HTMLElement;
+	turnSlider: any; // Bootstrap slider instance
+	playTimer: number | null;
 
-	constructor(config: any) {
+	constructor(config: ControlBarConfig & { start: number; end: number; initial?: number }) {
 		this.config = config;
 
 		this.config.onChange = (this.config.onChange || function() {}).bind(this);
@@ -49,7 +51,7 @@ export class ControlBar {
 
 		this.speedSlider = $(this.speedSliderEl).data().slider;
 
-		$(this.speedSliderEl).on('change', (e: any) => this.setSpeed(e.value.newValue));
+		$(this.speedSliderEl).on('change', (e: any) => this.setSpeed((e.value.newValue as number)));
 
 		// Turn slider
 		this.turnSliderEl = document.getElementById('turnSlider');
@@ -65,11 +67,11 @@ export class ControlBar {
 
 		this.turnSlider = $(this.turnSliderEl).data().slider;
 
-		$(this.turnSliderEl).on('change', (e: any) => this.config.onChange(e.value.newValue));
-		$(this.turnSliderEl).on('slide', (e: any) => this.config.onChange(e.value));
+		$(this.turnSliderEl).on('change', (e: any) => this.config.onChange(e.value.newValue as number));
+		$(this.turnSliderEl).on('slide', (e: any) => this.config.onChange(e.value as unknown as number));
 
 		// Listen for spacebar to toggle play/pause
-		document.addEventListener('keydown', (e: any) => {
+		document.addEventListener('keydown', (e: KeyboardEvent) => {
 			switch (e.keyCode) {
 				case 32: this.togglePlay(); return; // space
 				case 33: this.setTurn(this.config.start); return; // page up
