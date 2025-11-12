@@ -36,7 +36,7 @@ window.ControlBar = function (config) {
 
 	this.speedSlider = $(this.speedSliderEl).data().slider
 
-	this.speedSliderEl.addEventListener('change', e => this.setSpeed(e.value.newValue))
+	$(this.speedSliderEl).on('change', e => this.setSpeed(e.value.newValue))
 
 	// Turn slider
 	this.turnSliderEl = document.getElementById('turnSlider')
@@ -52,8 +52,8 @@ window.ControlBar = function (config) {
 
 	this.turnSlider = $(this.turnSliderEl).data().slider
 
-	this.turnSliderEl.addEventListener('change', e => this.config.onChange(e.value.newValue))
-	this.turnSliderEl.addEventListener('slide', e => this.config.onChange(e.value))
+	$(this.turnSliderEl).on('change', e => this.config.onChange(e.value.newValue))
+	$(this.turnSliderEl).on('slide', e => this.config.onChange(e.value))
 
 	// Listen for spacebar to toggle play/pause
 	document.addEventListener('keydown', e => {

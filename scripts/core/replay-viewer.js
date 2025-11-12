@@ -163,12 +163,10 @@ ReplayViewer.prototype.process = function (data, length) {
 	// Map
 	_.each(this.map.layers, layer => {
 		this.map.map.removeLayer(layer)
-		delete layer
 	})
 
 	_.each(this.map.controls, control => {
 		this.map.map.removeControl(control)
-		delete control
 	})
 
 	this.map.initLayers(this.replay.tiles, this.replay.events)
@@ -178,8 +176,8 @@ ReplayViewer.prototype.process = function (data, length) {
 		end: this.replay.meta.endTurn,
 		initial: this.turn === '' ? this.replay.meta.startTurn : (this.turn * 1),
 		onChange: turn => {
-			this.eventLog.renderTurn(turn)
-			this.map.renderTurn(turn)
+			this.eventLog.renderTurn(turn);
+			this.map.renderTurn(turn);
 		}
 	})
 
