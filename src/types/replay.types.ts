@@ -3,6 +3,51 @@
  * Type definitions for replay data structures
  */
 
+// Event type enum for better type safety
+export enum EventType {
+  Message = 0,
+  CityFounded = 1,
+  TilesClaimed = 2,
+  CitiesTransferred = 3,
+  CityRazed = 4,
+  ReligionFounded = 5,
+  PantheonSelected = 6
+}
+
+// Elevation type enum
+export enum ElevationType {
+  Mountain = 0,
+  Hills = 1,
+  AboveSeaLevel = 2,
+  BelowSeaLevel = 3
+}
+
+// Tile type enum
+export enum TileType {
+  Grassland = 0,
+  Plains = 1,
+  Desert = 2,
+  Tundra = 3,
+  Snow = 4,
+  Coast = 5,
+  Ocean = 6
+}
+
+// Feature type enum
+export enum FeatureType {
+  NoFeature = -1,
+  Ice = 0,
+  Jungle = 1,
+  Marsh = 2,
+  Oasis = 3,
+  FloodPlains = 4,
+  Forest = 5,
+  CerroDePotosi = 15,
+  Atoll = 17,
+  SriPada = 18,
+  MtSinai = 19
+}
+
 // Civilization data
 export interface Civilization {
   name: string;                  // Short civilization name (e.g., "America", "India")
@@ -24,39 +69,23 @@ export interface Mod {
   name: string;                  // Human-readable mod name
 }
 
-// Replay metadata
-export interface ReplayMetadata {
-  startTurn: number;             // Starting turn number
-  endTurn: number;               // Final turn number
-  mapWidth?: number;             // Map width property used in rendering
-  mapHeight?: number;            // Map height property used in rendering
-  [key: string]: unknown;        // Allow additional properties for extensibility
-}
 
 // Tile data
 export interface Tile {
   x: number;                               // X coordinate on the hex grid
   y: number;                               // Y coordinate on the hex grid
+  type: TileType;                         // Tile terrain type
+  feature: FeatureType;                   // Tile feature (forest, jungle, etc.)
+  elevation: ElevationType;               // Tile elevation level
 
-  // Type and feature can be either number (ID) or string (name)
-  type?: number | string;                  // Tile type (ID or name after parsing)
-  typeId?: number;                         // Original numeric type ID
-  feature?: number | string;               // Feature (e.g., forest, jungle) - ID or name
-  featureId?: number;                      // Original numeric feature ID
-
-  // Elevation fields used in rendering
-  elevationId?: number;                    // Elevation level ID
-  elevation?: string | number;             // Elevation description or value
-
-  // Allow additional properties
-  [key: string]: number | number[] | string | undefined;
+  // Allow additional properties from raw parsing
+  [key: string]: number | number[] | undefined;
 }
 
 // Event data
 export interface GameEvent {
   turn: number;                                          // Turn number when event occurred
-  type: string | number;                                 // Event type (ID or name)
-  typeId?: number;                                       // Original numeric event type ID
+  type: EventType;                                       // Event type enum
   tiles?: Tile[];                                        // Tiles affected by this event
   civId?: number;                                        // Primary civilization ID for event
   civ?: string | null;                                   // Civilization name (parsed)
@@ -84,20 +113,6 @@ export interface DatasetEntry {
 export interface DatasetValues {
   turns: number[];                 // Array of turn numbers
   values: number[][];              // 2D array of values per turn
-}
-
-// Complete raw data structure from parser
-export interface RawReplayData extends ReplayMetadata {
-  // Fields from ReplayMetadata are inherited
-  // Core data fields used in application:
-  civs: Civilization[];            // Array of all civilizations in the game
-  datasets: DatasetEntry[];        // Available dataset keys (e.g., scores, culture)
-  datasetValues: DatasetValues;    // Actual dataset values by turn
-  width: number;                   // Map width in tiles (required, unlike in metadata)
-  height: number;                  // Map height in tiles (required, unlike in metadata)
-  tiles: Tile[][];                 // 2D array of tile data [y][x]
-  events: GameEvent[];             // Array of all game events
-  [key: string]: unknown;          // Allow additional properties from parsing
 }
 
 // File configuration for binary parser

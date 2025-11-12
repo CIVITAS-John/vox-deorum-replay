@@ -11,11 +11,17 @@ export * from './parser.types';
 // Re-export commonly used types for convenience
 export type {
   Civilization,
-  ReplayMetadata,
   Tile,
   GameEvent,
-  City,
-  RawReplayData
+  City
+} from './replay.types';
+
+// Re-export enums
+export {
+  EventType,
+  ElevationType,
+  TileType,
+  FeatureType
 } from './replay.types';
 
 export type {

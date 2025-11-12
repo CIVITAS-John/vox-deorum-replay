@@ -286,6 +286,123 @@
     };
 
     /**
+     * replay.types.ts
+     * Type definitions for replay data structures
+     */
+    // Event type enum for better type safety
+    var EventType;
+    (function (EventType) {
+        EventType[EventType["Message"] = 0] = "Message";
+        EventType[EventType["CityFounded"] = 1] = "CityFounded";
+        EventType[EventType["TilesClaimed"] = 2] = "TilesClaimed";
+        EventType[EventType["CitiesTransferred"] = 3] = "CitiesTransferred";
+        EventType[EventType["CityRazed"] = 4] = "CityRazed";
+        EventType[EventType["ReligionFounded"] = 5] = "ReligionFounded";
+        EventType[EventType["PantheonSelected"] = 6] = "PantheonSelected";
+    })(EventType || (EventType = {}));
+    // Elevation type enum
+    var ElevationType;
+    (function (ElevationType) {
+        ElevationType[ElevationType["Mountain"] = 0] = "Mountain";
+        ElevationType[ElevationType["Hills"] = 1] = "Hills";
+        ElevationType[ElevationType["AboveSeaLevel"] = 2] = "AboveSeaLevel";
+        ElevationType[ElevationType["BelowSeaLevel"] = 3] = "BelowSeaLevel";
+    })(ElevationType || (ElevationType = {}));
+    // Tile type enum
+    var TileType;
+    (function (TileType) {
+        TileType[TileType["Grassland"] = 0] = "Grassland";
+        TileType[TileType["Plains"] = 1] = "Plains";
+        TileType[TileType["Desert"] = 2] = "Desert";
+        TileType[TileType["Tundra"] = 3] = "Tundra";
+        TileType[TileType["Snow"] = 4] = "Snow";
+        TileType[TileType["Coast"] = 5] = "Coast";
+        TileType[TileType["Ocean"] = 6] = "Ocean";
+    })(TileType || (TileType = {}));
+    // Feature type enum
+    var FeatureType;
+    (function (FeatureType) {
+        FeatureType[FeatureType["NoFeature"] = -1] = "NoFeature";
+        FeatureType[FeatureType["Ice"] = 0] = "Ice";
+        FeatureType[FeatureType["Jungle"] = 1] = "Jungle";
+        FeatureType[FeatureType["Marsh"] = 2] = "Marsh";
+        FeatureType[FeatureType["Oasis"] = 3] = "Oasis";
+        FeatureType[FeatureType["FloodPlains"] = 4] = "FloodPlains";
+        FeatureType[FeatureType["Forest"] = 5] = "Forest";
+        FeatureType[FeatureType["CerroDePotosi"] = 15] = "CerroDePotosi";
+        FeatureType[FeatureType["Atoll"] = 17] = "Atoll";
+        FeatureType[FeatureType["SriPada"] = 18] = "SriPada";
+        FeatureType[FeatureType["MtSinai"] = 19] = "MtSinai";
+    })(FeatureType || (FeatureType = {}));
+
+    /**
+     * enum-names.ts
+     * Utility functions to convert enum values to display names
+     * Used primarily for UI rendering and debugging
+     */
+    /**
+     * Convert EventType enum to display name
+     */
+    function getEventTypeName(type) {
+        switch (type) {
+            case EventType.Message: return 'Message';
+            case EventType.CityFounded: return 'City Founded';
+            case EventType.TilesClaimed: return 'Tiles Claimed';
+            case EventType.CitiesTransferred: return 'Cities Transferred';
+            case EventType.CityRazed: return 'City Razed';
+            case EventType.ReligionFounded: return 'Religion Founded';
+            case EventType.PantheonSelected: return 'Pantheon Selected';
+            default: return `Unknown Event ${type}`;
+        }
+    }
+    /**
+     * Convert ElevationType enum to display name
+     */
+    function getElevationName(elevation) {
+        switch (elevation) {
+            case ElevationType.Mountain: return 'Mountain';
+            case ElevationType.Hills: return 'Hills';
+            case ElevationType.AboveSeaLevel: return 'Above Sea Level';
+            case ElevationType.BelowSeaLevel: return 'Below Sea Level';
+            default: return `Unknown Elevation ${elevation}`;
+        }
+    }
+    /**
+     * Convert TileType enum to display name
+     */
+    function getTileTypeName(type) {
+        switch (type) {
+            case TileType.Grassland: return 'Grassland';
+            case TileType.Plains: return 'Plains';
+            case TileType.Desert: return 'Desert';
+            case TileType.Tundra: return 'Tundra';
+            case TileType.Snow: return 'Snow';
+            case TileType.Coast: return 'Coast';
+            case TileType.Ocean: return 'Ocean';
+            default: return `Unknown Tile ${type}`;
+        }
+    }
+    /**
+     * Convert FeatureType enum to display name
+     */
+    function getFeatureName(feature) {
+        switch (feature) {
+            case FeatureType.NoFeature: return 'None';
+            case FeatureType.Ice: return 'Ice';
+            case FeatureType.Jungle: return 'Jungle';
+            case FeatureType.Marsh: return 'Marsh';
+            case FeatureType.Oasis: return 'Oasis';
+            case FeatureType.FloodPlains: return 'Flood Plains';
+            case FeatureType.Forest: return 'Forest';
+            case FeatureType.CerroDePotosi: return 'Cerro de Potosi';
+            case FeatureType.Atoll: return 'Atoll';
+            case FeatureType.SriPada: return 'Sri Pada';
+            case FeatureType.MtSinai: return 'Mt. Sinai';
+            default: return `Unknown Feature ${feature}`;
+        }
+    }
+
+    /**
      * map.ts
      * Manages the Leaflet map display for the replay viewer
      * Handles rendering of terrain, cities, territories, and turn-based state changes
@@ -303,6 +420,7 @@
             }).setView([0, 0], 0);
             this.turn = 0;
         }
+        // Initialize map layers and process turn states from events
         initLayers(tiles, events) {
             var self = this;
             // Track the state of each tile at every turn
@@ -316,11 +434,11 @@
                 for (var e = 0; e < turnEvents.length; e++) {
                     var event = turnEvents[e];
                     switch (event.type) {
-                        case 'CITY_FOUNDED':
+                        case EventType.CityFounded:
                             var index = [event.x, event.y].join(',');
                             state[index] = { owner: event.civ, city: event.city.name };
                             break;
-                        case 'TILES_CLAIMED':
+                        case EventType.TilesClaimed:
                             for (var i = 0; i < event.tiles.length; i++) {
                                 var tile = event.tiles[i];
                                 var index = [tile.x, tile.y].join(',');
@@ -333,7 +451,7 @@
                                 }
                             }
                             break;
-                        case 'CITIES_TRANSFERRED':
+                        case EventType.CitiesTransferred:
                             for (var i = 0; i < event.tiles.length; i++) {
                                 var tile = event.tiles[i];
                                 var index = [tile.x, tile.y].join(',');
@@ -341,7 +459,7 @@
                                 state[index].owner = event.civ;
                             }
                             break;
-                        case 'CITY_RAZED':
+                        case EventType.CityRazed:
                             var index = [event.x, event.y].join(',');
                             if (state[index]) {
                                 delete state[index].city;
@@ -357,15 +475,17 @@
                     hexes: tiles,
                     zIndex: 10,
                     drawHex: function (ctx, hex, cx, cy, x1, y1, x2, y2) {
+                        // Convert enum to texture name for rendering
+                        const textureName = getTileTypeName(hex.type).toUpperCase();
                         switch (hex.type) {
-                            case 'GRASSLAND':
-                            case 'PLAINS':
-                            case 'DESERT':
-                            case 'TUNDRA':
-                            case 'SNOW':
-                            case 'COAST':
-                            case 'OCEAN':
-                                this.drawImage(ctx, hex.type, x1, y1, x2 - x1, y2 - y1);
+                            case TileType.Grassland:
+                            case TileType.Plains:
+                            case TileType.Desert:
+                            case TileType.Tundra:
+                            case TileType.Snow:
+                            case TileType.Coast:
+                            case TileType.Ocean:
+                                this.drawImage(ctx, textureName, x1, y1, x2 - x1, y2 - y1);
                                 break;
                         }
                     }
@@ -374,14 +494,16 @@
                     hexes: tiles,
                     zIndex: 20,
                     drawHex: function (ctx, hex, cx, cy, x1, y1, x2, y2) {
+                        // Convert enum to texture name for rendering
+                        const textureName = getFeatureName(hex.feature).toUpperCase().replace(' ', '_');
                         switch (hex.feature) {
-                            case 'ICE':
-                            case 'JUNGLE':
-                            // case  'MARSH':
-                            // case  'OASIS':
-                            // case  'FLOOD_PLAINS':
-                            case 'FOREST':
-                                this.drawImage(ctx, hex.feature, x1, y1, x2 - x1, y2 - y1);
+                            case FeatureType.Ice:
+                            case FeatureType.Jungle:
+                            // case FeatureType.Marsh:
+                            // case FeatureType.Oasis:
+                            // case FeatureType.FloodPlains:
+                            case FeatureType.Forest:
+                                this.drawImage(ctx, textureName, x1, y1, x2 - x1, y2 - y1);
                                 break;
                         }
                     }
@@ -390,10 +512,12 @@
                     hexes: tiles,
                     zIndex: 20,
                     drawHex: function (ctx, hex, cx, cy, x1, y1, x2, y2) {
+                        // Convert enum to texture name for rendering
+                        const textureName = getElevationName(hex.elevation).toUpperCase().replace(' ', '_');
                         switch (hex.elevation) {
-                            case 'MOUNTAIN':
-                            case 'HILLS':
-                                this.drawImage(ctx, hex.elevation, x1, y1, x2 - x1, y2 - y1);
+                            case ElevationType.Mountain:
+                            case ElevationType.Hills:
+                                this.drawImage(ctx, textureName, x1, y1, x2 - x1, y2 - y1);
                                 break;
                         }
                     }
@@ -413,7 +537,7 @@
                         if (!state) {
                             return;
                         }
-                        if (state.owner && hex.type !== 'COAST' && hex.type !== 'OCEAN') {
+                        if (state.owner && hex.type !== TileType.Coast && hex.type !== TileType.Ocean) {
                             var civColors = CivColors[state.owner];
                             var color = civColors ? civColors.territory : [0, 0, 0];
                             ctx.fillStyle = `rgba(${color.join(',')}, 0.85)`;
@@ -479,6 +603,7 @@
             var bounds = [[south, west], [north, east]];
             this.map.fitBounds(bounds);
         }
+        // Update map display for specified turn
         renderTurn(turn) {
             this.turn = turn;
             this.turnState = this.turnStates[turn];
@@ -520,33 +645,39 @@
             this.addAll(events);
             this.renderTurn(events[0].turn);
         }
+        // Add a single event to the log
         add(event) {
             // Occasionally a message is blank? Just don't include it
-            if (event.type == 'MESSAGE' && !event.text) {
+            if (event.type === EventType.Message && !event.text) {
                 return;
             }
             const msg = document.createElement('li');
             msg.className = 'message';
-            msg.setAttribute('type', String(event.type));
+            const eventTypeName = getEventTypeName(event.type);
+            msg.setAttribute('type', eventTypeName);
             msg.setAttribute('civid', String(event.civId || ''));
             msg.setAttribute('turn', String(event.turn));
             msg.textContent = event.text || '';
             // Store event data on element
             msg._eventData = event;
-            if (this.types.indexOf(String(event.type)) == -1) {
+            if (this.types.indexOf(eventTypeName) == -1) {
                 msg.classList.add('hidden');
             }
             this.messagesEl.appendChild(msg);
         }
+        // Add all events to the log
         addAll(events) {
             this.removeAll();
             _.each(this.events, this.add.bind(this));
         }
+        // Remove a single event (not implemented)
         remove() {
         }
+        // Clear all events from the log
         removeAll() {
             this.messagesEl.innerHTML = '';
         }
+        // Update log display to show events up to specified turn
         renderTurn(turn) {
             const messages = this.messagesEl.querySelectorAll('.message');
             messages.forEach((msg) => {
@@ -567,6 +698,7 @@
                 this.smoothScroll(this.messagesEl, targetScroll, 200);
             }
         }
+        // Smooth scroll animation to target position
         smoothScroll(element, target, duration) {
             const start = element.scrollTop;
             const distance = target - start;
@@ -585,6 +717,7 @@
             };
             requestAnimationFrame(animateScroll);
         }
+        // Set visible event types based on filter selection
         setTypes(types) {
             this.types = types;
             const messages = this.messagesEl.querySelectorAll('.message');
@@ -692,12 +825,15 @@
             });
             this.setTurn(this.config.initial);
         }
+        // Get current turn number from slider
         getTurn() {
             return this.turnSlider.getValue();
         }
+        // Set turn number on slider
         setTurn(turn) {
             this.turnSlider.setValue(turn, true);
         }
+        // Step forward/backward by specified number of turns
         step(step) {
             if (step === undefined) {
                 step = 1;
@@ -712,6 +848,7 @@
                 this.setTurn(this.getTurn() + step);
             }
         }
+        // Start automatic playback
         play() {
             if (this.playTimer) {
                 return;
@@ -720,6 +857,7 @@
                 this.step();
             }, this.playInterval);
         }
+        // Pause automatic playback
         pause() {
             if (!this.playTimer) {
                 return;
@@ -727,6 +865,7 @@
             clearInterval(this.playTimer);
             this.playTimer = null;
         }
+        // Toggle between play and pause states
         togglePlay() {
             const icon = this.playPauseBtn.querySelector('i');
             if (this.playTimer) {
@@ -740,6 +879,7 @@
                 icon.classList.add('fa-pause');
             }
         }
+        // Set playback speed (0-4 scale)
         setSpeed(speed) {
             speed = speed || 0;
             this.playInterval = this.playIntervals[Math.max(0, Math.min(Math.round(speed), this.playIntervals.length - 1))];
@@ -891,321 +1031,424 @@
     }
 
     /**
-     * replay.ts
-     * Core replay file parser for Civilization V (Vox Populi) replay files
-     * Handles parsing game metadata, player data, map data, and turn events
+     * replay-parser.ts
+     * Handles parsing of Civilization V (Vox Populi) replay files
+     * Separates parsing logic from data management
      */
-    // External library accessed as global (lodash) - type defined in globals.d.ts
+    /**
+     * Default file configuration for Vox Populi replay files
+     * Defines the binary structure and data types
+     */
+    const DEFAULT_FILE_CONFIG = {
+        game: { type: 'str', length: 0x04 }, // CIV5
+        _0: 'int32', // 01 00 00 00
+        version: 'varstr',
+        build: 'varstr',
+        _1: { type: 'byte', length: 0x05 }, // 41 01 00 00 01 ?
+        playerCiv: 'varstr',
+        difficulty: 'varstr',
+        eraStart: 'varstr',
+        eraEnd: 'varstr',
+        gameSpeed: 'varstr',
+        worldSize: 'varstr',
+        mapScript: 'varstr',
+        dlc: {
+            type: 'array',
+            items: {
+                id: { type: 'str', length: 0x10 },
+                enabled: 'int32',
+                name: 'varstr'
+            }
+        },
+        mods: {
+            type: 'array',
+            items: {
+                id: 'varstr',
+                version: 'int32',
+                name: 'varstr'
+            }
+        },
+        _2: 'varstr', // 00 00 00 00
+        _3: 'varstr', // 00 00 00 00
+        playerColor: 'varstr',
+        // 4 bytes for Vox Populi - not sure why, instead of 8
+        _4: { type: 'byte', length: 4 },
+        mapScript2: 'varstr',
+        _5: function () {
+            // Heuristic to get around something I don't understand :-(
+            // This section still stumps me - it's variable length, but doesn't
+            // seem to follow the conventions of the rest of the file.
+            let unknown = 0;
+            while (Math.abs(unknown) < 100000) {
+                unknown = this.getInt32();
+            }
+            // We've hit the start year, need to rewind
+            this.view.seek(this.view.tell() - 7);
+            console.log(`Found the start year: ${this.decToHex(this.view.tell())}`);
+        },
+        startTurn: 'int32',
+        startYear: 'int32',
+        endTurn: 'int32',
+        endYear: 'varstr',
+        zeroStartYear: 'int32',
+        zeroEndYear: 'int32',
+        civs: {
+            type: 'array',
+            items: {
+                _1: 'int32',
+                _2: 'int32',
+                _3: 'int32',
+                _4: 'int32',
+                leader: 'varstr',
+                longName: 'varstr',
+                name: 'varstr',
+                demonym: 'varstr'
+            }
+        },
+        datasets: {
+            type: 'array',
+            items: {
+                key: 'varstr'
+            }
+        },
+        datasetValues: {
+            type: 'array',
+            items: {
+                type: 'array',
+                items: {
+                    type: 'array',
+                    items: {
+                        turn: 'int32',
+                        value: 'int32'
+                    }
+                }
+            }
+        },
+        // _7: 'int32', // this is not present in VP saves
+        events: {
+            type: 'array',
+            items: {
+                turn: 'int32',
+                typeId: 'int32',
+                tiles: {
+                    type: 'array',
+                    items: {
+                        x: 'int16',
+                        y: 'int16'
+                    }
+                },
+                civId: 'int32',
+                text: 'varstr'
+            }
+        },
+        mapWidth: 'int32',
+        mapHeight: 'int32',
+        tiles: {
+            type: 'array',
+            items: {
+                _1: 'int32', // always 1?
+                _2: 'int32', // always 267?
+                elevationId: 'int8',
+                typeId: 'int8',
+                featureId: 'int8',
+                _5: 'int8'
+            }
+        }
+    };
+    /**
+     * ReplayParser class
+     * Responsible for parsing binary replay files
+     */
+    class ReplayParser {
+        constructor(file, size, fileConfig) {
+            this.parser = new BinaryParser(file, size);
+            this.fileConfig = fileConfig || DEFAULT_FILE_CONFIG;
+        }
+        /**
+         * Parse the replay file and return raw data
+         * @param includeJunk Whether to include unknown/debug fields
+         */
+        parse(includeJunk = false) {
+            return this.parser.parseItems(this.fileConfig, includeJunk);
+        }
+        /**
+         * Get the default file configuration
+         */
+        static getDefaultFileConfig() {
+            return DEFAULT_FILE_CONFIG;
+        }
+    }
+
+    /**
+     * event-parser.ts
+     * Handles parsing and processing of game events
+     * Adds human-readable information and manages city tracking
+     */
+    /**
+     * EventParser class
+     * Processes raw game events and enriches them with contextual information
+     */
+    class EventParser {
+        constructor() {
+            this.cities = {};
+        }
+        /**
+         * Process game events and add human-readable information
+         * @param events Raw events from replay data
+         * @param civs List of civilizations for name lookup
+         * @returns Processed events with enriched data
+         */
+        processEvents(events, civs) {
+            this.cities = {};
+            const processedEvents = [];
+            events.forEach((event, index) => {
+                var _a;
+                const eventsToAdd = [event];
+                event.index = index;
+                event.civ = this.getCivName(event.civId, civs);
+                // Convert typeId to EventType enum
+                event.type = ((_a = event.typeId) !== null && _a !== void 0 ? _a : 0);
+                // Add x/y reference for single-tile events
+                if (event.tiles && event.tiles.length === 1 &&
+                    event.type !== EventType.TilesClaimed) {
+                    event.x = event.tiles[0].x;
+                    event.y = event.tiles[0].y;
+                }
+                // Process specific event types
+                if (event.type === EventType.CityFounded) {
+                    this.processCityFoundedEvent(event);
+                }
+                else if (event.type === EventType.CityRazed) {
+                    eventsToAdd.push(...this.processCityRazedEvents(event));
+                }
+                else if (event.type === EventType.CitiesTransferred) {
+                    this.processCitiesTransferredEvent(event);
+                }
+                else if (event.type === EventType.TilesClaimed) {
+                    this.processTilesClaimedEvent(event);
+                }
+                processedEvents.push(...eventsToAdd);
+            });
+            return processedEvents;
+        }
+        /**
+         * Get civilization name from ID
+         */
+        getCivName(civId, civs) {
+            if (civId === undefined || civId < 0 || civId >= civs.length) {
+                return null;
+            }
+            return civs[civId].name;
+        }
+        /**
+         * Process city founded event
+         */
+        processCityFoundedEvent(event) {
+            const cityName = (event.text || '').replace(' is founded.', '');
+            event.city = { name: cityName, owner: event.civ };
+            if (event.x !== undefined && event.y !== undefined) {
+                this.cities[`${event.x},${event.y}`] = event.city;
+            }
+        }
+        /**
+         * Process city razed events (can be multiple if mass razing)
+         */
+        processCityRazedEvents(event) {
+            const additionalEvents = [];
+            if (event.tiles && event.tiles.length > 0) {
+                event.x = event.tiles[0].x;
+                event.y = event.tiles[0].y;
+                event.city = this.cities[`${event.x},${event.y}`];
+                if (event.city) {
+                    event.text = `${event.city.name} has been burned to the ground by ${event.civ}!`;
+                }
+                // Handle mass razings
+                event.tiles.slice(1).forEach((tile) => {
+                    const eventCopy = Object.assign({}, event);
+                    eventCopy.x = tile.x;
+                    eventCopy.y = tile.y;
+                    eventCopy.city = this.cities[`${tile.x},${tile.y}`];
+                    if (eventCopy.city) {
+                        eventCopy.text = `${eventCopy.city.name} has been burned to the ground by ${eventCopy.civ}!`;
+                    }
+                    additionalEvents.push(eventCopy);
+                });
+            }
+            return additionalEvents;
+        }
+        /**
+         * Process cities transferred event
+         */
+        processCitiesTransferredEvent(event) {
+            if (!event.tiles)
+                return;
+            const cityNames = event.tiles.map((tile) => {
+                const city = this.cities[`${tile.x},${tile.y}`];
+                return city ? city.name : 'Unknown';
+            });
+            if (cityNames.length === 1) {
+                event.text = `${event.civ} now controls the city of ${cityNames[0]}.`;
+            }
+            else if (cityNames.length > 1) {
+                const lastCity = cityNames.pop();
+                const citiesString = cityNames.length === 1 ? cityNames[0] : cityNames.join(', ') + ',';
+                event.text = `${event.civ} now controls the cities of ${citiesString} and ${lastCity}.`;
+            }
+        }
+        /**
+         * Process tiles claimed event
+         */
+        processTilesClaimedEvent(event) {
+            if (!event.tiles)
+                return;
+            const tileCount = event.tiles.length;
+            if (event.civ) {
+                event.text = `${event.civ} has claimed ${tileCount} tile${tileCount > 1 ? 's' : ''}.`;
+            }
+            else {
+                event.text = `${tileCount} tile${tileCount > 1 ? 's have' : ' has'} been abandoned!`;
+            }
+        }
+        /**
+         * Get the cities registry
+         * @returns Record of city coordinates to city data
+         */
+        getCities() {
+            return this.cities;
+        }
+    }
+
+    /**
+     * replay.ts
+     * Data hub for Civilization V (Vox Populi) replay files
+     * Manages parsed replay data and provides utility functions for data access
+     */
+    /**
+     * Replay class - Data hub for replay information
+     * Provides centralized access to all replay data and utility functions
+     */
     class Replay {
-        constructor(file, size) {
-            this.meta = {};
+        constructor() {
+            // Core metadata (absorbed from ReplayMetadata)
+            this.startTurn = 0;
+            this.endTurn = 0;
+            this.startYear = 0;
+            this.endYear = '';
+            this.mapWidth = 0;
+            this.mapHeight = 0;
+            // Game configuration (absorbed from RawReplayData)
+            this.game = '';
+            this.version = '';
+            this.build = '';
+            this.playerCiv = '';
+            this.playerColor = '';
+            this.difficulty = '';
+            this.eraStart = '';
+            this.eraEnd = '';
+            this.gameSpeed = '';
+            this.worldSize = '';
+            this.mapScript = '';
+            this.dlc = [];
+            this.mods = [];
+            // Core game data
             this.civs = [];
             this.cities = {};
             this.events = [];
             this.datasets = {};
             this.tiles = [];
-            this.parser = new BinaryParser(file, size);
-            this.fileConfig = {
-                game: { type: 'str', length: 0x04 }, // CIV5
-                _0: 'int32', // 01 00 00 00
-                version: 'varstr',
-                build: 'varstr',
-                _1: { type: 'byte', length: 0x05 }, // 41 01 00 00 01 ?
-                playerCiv: 'varstr',
-                difficulty: 'varstr',
-                eraStart: 'varstr',
-                eraEnd: 'varstr',
-                gameSpeed: 'varstr',
-                worldSize: 'varstr',
-                mapScript: 'varstr',
-                dlc: {
-                    type: 'array',
-                    items: {
-                        id: { type: 'str', length: 0x10 },
-                        enabled: 'int32',
-                        name: 'varstr'
-                    }
-                },
-                mods: {
-                    type: 'array',
-                    items: {
-                        id: 'varstr',
-                        version: 'int32',
-                        name: 'varstr'
-                    }
-                },
-                _2: 'varstr', // 00 00 00 00
-                _3: 'varstr', // 00 00 00 00
-                playerColor: 'varstr',
-                // 4 bytes for Vox Populi - not sure why, instead of 8
-                _4: { type: 'byte', length: 4 },
-                mapScript2: 'varstr',
-                _5: function () {
-                    // Heuristic to get around something I don't understand :-(
-                    // This section still stumps me - it's variable length, but doesn't
-                    // seem to follow the conventions of the rest of the file.
-                    let unknown = 0;
-                    while (Math.abs(unknown) < 100000) {
-                        unknown = this.getInt32();
-                    }
-                    // We've hit the start year, need to rewind
-                    this.view.seek(this.view.tell() - 7);
-                    console.log(`Found the start year: ${this.decToHex(this.view.tell())}`);
-                },
-                startTurn: 'int32',
-                startYear: 'int32',
-                endTurn: 'int32',
-                endYear: 'varstr',
-                zeroStartYear: 'int32',
-                zeroEndYear: 'int32',
-                civs: {
-                    type: 'array',
-                    items: {
-                        _1: 'int32',
-                        _2: 'int32',
-                        _3: 'int32',
-                        _4: 'int32',
-                        leader: 'varstr',
-                        longName: 'varstr',
-                        name: 'varstr',
-                        demonym: 'varstr'
-                    }
-                },
-                datasets: {
-                    type: 'array',
-                    items: {
-                        key: 'varstr'
-                    }
-                },
-                datasetValues: {
-                    type: 'array',
-                    items: {
-                        type: 'array',
-                        items: {
-                            type: 'array',
-                            items: {
-                                turn: 'int32',
-                                value: 'int32'
-                            }
-                        }
-                    }
-                },
-                // _7: 'int32', // this is not present in VP saves
-                events: {
-                    type: 'array',
-                    items: {
-                        turn: 'int32',
-                        typeId: 'int32',
-                        tiles: {
-                            type: 'array',
-                            items: {
-                                x: 'int16',
-                                y: 'int16'
-                            }
-                        },
-                        civId: 'int32',
-                        text: 'varstr'
-                    }
-                },
-                mapWidth: 'int32',
-                mapHeight: 'int32',
-                tiles: {
-                    type: 'array',
-                    items: {
-                        _1: 'int32', // always 1?
-                        _2: 'int32', // always 267?
-                        elevationId: 'int8',
-                        typeId: 'int8',
-                        featureId: 'int8',
-                        _5: 'int8'
-                    }
-                }
-            };
         }
-        process() {
-            // Do initial basic parsing
-            this.rawData = this.parser.parseItems(this.fileConfig, false);
-            // Store everything but civs / tiles / datasets / events in this.meta
-            this.meta = _.omit(this.rawData, ['civs', 'datasets', 'datasetValues', 'events', 'tiles']);
-            // Civs are fine as is
-            this.civs = this.rawData.civs;
-            // Organize dataset values by civ id and dataset name
-            const datasetNames = _.pluck(this.rawData.datasets, 'key');
-            this.datasets = _(this.rawData.datasets).chain().pluck('key').map((key, datasetIndex) => {
-                return _.pluck(this.rawData.datasetValues, datasetIndex);
-            }).value();
-            this.datasets = _.zipObject(datasetNames, this.datasets);
-            // Add human-readable stuff to events
-            this.cities = {};
-            this.events = [];
-            _.each(this.rawData.events, (event, i) => {
-                // There may be multiple events combined into one to save space
-                let eventsToAdd = [event];
-                event.index = i;
-                event.civ = this.civs[event.civId] ? this.civs[event.civId].name : null;
-                // Add type name
-                switch (event.typeId) {
-                    case 0:
-                        event.type = 'MESSAGE';
-                        break;
-                    case 1:
-                        event.type = 'CITY_FOUNDED';
-                        break;
-                    case 2:
-                        event.type = 'TILES_CLAIMED';
-                        break;
-                    case 3:
-                        event.type = 'CITIES_TRANSFERRED';
-                        break;
-                    case 4:
-                        event.type = 'CITY_RAZED';
-                        break;
-                    case 5:
-                        event.type = 'RELIGION_FOUNDED';
-                        break;
-                    case 6:
-                        event.type = 'PANTHEON_SELECTED';
-                        break;
-                    default:
-                        event.type = event.typeId;
-                        break;
-                }
-                // Add x/y reference to keep things easy
-                if (event.tiles.length === 1 && event.type !== 'TILES_CLAIMED' && event.type !== 'CITIES_CLAIMED') {
-                    event.x = event.tiles[0].x;
-                    event.y = event.tiles[0].y;
-                }
-                if (event.type === 'CITY_FOUNDED') {
-                    // Keep track of the city
-                    const cityName = event.text.replace(' is founded.', '');
-                    event.city = { name: cityName, owner: event.civ };
-                    this.cities[event.x + ',' + event.y] = event.city;
-                }
-                else if (event.type === 'CITY_RAZED') {
-                    event.x = event.tiles[0].x;
-                    event.y = event.tiles[0].y;
-                    event.city = this.cities[event.x + ',' + event.y];
-                    event.text = `${event.city.name} has been burned to the ground by ${event.civ}!`;
-                    // Mass razings are compounded into one event; we want to separate them
-                    _.each(event.tiles.slice(1), (tile) => {
-                        const eventCopy = Object.assign({}, event);
-                        eventCopy.x = tile.x;
-                        eventCopy.y = tile.y;
-                        eventCopy.city = this.cities[eventCopy.x + ',' + eventCopy.y];
-                        eventCopy.text = `${eventCopy.city.name} has been burned to the ground by ${eventCopy.civ}!`;
-                        eventsToAdd.push(eventCopy);
-                    });
-                }
-                else if (event.type === 'CITIES_TRANSFERRED') {
-                    const cityNames = _.map(event.tiles, (tile) => {
-                        return this.cities[tile.x + ',' + tile.y].name;
-                    });
-                    if (cityNames.length === 1) {
-                        event.text = `${event.civ} now controls the city of ${cityNames[0]}.`;
-                    }
-                    else {
-                        const lastCity = cityNames.pop();
-                        const citiesString = cityNames.length === 1 ? cityNames[0] : (cityNames.join(', ') + ',');
-                        event.text = `${event.civ} now controls the cities of ${citiesString} and ${lastCity}.`;
-                    }
-                }
-                if (event.type === 'TILES_CLAIMED') {
-                    if (event.civ) {
-                        event.text = `${event.civ} has claimed ${event.tiles.length} tile${event.tiles.length > 1 ? 's' : ''}.`;
-                    }
-                    else {
-                        event.text = `${event.tiles.length} tile${event.tiles.length > 1 ? 's have' : ' has'} been abandoned!`;
-                    }
-                }
-                this.events = this.events.concat(eventsToAdd);
+        /**
+         * Load replay data from a binary file
+         */
+        loadFromFile(file, size) {
+            const parser = new ReplayParser(file, size);
+            const rawData = parser.parse(false);
+            this.processRawData(rawData);
+        }
+        /**
+         * Process raw parsed data and populate the replay instance
+         */
+        processRawData(rawData) {
+            // Store metadata fields
+            this.startTurn = rawData.startTurn;
+            this.endTurn = rawData.endTurn;
+            this.startYear = rawData.startYear;
+            this.endYear = rawData.endYear;
+            this.mapWidth = rawData.mapWidth;
+            this.mapHeight = rawData.mapHeight;
+            // Store game configuration
+            this.game = rawData.game;
+            this.version = rawData.version;
+            this.build = rawData.build;
+            this.playerCiv = rawData.playerCiv;
+            this.playerColor = rawData.playerColor;
+            this.difficulty = rawData.difficulty;
+            this.eraStart = rawData.eraStart;
+            this.eraEnd = rawData.eraEnd;
+            this.gameSpeed = rawData.gameSpeed;
+            this.worldSize = rawData.worldSize;
+            this.mapScript = rawData.mapScript;
+            this.dlc = rawData.dlc || [];
+            this.mods = rawData.mods || [];
+            // Store civilizations
+            this.civs = rawData.civs || [];
+            // Process datasets
+            this.processDatasets(rawData.datasets, rawData.datasetValues);
+            // Process events
+            this.processEvents(rawData.events || []);
+            // Process tiles
+            this.processTiles(rawData.tiles || []);
+        }
+        /**
+         * Process dataset values by civ id and dataset name
+         */
+        processDatasets(datasets, datasetValues) {
+            if (!datasets || !datasetValues)
+                return;
+            const datasetNames = datasets.map(d => d.key);
+            const processedDatasets = datasetNames.map((_key, index) => {
+                return datasetValues.map((civData) => civData[index] || []);
             });
-            // Add human-readable stuff to tiles
-            this.tiles = _.each(this.rawData.tiles, (tile, i) => {
-                switch (tile.elevationId) {
-                    case 0:
-                        tile.elevation = 'MOUNTAIN';
-                        break;
-                    case 1:
-                        tile.elevation = 'HILLS';
-                        break;
-                    case 2:
-                        tile.elevation = 'ABOVE_SEA_LEVEL';
-                        break;
-                    case 3:
-                        tile.elevation = 'BELOW_SEA_LEVEL';
-                        break;
-                    default:
-                        tile.elevation = tile.elevationId;
-                        break;
-                }
-                switch (tile.typeId) {
-                    case 0:
-                        tile.type = 'GRASSLAND';
-                        break;
-                    case 1:
-                        tile.type = 'PLAINS';
-                        break;
-                    case 2:
-                        tile.type = 'DESERT';
-                        break;
-                    case 3:
-                        tile.type = 'TUNDRA';
-                        break;
-                    case 4:
-                        tile.type = 'SNOW';
-                        break;
-                    case 5:
-                        tile.type = 'COAST';
-                        break;
-                    case 6:
-                        tile.type = 'OCEAN';
-                        break;
-                    default:
-                        tile.type = tile.typeId;
-                        break;
-                }
-                switch (tile.featureId) {
-                    case -1:
-                        tile.feature = 'NO_FEATURE';
-                        break;
-                    case 0:
-                        tile.feature = 'ICE';
-                        break;
-                    case 1:
-                        tile.feature = 'JUNGLE';
-                        break;
-                    case 2:
-                        tile.feature = 'MARSH';
-                        break;
-                    case 3:
-                        tile.feature = 'OASIS';
-                        break;
-                    case 4:
-                        tile.feature = 'FLOOD_PLAINS';
-                        break;
-                    case 5:
-                        tile.feature = 'FOREST';
-                        break;
-                    case 15:
-                        tile.feature = 'CERRO_DE_POTOSI';
-                        break;
-                    case 17:
-                        tile.feature = 'ATOLL';
-                        break;
-                    case 18:
-                        tile.feature = 'SRI_PADA';
-                        break;
-                    case 19:
-                        tile.feature = 'MT_SINAI';
-                        break;
-                    default:
-                        tile.feature = tile.featureId;
-                        break;
-                    // TODO: enumerate the rest of the natural wonders and feature types
-                }
+            // Create object from key-value pairs (ES5 compatible)
+            this.datasets = {};
+            datasetNames.forEach((name, i) => {
+                this.datasets[name] = processedDatasets[i];
             });
-            // Chunk the tiles a 2D array
-            this.tiles = _.chunk(this.tiles, this.meta.mapWidth);
+        }
+        /**
+         * Process game events and add human-readable information
+         */
+        processEvents(events) {
+            const eventParser = new EventParser();
+            this.events = eventParser.processEvents(events, this.civs);
+            this.cities = eventParser.getCities();
+        }
+        /**
+         * Process tiles and convert IDs to enums
+         */
+        processTiles(tiles) {
+            if (!tiles || tiles.length === 0)
+                return;
+            // Convert raw tile data to use enums
+            const processedTiles = tiles.map((tile) => {
+                var _a, _b, _c;
+                const processed = {
+                    x: 0, // Will be set later
+                    y: 0, // Will be set later
+                    elevation: ((_a = tile.elevationId) !== null && _a !== void 0 ? _a : ElevationType.AboveSeaLevel),
+                    type: ((_b = tile.typeId) !== null && _b !== void 0 ? _b : TileType.Grassland),
+                    feature: ((_c = tile.featureId) !== null && _c !== void 0 ? _c : FeatureType.NoFeature)
+                };
+                // Copy any additional raw properties
+                Object.keys(tile).forEach(key => {
+                    if (!['x', 'y', 'elevation', 'elevationId', 'type', 'typeId', 'feature', 'featureId'].includes(key)) {
+                        processed[key] = tile[key];
+                    }
+                });
+                return processed;
+            });
+            // Chunk into 2D array and add coordinates
+            this.tiles = this.chunk(processedTiles, this.mapWidth);
             for (let y = 0; y < this.tiles.length; y++) {
                 for (let x = 0; x < this.tiles[y].length; x++) {
                     this.tiles[y][x].x = x;
@@ -1213,71 +1456,129 @@
                 }
             }
         }
+        /**
+         * Utility function to chunk an array into a 2D array
+         */
+        chunk(array, size) {
+            const result = [];
+            for (let i = 0; i < array.length; i += size) {
+                result.push(array.slice(i, i + size));
+            }
+            return result;
+        }
+        // ========== UTILITY FUNCTIONS ==========
+        /**
+         * Get civilization name from ID
+         */
+        getCivName(civId) {
+            if (civId === undefined || civId < 0 || civId >= this.civs.length) {
+                return null;
+            }
+            return this.civs[civId].name;
+        }
+        /**
+         * Get civilization color from ID or name
+         */
+        getCivColor(civIdOrName) {
+            let civName = null;
+            if (typeof civIdOrName === 'number') {
+                civName = this.getCivName(civIdOrName);
+            }
+            else {
+                civName = civIdOrName;
+            }
+            if (!civName || !CivColors[civName]) {
+                return null;
+            }
+            return CivColors[civName];
+        }
+        /**
+         * Get city at specific coordinates
+         */
+        getCityAt(x, y) {
+            return this.cities[`${x},${y}`] || null;
+        }
+        /**
+         * Get tile at specific coordinates
+         */
+        getTileAt(x, y) {
+            if (y >= 0 && y < this.tiles.length && x >= 0 && x < this.tiles[y].length) {
+                return this.tiles[y][x];
+            }
+            return null;
+        }
+        /**
+         * Get all events for a specific turn
+         */
+        getEventsForTurn(turn) {
+            return this.events.filter(event => event.turn === turn);
+        }
+        /**
+         * Get dataset values for a specific civilization and dataset
+         */
+        getDatasetForCiv(datasetName, civId) {
+            const dataset = this.datasets[datasetName];
+            if (!dataset || !dataset[civId]) {
+                return [];
+            }
+            return dataset[civId];
+        }
     }
 
     /**
      * replay-viewer.ts
-     * Main controller for the replay viewer application
-     * Handles file loading, replay processing, and coordinates map visualization and UI controls
+     * UI component for the replay viewer application
+     * Manages user interactions, file handling, and coordinates between data and visualization
      */
-    // External libraries accessed as globals - types defined in globals.d.ts
     /**
-     * ReplayViewer class
-     * Initializes the replay viewer and sets up file handling
+     * ReplayViewer UI component
+     * Handles user interactions and coordinates between replay data and visualization components
      */
     class ReplayViewer {
         constructor() {
-            this.init();
+            this.replay = null; // Replay data hub instance
+            this.eventLog = null; // Event log UI component
+            this.controlBar = null; // Playback control UI component
+            // UI state
+            this.fileUrl = null;
+            this.initialTurn = null;
+            this.isLoading = false;
+            this.initialize();
         }
         /**
-         * Initialize the replay viewer
-         * Sets up map, file drag-and-drop support, and URL parameter handling
+         * Initialize the UI component
          */
-        init() {
+        initialize() {
+            // Initialize map visualization
             this.map = new Map();
-            // Setup vanilla JavaScript drag-and-drop
-            this.setupDragAndDrop();
-            this.file = getParameterByName('file');
-            this.turn = getParameterByName('turn');
-            if (this.file) {
-                this.loadFromDropbox(this.file);
-            }
-            function getParameterByName(name) {
-                // Thanks StackOverflow!
-                name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
-                var regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
-                var results = regex.exec(location.search);
-                return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
-            }
+            // Setup file handling (drag-and-drop and click-to-open)
+            this.setupFileHandling();
+            // Check for URL parameters
+            this.handleUrlParameters();
         }
         /**
-         * Setup drag-and-drop file handling using native HTML5 APIs
+         * Setup file handling (drag-and-drop and click-to-open)
          */
-        setupDragAndDrop() {
+        setupFileHandling() {
             const dropZone = document.body;
-            const self = this;
             // Prevent default drag behaviors
             const preventDefaults = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
             };
-            // Highlight drop zone when item is dragged over it
-            const highlight = (e) => {
-                dropZone.classList.add('drag-over');
-            };
-            const unhighlight = (e) => {
-                dropZone.classList.remove('drag-over');
-            };
+            // Visual feedback for drag operations
+            const highlight = () => dropZone.classList.add('drag-over');
+            const unhighlight = () => dropZone.classList.remove('drag-over');
             // Handle dropped files
             const handleDrop = (e) => {
-                const dt = e.dataTransfer;
-                const files = dt.files;
-                if (files.length > 0) {
-                    self.handleFile(files[0]);
-                }
+                var _a;
                 unhighlight();
+                const files = (_a = e.dataTransfer) === null || _a === void 0 ? void 0 : _a.files;
+                if (files && files.length > 0) {
+                    this.loadFile(files[0]);
+                }
             };
-            // Setup event listeners
+            // Register drag-and-drop event listeners
             ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
                 dropZone.addEventListener(eventName, preventDefaults, false);
             });
@@ -1288,60 +1589,152 @@
                 dropZone.addEventListener(eventName, unhighlight, false);
             });
             dropZone.addEventListener('drop', handleDrop, false);
-            // Also support file input through a click (optional enhancement)
+            // Setup click-to-open file dialog
             dropZone.addEventListener('click', (e) => {
-                // Only trigger file dialog if clicking on the body background, not on other elements
+                // Only trigger on body background clicks
                 if (e.target === dropZone) {
-                    const input = document.createElement('input');
-                    input.type = 'file';
-                    input.accept = '.Civ5Replay';
-                    input.onchange = (e) => {
-                        const target = e.target;
-                        if (target.files && target.files.length > 0) {
-                            self.handleFile(target.files[0]);
-                        }
-                    };
-                    input.click();
+                    this.openFileDialog();
                 }
             });
         }
         /**
-         * Handle a dropped or selected file
-         * @param {File} file - The file to process
+         * Open file selection dialog
          */
-        handleFile(file) {
+        openFileDialog() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.Civ5Replay';
+            input.onchange = (e) => {
+                const target = e.target;
+                if (target.files && target.files.length > 0) {
+                    this.loadFile(target.files[0]);
+                }
+            };
+            input.click();
+        }
+        /**
+         * Handle URL parameters for file loading
+         */
+        handleUrlParameters() {
+            const urlParams = new URLSearchParams(window.location.search);
+            this.fileUrl = urlParams.get('file');
+            this.initialTurn = urlParams.get('turn');
+            if (this.fileUrl) {
+                this.loadFromUrl(this.fileUrl);
+            }
+        }
+        /**
+         * Load a replay file
+         */
+        loadFile(file) {
+            if (this.isLoading)
+                return;
+            this.isLoading = true;
             const reader = new FileReader();
-            const self = this;
-            reader.onloadend = function (e) {
-                self.process(e.target.result, file.size);
+            reader.onloadend = (e) => {
+                var _a;
+                const result = (_a = e.target) === null || _a === void 0 ? void 0 : _a.result;
+                if (result) {
+                    this.processReplayData(result, file.size);
+                }
+                this.isLoading = false;
             };
-            reader.onerror = function (e) {
+            reader.onerror = (e) => {
+                var _a;
                 console.error('Error reading file:', e);
-                alert('Error reading file: ' + e.target.error);
+                this.showError('Failed to read file: ' + ((_a = e.target) === null || _a === void 0 ? void 0 : _a.error));
+                this.isLoading = false;
             };
-            // Read as ArrayBuffer to match the original behavior
             reader.readAsArrayBuffer(file);
         }
-        loadFromDropbox(file) {
-            // e.g. https://dl.dropboxusercontent.com/1/view/hrbho1q4dtro8pa/Ramesses%20II_0267%20AD-1987_42%20(9).Civ5Replay
-            // file = 'hrbho1q4dtro8pa/Ramesses%20II_0267%20AD-1987_42%20(9).Civ5Replay'
-            var self = this;
-            var xhr = new XMLHttpRequest();
-            xhr.open('GET', 'https://dl.dropboxusercontent.com/1/view/' + file, true);
+        /**
+         * Load replay from URL (e.g., Dropbox)
+         */
+        loadFromUrl(fileUrl) {
+            if (this.isLoading)
+                return;
+            this.isLoading = true;
+            const xhr = new XMLHttpRequest();
+            // Support Dropbox URLs
+            const url = fileUrl.startsWith('http')
+                ? fileUrl
+                : `https://dl.dropboxusercontent.com/1/view/${fileUrl}`;
+            xhr.open('GET', url, true);
             xhr.responseType = 'arraybuffer';
-            xhr.onload = function (e) {
-                self.process(this.response, e.total);
+            xhr.onload = (e) => {
+                const target = e.target;
+                if (target.status === 200) {
+                    this.processReplayData(target.response, e.total);
+                }
+                else {
+                    this.showError(`Failed to load file: HTTP ${target.status}`);
+                }
+                this.isLoading = false;
+            };
+            xhr.onerror = () => {
+                this.showError('Failed to load file from URL');
+                this.isLoading = false;
             };
             xhr.send();
         }
-        process(data, length) {
-            // Replay
-            if (this.replay) {
-                delete this.replay;
+        /**
+         * Process loaded replay data
+         */
+        processReplayData(data, size) {
+            try {
+                // Clean up previous replay
+                this.cleanup();
+                // Create new replay instance and load data
+                this.replay = new Replay();
+                this.replay.loadFromFile(data, size);
+                // Initialize UI components
+                this.initializeUIComponents();
+                // Set initial turn
+                const initialTurn = this.initialTurn
+                    ? parseInt(this.initialTurn) || this.replay.startTurn
+                    : this.replay.startTurn;
+                // Trigger initial render
+                this.renderTurn(initialTurn);
             }
-            this.replay = new Replay(data, length);
-            this.replay.process();
-            // Event log
+            catch (error) {
+                console.error('Error processing replay:', error);
+                this.showError('Failed to process replay file: ' + error.message);
+            }
+        }
+        /**
+         * Initialize UI components with replay data
+         */
+        initializeUIComponents() {
+            if (!this.replay)
+                return;
+            // Initialize event log
+            this.eventLog = new EventLog(this.replay.events);
+            // Initialize map layers
+            this.map.initLayers(this.replay.tiles, this.replay.events);
+            // Initialize control bar
+            this.controlBar = new ControlBar({
+                start: this.replay.startTurn,
+                end: this.replay.endTurn,
+                initial: this.initialTurn
+                    ? parseInt(this.initialTurn) || this.replay.startTurn
+                    : this.replay.startTurn,
+                onChange: (turn) => this.renderTurn(turn)
+            });
+        }
+        /**
+         * Render a specific turn
+         */
+        renderTurn(turn) {
+            if (!this.replay || !this.eventLog || !this.map)
+                return;
+            this.eventLog.renderTurn(turn);
+            this.map.renderTurn(turn);
+        }
+        /**
+         * Clean up previous replay data and UI components
+         */
+        cleanup() {
+            // Clean up event log
             if (this.eventLog) {
                 const logMessages = document.querySelector('.log-messages');
                 if (logMessages) {
@@ -1349,25 +1742,48 @@
                 }
                 this.eventLog = null;
             }
-            this.eventLog = new EventLog(this.replay.events);
-            // Map
-            _.each(this.map.layers, (layer) => {
-                this.map.map.removeLayer(layer);
-            });
-            _.each(this.map.controls, (control) => {
-                this.map.map.removeControl(control);
-            });
-            this.map.initLayers(this.replay.tiles, this.replay.events);
-            this.controlBar = new ControlBar({
-                start: this.replay.meta.startTurn,
-                end: this.replay.meta.endTurn,
-                initial: this.turn === '' ? this.replay.meta.startTurn : (parseInt(this.turn) || this.replay.meta.startTurn),
-                onChange: (turn) => {
-                    this.eventLog.renderTurn(turn);
-                    this.map.renderTurn(turn);
+            // Clean up map layers and controls
+            if (this.map && this.map.map) {
+                if (this.map.layers) {
+                    Object.values(this.map.layers).forEach(layer => {
+                        this.map.map.removeLayer(layer);
+                    });
                 }
-            });
-            return false;
+                if (this.map.controls) {
+                    Object.values(this.map.controls).forEach(control => {
+                        this.map.map.removeControl(control);
+                    });
+                }
+            }
+            // Clean up control bar
+            this.controlBar = null;
+            // Clean up replay data
+            this.replay = null;
+        }
+        /**
+         * Show error message to user
+         */
+        showError(message) {
+            // Simple alert for now, could be replaced with better UI
+            alert(message);
+        }
+        /**
+         * Get current replay data
+         */
+        getReplay() {
+            return this.replay;
+        }
+        /**
+         * Check if a replay is loaded
+         */
+        hasReplay() {
+            return this.replay !== null;
+        }
+        /**
+         * Get loading state
+         */
+        isLoadingFile() {
+            return this.isLoading;
         }
     }
 

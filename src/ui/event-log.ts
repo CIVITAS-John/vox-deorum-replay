@@ -4,8 +4,9 @@
  * Shows filtered messages and events from the replay based on turn and event type
  */
 
-import { GameEvent } from '../types/replay.types';
+import { GameEvent, EventType } from '../types/replay.types';
 import { EventFilter, MessageElement } from '../types/ui.types';
+import { getEventTypeName } from '../utils/enum-names';
 
 // External libraries accessed as globals - types defined in globals.d.ts
 
@@ -44,13 +45,14 @@ export class EventLog {
 	// Add a single event to the log
 	add(event: GameEvent) {
 		// Occasionally a message is blank? Just don't include it
-		if (event.type == 'MESSAGE' && !event.text) {
+		if (event.type === EventType.Message && !event.text) {
 			return;
 		}
 
 		const msg = document.createElement('li');
 		msg.className = 'message';
-		msg.setAttribute('type', String(event.type));
+		const eventTypeName = getEventTypeName(event.type);
+		msg.setAttribute('type', eventTypeName);
 		msg.setAttribute('civid', String(event.civId || ''));
 		msg.setAttribute('turn', String(event.turn));
 		msg.textContent = event.text || '';
@@ -58,7 +60,7 @@ export class EventLog {
 		// Store event data on element
 		(msg as MessageElement)._eventData = event;
 
-		if (this.types.indexOf(String(event.type) as EventFilter) == -1) {
+		if (this.types.indexOf(eventTypeName as EventFilter) == -1) {
 			msg.classList.add('hidden');
 		}
 

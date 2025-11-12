@@ -4,7 +4,7 @@
  * Initializes UI components and creates the main ReplayViewer instance
  */
 
-import { ReplayViewer } from './core/replay-viewer';
+import { ReplayViewer } from './ui/replay-viewer';
 import { Map } from './map/map';
 import { HexLayer } from './map/hex-layer';
 import { ControlBar } from './ui/control-bar';

@@ -7,7 +7,8 @@
 import { HexLayer } from './hex-layer';
 import { CivColors } from '../config/civ-colors';
 import { TurnState, MapLayer, MapControl, HexData } from '../types/map.types';
-import { Tile, GameEvent } from '../types/replay.types';
+import { Tile, GameEvent, EventType, TileType, FeatureType, ElevationType } from '../types/replay.types';
+import { getTileTypeName, getFeatureName, getElevationName } from '../utils/enum-names';
 
 // External libraries accessed as globals - types defined in globals.d.ts
 
@@ -51,12 +52,12 @@ export class Map {
 				var event = turnEvents[e];
 
 				switch (event.type) {
-					case 'CITY_FOUNDED':
+					case EventType.CityFounded:
 						var index = [event.x, event.y].join(',');
 						state[index] = { owner: event.civ, city: event.city.name };
 						break;
 
-					case 'TILES_CLAIMED':
+					case EventType.TilesClaimed:
 						for (var i = 0; i < event.tiles.length; i++) {
 							var tile = event.tiles[i];
 							var index = [tile.x, tile.y].join(',');
@@ -72,7 +73,7 @@ export class Map {
 
 						break;
 
-					case 'CITIES_TRANSFERRED':
+					case EventType.CitiesTransferred:
 						for (var i = 0; i < event.tiles.length; i++) {
 							var tile = event.tiles[i];
 							var index = [tile.x, tile.y].join(',');
@@ -82,7 +83,7 @@ export class Map {
 
 						break;
 
-					case 'CITY_RAZED':
+					case EventType.CityRazed:
 						var index = [event.x, event.y].join(',');
 
 						if (state[index]) {
@@ -105,15 +106,17 @@ export class Map {
 				hexes: tiles,
 				zIndex: 10,
 				drawHex: function (ctx: CanvasRenderingContext2D, hex: HexData, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) {
+					// Convert enum to texture name for rendering
+					const textureName = getTileTypeName(hex.type as TileType).toUpperCase();
 					switch (hex.type) {
-						case 'GRASSLAND':
-						case 'PLAINS':
-						case 'DESERT':
-						case 'TUNDRA':
-						case 'SNOW':
-						case 'COAST':
-						case 'OCEAN':
-							this.drawImage(ctx, hex.type, x1, y1, x2 - x1, y2 - y1);
+						case TileType.Grassland:
+						case TileType.Plains:
+						case TileType.Desert:
+						case TileType.Tundra:
+						case TileType.Snow:
+						case TileType.Coast:
+						case TileType.Ocean:
+							this.drawImage(ctx, textureName, x1, y1, x2 - x1, y2 - y1);
 							break;
 						default:
 							break;
@@ -125,14 +128,16 @@ export class Map {
 				hexes: tiles,
 				zIndex: 20,
 				drawHex: function (ctx: CanvasRenderingContext2D, hex: HexData, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) {
+					// Convert enum to texture name for rendering
+					const textureName = getFeatureName(hex.feature as FeatureType).toUpperCase().replace(' ', '_');
 					switch (hex.feature) {
-						case 'ICE':
-						case 'JUNGLE':
-						// case  'MARSH':
-						// case  'OASIS':
-						// case  'FLOOD_PLAINS':
-						case 'FOREST':
-							this.drawImage(ctx, hex.feature, x1, y1, x2 - x1, y2 - y1);
+						case FeatureType.Ice:
+						case FeatureType.Jungle:
+						// case FeatureType.Marsh:
+						// case FeatureType.Oasis:
+						// case FeatureType.FloodPlains:
+						case FeatureType.Forest:
+							this.drawImage(ctx, textureName, x1, y1, x2 - x1, y2 - y1);
 							break;
 						default:
 							break;
@@ -144,10 +149,12 @@ export class Map {
 				hexes: tiles,
 				zIndex: 20,
 				drawHex: function (ctx: CanvasRenderingContext2D, hex: HexData, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) {
+					// Convert enum to texture name for rendering
+					const textureName = getElevationName(hex.elevation as ElevationType).toUpperCase().replace(' ', '_');
 					switch (hex.elevation) {
-						case 'MOUNTAIN':
-						case 'HILLS':
-							this.drawImage(ctx, hex.elevation, x1, y1, x2 - x1, y2 - y1);
+						case ElevationType.Mountain:
+						case ElevationType.Hills:
+							this.drawImage(ctx, textureName, x1, y1, x2 - x1, y2 - y1);
 							break;
 						default:
 							break;
@@ -167,7 +174,7 @@ export class Map {
 					var state = this.turnState[hex.x + ',' + hex.y];
 					if (!state) { return; }
 
-					if (state.owner && hex.type !== 'COAST' && hex.type !== 'OCEAN') {
+					if (state.owner && hex.type !== TileType.Coast && hex.type !== TileType.Ocean) {
 						var civColors = CivColors[state.owner];
 						var color = civColors ? civColors.territory : [0, 0, 0];
 						ctx.fillStyle = `rgba(${color.join(',')}, 0.85)`;

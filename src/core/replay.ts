@@ -1,294 +1,166 @@
 /**
  * replay.ts
- * Core replay file parser for Civilization V (Vox Populi) replay files
- * Handles parsing game metadata, player data, map data, and turn events
+ * Data hub for Civilization V (Vox Populi) replay files
+ * Manages parsed replay data and provides utility functions for data access
  */
 
-import { BinaryParser } from './binary-parser';
+import { ReplayParser } from './replay-parser';
+import { EventParser } from './event-parser';
+import { CivColors } from '../config/civ-colors';
 import {
-  ReplayMetadata,
   Civilization,
   City,
   GameEvent,
   Tile,
-  RawReplayData,
   DatasetValues,
-  FileConfig
+  DLC,
+  Mod,
+  ElevationType,
+  TileType,
+  FeatureType
 } from '../types';
 
-// External library accessed as global (lodash) - type defined in globals.d.ts
-
+/**
+ * Replay class - Data hub for replay information
+ * Provides centralized access to all replay data and utility functions
+ */
 export class Replay {
-  private parser: BinaryParser;                          // Binary parser instance for reading replay file
-  public meta: ReplayMetadata = {} as ReplayMetadata;    // Game metadata (turn range, map size)
-  public civs: Civilization[] = [];                      // List of civilizations in the game
-  public cities: Record<string, City> = {};              // Map of city names to city data
-  public events: GameEvent[] = [];                       // All game events by turn
-  public datasets: Record<string, DatasetValues> = {};   // Statistical datasets (scores, culture, etc.)
-  public tiles: Tile[][] = [];                           // 2D array of map tiles [y][x]
-  private rawData: RawReplayData;                        // Raw parsed data from file
-  private fileConfig: FileConfig;                        // Binary file format configuration
+  // Core metadata (absorbed from ReplayMetadata)
+  public startTurn: number = 0;
+  public endTurn: number = 0;
+  public startYear: number = 0;
+  public endYear: string = '';
+  public mapWidth: number = 0;
+  public mapHeight: number = 0;
 
-  constructor(file: ArrayBuffer, size: number) {
-    this.parser = new BinaryParser(file, size);
+  // Game configuration (absorbed from RawReplayData)
+  public game: string = '';
+  public version: string = '';
+  public build: string = '';
+  public playerCiv: string = '';
+  public playerColor: string = '';
+  public difficulty: string = '';
+  public eraStart: string = '';
+  public eraEnd: string = '';
+  public gameSpeed: string = '';
+  public worldSize: string = '';
+  public mapScript: string = '';
+  public dlc: DLC[] = [];
+  public mods: Mod[] = [];
 
-    this.fileConfig = {
-      game: { type: 'str', length: 0x04 }, // CIV5
-      _0: 'int32', // 01 00 00 00
-      version: 'varstr',
-      build: 'varstr',
-      _1: { type: 'byte', length: 0x05 }, // 41 01 00 00 01 ?
-      playerCiv: 'varstr',
-      difficulty: 'varstr',
-      eraStart: 'varstr',
-      eraEnd: 'varstr',
-      gameSpeed: 'varstr',
-      worldSize: 'varstr',
-      mapScript: 'varstr',
-      dlc: {
-        type: 'array',
-        items: {
-          id: { type: 'str', length: 0x10 },
-          enabled: 'int32',
-          name: 'varstr'
-        }
-      },
-      mods: {
-        type: 'array',
-        items: {
-          id: 'varstr',
-          version: 'int32',
-          name: 'varstr'
-        }
-      },
-      _2: 'varstr', // 00 00 00 00
-      _3: 'varstr', // 00 00 00 00
-      playerColor: 'varstr',
-      // 4 bytes for Vox Populi - not sure why, instead of 8
-      _4: { type: 'byte', length: 4 },
-      mapScript2: 'varstr',
-      _5: function(this: BinaryParser) {
-        // Heuristic to get around something I don't understand :-(
-        // This section still stumps me - it's variable length, but doesn't
-        // seem to follow the conventions of the rest of the file.
-        let unknown = 0;
+  // Core game data
+  public civs: Civilization[] = [];
+  public cities: Record<string, City> = {};
+  public events: GameEvent[] = [];
+  public datasets: Record<string, DatasetValues> = {};
+  public tiles: Tile[][] = [];
 
-        while (Math.abs(unknown) < 100000) {
-          unknown = this.getInt32();
-        }
+  /**
+   * Load replay data from a binary file
+   */
+  public loadFromFile(file: ArrayBuffer, size: number): void {
+    const parser = new ReplayParser(file, size);
+    const rawData = parser.parse(false);
 
-        // We've hit the start year, need to rewind
-        (this.view as any).seek((this.view as any).tell() - 7);
-        console.log(`Found the start year: ${this.decToHex((this.view as any).tell())}`);
-      },
-      startTurn: 'int32',
-      startYear: 'int32',
-      endTurn: 'int32',
-      endYear: 'varstr',
-      zeroStartYear: 'int32',
-      zeroEndYear: 'int32',
-      civs: {
-        type: 'array',
-        items: {
-          _1: 'int32',
-          _2: 'int32',
-          _3: 'int32',
-          _4: 'int32',
-          leader: 'varstr',
-          longName: 'varstr',
-          name: 'varstr',
-          demonym: 'varstr'
-        }
-      },
-      datasets: {
-        type: 'array',
-        items: {
-          key: 'varstr'
-        }
-      },
-      datasetValues: {
-        type: 'array',
-        items: {
-          type: 'array',
-          items: {
-            type: 'array',
-            items: {
-              turn: 'int32',
-              value: 'int32'
-            }
-          }
-        }
-      },
-      // _7: 'int32', // this is not present in VP saves
-      events: {
-        type: 'array',
-        items: {
-          turn: 'int32',
-          typeId: 'int32',
-          tiles: {
-            type: 'array',
-            items: {
-              x: 'int16',
-              y: 'int16'
-            }
-          },
-          civId: 'int32',
-          text: 'varstr'
-        }
-      },
-      mapWidth: 'int32',
-      mapHeight: 'int32',
-      tiles: {
-        type: 'array',
-        items: {
-          _1: 'int32', // always 1?
-          _2: 'int32', // always 267?
-          elevationId: 'int8',
-          typeId: 'int8',
-          featureId: 'int8',
-          _5: 'int8'
-        }
-      }
-    };
+    this.processRawData(rawData);
   }
 
-  // Main processing method that parses the replay file
-  process(): void {
-    // Do initial basic parsing
-    this.rawData = this.parser.parseItems(this.fileConfig, false) as RawReplayData;
+  /**
+   * Process raw parsed data and populate the replay instance
+   */
+  private processRawData(rawData: any): void {
+    // Store metadata fields
+    this.startTurn = rawData.startTurn;
+    this.endTurn = rawData.endTurn;
+    this.startYear = rawData.startYear;
+    this.endYear = rawData.endYear;
+    this.mapWidth = rawData.mapWidth;
+    this.mapHeight = rawData.mapHeight;
 
-    // Store everything but civs / tiles / datasets / events in this.meta
-    this.meta = _.omit(this.rawData, ['civs', 'datasets', 'datasetValues', 'events', 'tiles']);
+    // Store game configuration
+    this.game = rawData.game;
+    this.version = rawData.version;
+    this.build = rawData.build;
+    this.playerCiv = rawData.playerCiv;
+    this.playerColor = rawData.playerColor;
+    this.difficulty = rawData.difficulty;
+    this.eraStart = rawData.eraStart;
+    this.eraEnd = rawData.eraEnd;
+    this.gameSpeed = rawData.gameSpeed;
+    this.worldSize = rawData.worldSize;
+    this.mapScript = rawData.mapScript;
+    this.dlc = rawData.dlc || [];
+    this.mods = rawData.mods || [];
 
-    // Civs are fine as is
-    this.civs = this.rawData.civs;
+    // Store civilizations
+    this.civs = rawData.civs || [];
 
-    // Organize dataset values by civ id and dataset name
-    const datasetNames = _.pluck(this.rawData.datasets, 'key');
-    this.datasets = _(this.rawData.datasets).chain().pluck('key').map((key: string, datasetIndex: number) => {
-      return _.pluck(this.rawData.datasetValues, datasetIndex);
-    }).value();
+    // Process datasets
+    this.processDatasets(rawData.datasets, rawData.datasetValues);
 
-    this.datasets = _.zipObject(datasetNames, this.datasets);
+    // Process events
+    this.processEvents(rawData.events || []);
 
-    // Add human-readable stuff to events
-    this.cities = {};
-    this.events = [];
+    // Process tiles
+    this.processTiles(rawData.tiles || []);
+  }
 
-    _.each(this.rawData.events, (event: GameEvent, i: number) => {
-      // There may be multiple events combined into one to save space
-      let eventsToAdd = [event];
+  /**
+   * Process dataset values by civ id and dataset name
+   */
+  private processDatasets(datasets: any[], datasetValues: any): void {
+    if (!datasets || !datasetValues) return;
 
-      event.index = i;
-      event.civ = this.civs[event.civId] ? this.civs[event.civId].name : null;
+    const datasetNames = datasets.map(d => d.key);
 
-      // Add type name
-      switch (event.typeId) {
-        case 0: event.type = 'MESSAGE'; break;
-        case 1: event.type = 'CITY_FOUNDED'; break;
-        case 2: event.type = 'TILES_CLAIMED'; break;
-        case 3: event.type = 'CITIES_TRANSFERRED'; break;
-        case 4: event.type = 'CITY_RAZED'; break;
-        case 5: event.type = 'RELIGION_FOUNDED'; break;
-        case 6: event.type = 'PANTHEON_SELECTED'; break;
-        default: event.type = event.typeId; break;
-      }
-
-      // Add x/y reference to keep things easy
-      if (event.tiles.length === 1 && event.type !== 'TILES_CLAIMED' && event.type !== 'CITIES_CLAIMED') {
-        event.x = event.tiles[0].x;
-        event.y = event.tiles[0].y;
-      }
-
-      if (event.type === 'CITY_FOUNDED') {
-        // Keep track of the city
-        const cityName = event.text.replace(' is founded.', '');
-        event.city = { name: cityName, owner: event.civ };
-        this.cities[event.x + ',' + event.y] = event.city;
-      }
-      else if (event.type === 'CITY_RAZED') {
-        event.x = event.tiles[0].x;
-        event.y = event.tiles[0].y;
-        event.city = this.cities[event.x + ',' + event.y];
-        event.text = `${event.city.name} has been burned to the ground by ${event.civ}!`;
-
-        // Mass razings are compounded into one event; we want to separate them
-        _.each(event.tiles.slice(1), (tile: Tile) => {
-          const eventCopy = Object.assign({}, event);
-          eventCopy.x = tile.x;
-          eventCopy.y = tile.y;
-          eventCopy.city = this.cities[eventCopy.x + ',' + eventCopy.y];
-          eventCopy.text = `${eventCopy.city.name} has been burned to the ground by ${eventCopy.civ}!`;
-          eventsToAdd.push(eventCopy);
-        });
-      }
-      else if (event.type === 'CITIES_TRANSFERRED') {
-        const cityNames = _.map(event.tiles, (tile: Tile) => {
-          return this.cities[tile.x + ',' + tile.y].name;
-        });
-
-        if (cityNames.length === 1) {
-          event.text = `${event.civ} now controls the city of ${cityNames[0]}.`;
-        }
-        else {
-          const lastCity = cityNames.pop();
-          const citiesString = cityNames.length === 1 ? cityNames[0] : (cityNames.join(', ') + ',');
-          event.text = `${event.civ} now controls the cities of ${citiesString} and ${lastCity}.`;
-        }
-      }
-
-      if (event.type === 'TILES_CLAIMED') {
-        if (event.civ) {
-          event.text = `${event.civ} has claimed ${event.tiles.length} tile${event.tiles.length > 1 ? 's' : ''}.`;
-        }
-        else {
-          event.text = `${event.tiles.length} tile${event.tiles.length > 1 ? 's have' : ' has'} been abandoned!`;
-        }
-      }
-
-      this.events = this.events.concat(eventsToAdd);
+    const processedDatasets = datasetNames.map((_key: string, index: number) => {
+      return datasetValues.map((civData: any) => civData[index] || []);
     });
 
-    // Add human-readable stuff to tiles
-    this.tiles = _.each(this.rawData.tiles, (tile: Tile, i: number) => {
-      switch (tile.elevationId) {
-        case 0: tile.elevation = 'MOUNTAIN'; break;
-        case 1: tile.elevation = 'HILLS'; break;
-        case 2: tile.elevation = 'ABOVE_SEA_LEVEL'; break;
-        case 3: tile.elevation = 'BELOW_SEA_LEVEL'; break;
-        default: tile.elevation = tile.elevationId; break;
-      }
+    // Create object from key-value pairs (ES5 compatible)
+    this.datasets = {};
+    datasetNames.forEach((name, i) => {
+      this.datasets[name] = processedDatasets[i];
+    });
+  }
 
-      switch (tile.typeId) {
-        case 0: tile.type = 'GRASSLAND'; break;
-        case 1: tile.type = 'PLAINS'; break;
-        case 2: tile.type = 'DESERT'; break;
-        case 3: tile.type = 'TUNDRA'; break;
-        case 4: tile.type = 'SNOW'; break;
-        case 5: tile.type = 'COAST'; break;
-        case 6: tile.type = 'OCEAN'; break;
-        default: tile.type = tile.typeId; break;
-      }
+  /**
+   * Process game events and add human-readable information
+   */
+  private processEvents(events: GameEvent[]): void {
+    const eventParser = new EventParser();
+    this.events = eventParser.processEvents(events, this.civs);
+    this.cities = eventParser.getCities();
+  }
 
-      switch (tile.featureId) {
-        case -1: tile.feature = 'NO_FEATURE'; break;
-        case 0: tile.feature = 'ICE'; break;
-        case 1: tile.feature = 'JUNGLE'; break;
-        case 2: tile.feature = 'MARSH'; break;
-        case 3: tile.feature = 'OASIS'; break;
-        case 4: tile.feature = 'FLOOD_PLAINS'; break;
-        case 5: tile.feature = 'FOREST'; break;
-        case 15: tile.feature = 'CERRO_DE_POTOSI'; break;
-        case 17: tile.feature = 'ATOLL'; break;
-        case 18: tile.feature = 'SRI_PADA'; break;
-        case 19: tile.feature = 'MT_SINAI'; break;
-        default: tile.feature = tile.featureId; break;
-        // TODO: enumerate the rest of the natural wonders and feature types
-      }
+  /**
+   * Process tiles and convert IDs to enums
+   */
+  private processTiles(tiles: any[]): void {
+    if (!tiles || tiles.length === 0) return;
+
+    // Convert raw tile data to use enums
+    const processedTiles = tiles.map((tile: any) => {
+      const processed: Tile = {
+        x: 0, // Will be set later
+        y: 0, // Will be set later
+        elevation: (tile.elevationId ?? ElevationType.AboveSeaLevel) as ElevationType,
+        type: (tile.typeId ?? TileType.Grassland) as TileType,
+        feature: (tile.featureId ?? FeatureType.NoFeature) as FeatureType
+      };
+
+      // Copy any additional raw properties
+      Object.keys(tile).forEach(key => {
+        if (!['x', 'y', 'elevation', 'elevationId', 'type', 'typeId', 'feature', 'featureId'].includes(key)) {
+          (processed as any)[key] = tile[key];
+        }
+      });
+
+      return processed;
     });
 
-    // Chunk the tiles a 2D array
-    this.tiles = _.chunk(this.tiles, this.meta.mapWidth);
+    // Chunk into 2D array and add coordinates
+    this.tiles = this.chunk(processedTiles, this.mapWidth);
 
     for (let y = 0; y < this.tiles.length; y++) {
       for (let x = 0; x < this.tiles[y].length; x++) {
@@ -297,4 +169,82 @@ export class Replay {
       }
     }
   }
+
+  /**
+   * Utility function to chunk an array into a 2D array
+   */
+  private chunk<T>(array: T[], size: number): T[][] {
+    const result: T[][] = [];
+    for (let i = 0; i < array.length; i += size) {
+      result.push(array.slice(i, i + size));
+    }
+    return result;
+  }
+
+  // ========== UTILITY FUNCTIONS ==========
+
+  /**
+   * Get civilization name from ID
+   */
+  public getCivName(civId?: number): string | null {
+    if (civId === undefined || civId < 0 || civId >= this.civs.length) {
+      return null;
+    }
+    return this.civs[civId].name;
+  }
+
+  /**
+   * Get civilization color from ID or name
+   */
+  public getCivColor(civIdOrName: number | string): { city: [number, number, number], territory: [number, number, number] } | null {
+    let civName: string | null = null;
+
+    if (typeof civIdOrName === 'number') {
+      civName = this.getCivName(civIdOrName);
+    } else {
+      civName = civIdOrName;
+    }
+
+    if (!civName || !CivColors[civName]) {
+      return null;
+    }
+
+    return CivColors[civName];
+  }
+
+  /**
+   * Get city at specific coordinates
+   */
+  public getCityAt(x: number, y: number): City | null {
+    return this.cities[`${x},${y}`] || null;
+  }
+
+  /**
+   * Get tile at specific coordinates
+   */
+  public getTileAt(x: number, y: number): Tile | null {
+    if (y >= 0 && y < this.tiles.length && x >= 0 && x < this.tiles[y].length) {
+      return this.tiles[y][x];
+    }
+    return null;
+  }
+
+  /**
+   * Get all events for a specific turn
+   */
+  public getEventsForTurn(turn: number): GameEvent[] {
+    return this.events.filter(event => event.turn === turn);
+  }
+
+  /**
+   * Get dataset values for a specific civilization and dataset
+   */
+  public getDatasetForCiv(datasetName: string, civId: number): any[] {
+    const dataset = this.datasets[datasetName];
+    if (!dataset || !dataset[civId]) {
+      return [];
+    }
+    return dataset[civId];
+  }
+
 }
