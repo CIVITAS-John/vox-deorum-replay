@@ -302,5 +302,83 @@ export const HexLayer = L.GridLayer.extend({
 	drawImage: function (ctx: any, id: string, sx: number, sy: number, sw: number, sh: number) {
 		var img = document.getElementById(id) as HTMLImageElement;
 		ctx.drawImage(img, 0, 0, img.width, img.height, sx, sy, sw, sh);
+	},
+
+	/**
+	 * Selectively redraw only specific hexes that have changed
+	 * This is more efficient than redrawing the entire layer
+	 * @param {string[]} changedHexKeys - Array of hex keys in format "x,y"
+	 */
+	redrawHexes: function (changedHexKeys: string[]) {
+		if (!this._map || changedHexKeys.length === 0) return;
+
+		// Convert hex keys to coordinates
+		const changedCoords = new Set(changedHexKeys);
+
+		// Get current zoom level
+		const zoom = this._map.getZoom();
+		const scalingFactor = Math.pow(2, zoom);
+
+		// Calculate tile size
+		const tileSize = this.getTileSize();
+
+		// Calculate hex dimensions
+		const hexWidth = this.baseHexWidth * scalingFactor;
+		const hexHeight = this.baseHexHeight * scalingFactor;
+		const hexDistX = hexWidth;
+		const hexDistY = hexHeight * 3 / 4;
+
+		// Determine which tiles need to be redrawn
+		const tilesToRedraw = new Set<string>();
+
+		for (const hexKey of changedHexKeys) {
+			const [hexX, hexY] = hexKey.split(',').map(Number);
+
+			// Calculate which tile(s) this hex appears in
+			const flippedY = this.hexes.length - 1 - hexY;
+
+			// Account for staggered hex layout
+			const offsetX = (flippedY % 2) ? hexWidth / 2 : 0;
+
+			// Calculate hex center position
+			const hexCenterX = (hexX * hexDistX) + offsetX + hexWidth / 2;
+			const hexCenterY = (flippedY * hexDistY) + hexHeight;
+
+			// Calculate which tile(s) contain this hex
+			// A hex might overlap multiple tiles
+			const minTileX = Math.floor((hexCenterX - hexWidth) / tileSize.x);
+			const maxTileX = Math.floor((hexCenterX + hexWidth) / tileSize.x);
+			const minTileY = Math.floor((hexCenterY - hexHeight) / tileSize.y);
+			const maxTileY = Math.floor((hexCenterY + hexHeight) / tileSize.y);
+
+			// Add all affected tiles to redraw set
+			for (let tx = minTileX; tx <= maxTileX; tx++) {
+				for (let ty = minTileY; ty <= maxTileY; ty++) {
+					if (tx >= 0 && ty >= 0 && tx < scalingFactor && ty < scalingFactor) {
+						tilesToRedraw.add(`${tx},${ty},${zoom}`);
+					}
+				}
+			}
+		}
+
+		// Clear cache for affected tiles and trigger redraw
+		for (const tileKey of tilesToRedraw) {
+			// Clear cache entry
+			const cacheKey = this.config.cacheKeySuffix ?
+				tileKey + this.config.cacheKeySuffix() : tileKey;
+			delete this.tileCache[cacheKey];
+
+			// Parse tile coordinates and trigger redraw
+			const [x, y, z] = tileKey.split(',').map(Number);
+			const coords = { x, y, z };
+
+			// Find and redraw the tile
+			const key = this._tileCoordsToKey(coords);
+			const tile = this._tiles[key];
+			if (tile && tile.el) {
+				// Redraw the specific tile
+				this._drawTile(tile.el, coords);
+			}
+		}
 	}
 });

@@ -75,6 +75,7 @@ export class EventParser {
     if (event.x !== undefined && event.y !== undefined) {
       this.cities[`${event.x},${event.y}`] = event.city;
     }
+    event.text = `Founded the city of ${cityName}.`;
   }
 
   /**
@@ -88,8 +89,7 @@ export class EventParser {
       event.y = event.tiles[0].y;
       event.city = this.cities[`${event.x},${event.y}`];
       if (event.city) {
-        const civName = this.replay.getCivName(event.civId);
-        event.text = `${event.city.name} has been burned to the ground by ${civName}!`;
+        event.text = `Burned ${event.city.name} to the ground!`;
       }
 
       // Handle mass razings
@@ -99,8 +99,7 @@ export class EventParser {
         eventCopy.y = tile.y;
         eventCopy.city = this.cities[`${tile.x},${tile.y}`];
         if (eventCopy.city) {
-          const civName = this.replay.getCivName(eventCopy.civId);
-          eventCopy.text = `${eventCopy.city.name} has been burned to the ground by ${civName}!`;
+          eventCopy.text = `Burned ${eventCopy.city.name} to the ground!`;
         }
         additionalEvents.push(eventCopy);
       });
@@ -120,13 +119,12 @@ export class EventParser {
       return city ? city.name : 'Unknown';
     });
 
-    const civName = this.replay.getCivName(event.civId);
     if (cityNames.length === 1) {
-      event.text = `${civName} now controls the city of ${cityNames[0]}.`;
+      event.text = `Controls the city of ${cityNames[0]}.`;
     } else if (cityNames.length > 1) {
       const lastCity = cityNames.pop();
       const citiesString = cityNames.length === 1 ? cityNames[0] : cityNames.join(', ') + ',';
-      event.text = `${civName} now controls the cities of ${citiesString} and ${lastCity}.`;
+      event.text = `Controls the cities of ${citiesString} and ${lastCity}.`;
     }
   }
 
@@ -137,12 +135,7 @@ export class EventParser {
     if (!event.tiles) return;
 
     const tileCount = event.tiles.length;
-    const civName = this.replay.getCivName(event.civId);
-    if (civName) {
-      event.text = `${civName} has claimed ${tileCount} tile${tileCount > 1 ? 's' : ''}.`;
-    } else {
-      event.text = `${tileCount} tile${tileCount > 1 ? 's have' : ' has'} been abandoned!`;
-    }
+    event.text = `Claimed ${tileCount} tile${tileCount > 1 ? 's' : ''}.`;
   }
 
   /**

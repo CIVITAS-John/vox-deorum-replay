@@ -421,6 +421,40 @@ input[type=checkbox]:checked {
 	display: none;
 }
 
+/* Civilization Header Styling */
+.civ-header {
+	display: flex;
+	align-items: center;
+	margin-bottom: 4px;
+}
+
+.civ-circle {
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	margin-right: 6px;
+	flex-shrink: 0;
+}
+
+.civ-rectangle {
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	background-color: #888;
+	margin-right: 6px;
+	flex-shrink: 0;
+}
+
+.civ-name {
+	font-weight: bold;
+	font-size: 0.9em;
+}
+
+.event-text {
+	line-height: 1.4;
+}
+
 /* Turn Separator Styling */
 .turn-separator {
 	padding: 5px 10px;

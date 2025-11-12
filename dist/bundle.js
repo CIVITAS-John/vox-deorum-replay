@@ -253,6 +253,70 @@
         drawImage: function (ctx, id, sx, sy, sw, sh) {
             var img = document.getElementById(id);
             ctx.drawImage(img, 0, 0, img.width, img.height, sx, sy, sw, sh);
+        },
+        /**
+         * Selectively redraw only specific hexes that have changed
+         * This is more efficient than redrawing the entire layer
+         * @param {string[]} changedHexKeys - Array of hex keys in format "x,y"
+         */
+        redrawHexes: function (changedHexKeys) {
+            if (!this._map || changedHexKeys.length === 0)
+                return;
+            // Convert hex keys to coordinates
+            new Set(changedHexKeys);
+            // Get current zoom level
+            const zoom = this._map.getZoom();
+            const scalingFactor = Math.pow(2, zoom);
+            // Calculate tile size
+            const tileSize = this.getTileSize();
+            // Calculate hex dimensions
+            const hexWidth = this.baseHexWidth * scalingFactor;
+            const hexHeight = this.baseHexHeight * scalingFactor;
+            const hexDistX = hexWidth;
+            const hexDistY = hexHeight * 3 / 4;
+            // Determine which tiles need to be redrawn
+            const tilesToRedraw = new Set();
+            for (const hexKey of changedHexKeys) {
+                const [hexX, hexY] = hexKey.split(',').map(Number);
+                // Calculate which tile(s) this hex appears in
+                const flippedY = this.hexes.length - 1 - hexY;
+                // Account for staggered hex layout
+                const offsetX = (flippedY % 2) ? hexWidth / 2 : 0;
+                // Calculate hex center position
+                const hexCenterX = (hexX * hexDistX) + offsetX + hexWidth / 2;
+                const hexCenterY = (flippedY * hexDistY) + hexHeight;
+                // Calculate which tile(s) contain this hex
+                // A hex might overlap multiple tiles
+                const minTileX = Math.floor((hexCenterX - hexWidth) / tileSize.x);
+                const maxTileX = Math.floor((hexCenterX + hexWidth) / tileSize.x);
+                const minTileY = Math.floor((hexCenterY - hexHeight) / tileSize.y);
+                const maxTileY = Math.floor((hexCenterY + hexHeight) / tileSize.y);
+                // Add all affected tiles to redraw set
+                for (let tx = minTileX; tx <= maxTileX; tx++) {
+                    for (let ty = minTileY; ty <= maxTileY; ty++) {
+                        if (tx >= 0 && ty >= 0 && tx < scalingFactor && ty < scalingFactor) {
+                            tilesToRedraw.add(`${tx},${ty},${zoom}`);
+                        }
+                    }
+                }
+            }
+            // Clear cache for affected tiles and trigger redraw
+            for (const tileKey of tilesToRedraw) {
+                // Clear cache entry
+                const cacheKey = this.config.cacheKeySuffix ?
+                    tileKey + this.config.cacheKeySuffix() : tileKey;
+                delete this.tileCache[cacheKey];
+                // Parse tile coordinates and trigger redraw
+                const [x, y, z] = tileKey.split(',').map(Number);
+                const coords = { x, y, z };
+                // Find and redraw the tile
+                const key = this._tileCoordsToKey(coords);
+                const tile = this._tiles[key];
+                if (tile && tile.el) {
+                    // Redraw the specific tile
+                    this._drawTile(tile.el, coords);
+                }
+            }
         }
     });
 
@@ -559,7 +623,7 @@
                         if (state.owner) {
                             var civColors = CivColors[state.owner];
                             var color = civColors ? civColors.territory : [0, 0, 0];
-                            ctx.fillStyle = `rgba(${color.join(',')}, ${(land ? 0.7 : 0.3)})`;
+                            ctx.fillStyle = `rgba(${color.join(',')}, ${(land ? 0.7 : 0.2)})`;
                             ctx.fill();
                         }
                     }
@@ -622,17 +686,58 @@
             var bounds = [[south, west], [north, east]];
             this.map.fitBounds(bounds);
         }
+        // Get hexes that have changed between two turns
+        getChangedHexes(fromTurn, toTurn) {
+            const changedHexes = [];
+            const fromState = this.turnStates[fromTurn] || {};
+            const toState = this.turnStates[toTurn] || {};
+            // Check for changes in toState
+            for (const hexKey in toState) {
+                const fromHex = fromState[hexKey];
+                const toHex = toState[hexKey];
+                // Check if hex is new or has changed
+                if (!fromHex ||
+                    fromHex.owner !== toHex.owner ||
+                    fromHex.city !== toHex.city) {
+                    changedHexes.push(hexKey);
+                }
+            }
+            // Check for removed hexes
+            for (const hexKey in fromState) {
+                if (!toState[hexKey]) {
+                    changedHexes.push(hexKey);
+                }
+            }
+            return changedHexes;
+        }
         // Update map display for specified turn
         renderTurn(turn) {
+            const previousTurn = this.turn;
             this.turn = turn;
             this.turnState = this.turnStates[turn];
             this.layers.city.turnState = this.turnState;
             this.layers.territory.turnState = this.turnState;
-            if (this.layers.city._map) {
-                this.layers.city.redraw();
+            // Only redraw changed hexes if we have a valid previous turn
+            if (previousTurn >= 0 && previousTurn < this.turnStates.length) {
+                const changedHexes = this.getChangedHexes(previousTurn, turn);
+                if (changedHexes.length > 0) {
+                    // Use selective redraw for changed hexes only
+                    if (this.layers.city._map) {
+                        this.layers.city.redrawHexes(changedHexes);
+                    }
+                    if (this.layers.territory._map) {
+                        this.layers.territory.redrawHexes(changedHexes);
+                    }
+                }
             }
-            if (this.layers.territory._map) {
-                this.layers.territory.redraw();
+            else {
+                // Full redraw for initial load or invalid turns
+                if (this.layers.city._map) {
+                    this.layers.city.redraw();
+                }
+                if (this.layers.territory._map) {
+                    this.layers.territory.redraw();
+                }
             }
         }
     }
@@ -724,33 +829,34 @@
             if (event.civId !== undefined && event.civId >= 0) {
                 const civName = this.replay.getCivName(event.civId);
                 const civColor = this.replay.getCivColor(event.civId);
-                if (civName && civColor) {
-                    // Create civ header with colored circle
+                if (civName) {
+                    // Create civ header
                     const civHeader = document.createElement('div');
                     civHeader.className = 'civ-header';
-                    civHeader.style.display = 'flex';
-                    civHeader.style.alignItems = 'center';
-                    civHeader.style.marginBottom = '4px';
-                    // Create colored circle
-                    const circle = document.createElement('span');
-                    circle.style.display = 'inline-block';
-                    circle.style.width = '10px';
-                    circle.style.height = '10px';
-                    circle.style.borderRadius = '50%';
-                    circle.style.backgroundColor = `rgb(${civColor.city[0]}, ${civColor.city[1]}, ${civColor.city[2]})`;
-                    circle.style.marginRight = '6px';
+                    if (civColor) {
+                        // Major civ - use colored circle
+                        const circle = document.createElement('span');
+                        circle.className = 'civ-circle';
+                        circle.style.backgroundColor = `rgb(${civColor.city[0]}, ${civColor.city[1]}, ${civColor.city[2]})`;
+                        civHeader.appendChild(circle);
+                    }
+                    else {
+                        // Minor civ - use rectangle with default color
+                        const rect = document.createElement('span');
+                        rect.className = 'civ-rectangle';
+                        civHeader.appendChild(rect);
+                    }
                     // Create civ name text
                     const civNameEl = document.createElement('span');
+                    civNameEl.className = 'civ-name';
                     civNameEl.textContent = civName;
-                    civNameEl.style.fontWeight = 'bold';
-                    civNameEl.style.fontSize = '0.9em';
-                    civHeader.appendChild(circle);
                     civHeader.appendChild(civNameEl);
                     msg.appendChild(civHeader);
                 }
             }
             // Add event text
             const eventText = document.createElement('div');
+            eventText.className = 'event-text';
             eventText.textContent = event.text || '';
             msg.appendChild(eventText);
             // Store bidirectional association using WeakMap and Map
@@ -1418,6 +1524,7 @@
             if (event.x !== undefined && event.y !== undefined) {
                 this.cities[`${event.x},${event.y}`] = event.city;
             }
+            event.text = `Founded the city of ${cityName}.`;
         }
         /**
          * Process city razed events (can be multiple if mass razing)
@@ -1429,8 +1536,7 @@
                 event.y = event.tiles[0].y;
                 event.city = this.cities[`${event.x},${event.y}`];
                 if (event.city) {
-                    const civName = this.replay.getCivName(event.civId);
-                    event.text = `${event.city.name} has been burned to the ground by ${civName}!`;
+                    event.text = `Burned ${event.city.name} to the ground!`;
                 }
                 // Handle mass razings
                 event.tiles.slice(1).forEach((tile) => {
@@ -1439,8 +1545,7 @@
                     eventCopy.y = tile.y;
                     eventCopy.city = this.cities[`${tile.x},${tile.y}`];
                     if (eventCopy.city) {
-                        const civName = this.replay.getCivName(eventCopy.civId);
-                        eventCopy.text = `${eventCopy.city.name} has been burned to the ground by ${civName}!`;
+                        eventCopy.text = `Burned ${eventCopy.city.name} to the ground!`;
                     }
                     additionalEvents.push(eventCopy);
                 });
@@ -1457,14 +1562,13 @@
                 const city = this.cities[`${tile.x},${tile.y}`];
                 return city ? city.name : 'Unknown';
             });
-            const civName = this.replay.getCivName(event.civId);
             if (cityNames.length === 1) {
-                event.text = `${civName} now controls the city of ${cityNames[0]}.`;
+                event.text = `Controls the city of ${cityNames[0]}.`;
             }
             else if (cityNames.length > 1) {
                 const lastCity = cityNames.pop();
                 const citiesString = cityNames.length === 1 ? cityNames[0] : cityNames.join(', ') + ',';
-                event.text = `${civName} now controls the cities of ${citiesString} and ${lastCity}.`;
+                event.text = `Controls the cities of ${citiesString} and ${lastCity}.`;
             }
         }
         /**
@@ -1474,13 +1578,7 @@
             if (!event.tiles)
                 return;
             const tileCount = event.tiles.length;
-            const civName = this.replay.getCivName(event.civId);
-            if (civName) {
-                event.text = `${civName} has claimed ${tileCount} tile${tileCount > 1 ? 's' : ''}.`;
-            }
-            else {
-                event.text = `${tileCount} tile${tileCount > 1 ? 's have' : ' has'} been abandoned!`;
-            }
+            event.text = `Claimed ${tileCount} tile${tileCount > 1 ? 's' : ''}.`;
         }
         /**
          * Process message event

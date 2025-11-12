@@ -110,30 +110,29 @@ export class EventLog {
 			const civName = this.replay.getCivName(event.civId);
 			const civColor = this.replay.getCivColor(event.civId);
 
-			if (civName && civColor) {
-				// Create civ header with colored circle
+			if (civName) {
+				// Create civ header
 				const civHeader = document.createElement('div');
 				civHeader.className = 'civ-header';
-				civHeader.style.display = 'flex';
-				civHeader.style.alignItems = 'center';
-				civHeader.style.marginBottom = '4px';
 
-				// Create colored circle
-				const circle = document.createElement('span');
-				circle.style.display = 'inline-block';
-				circle.style.width = '10px';
-				circle.style.height = '10px';
-				circle.style.borderRadius = '50%';
-				circle.style.backgroundColor = `rgb(${civColor.city[0]}, ${civColor.city[1]}, ${civColor.city[2]})`;
-				circle.style.marginRight = '6px';
+				if (civColor) {
+					// Major civ - use colored circle
+					const circle = document.createElement('span');
+					circle.className = 'civ-circle';
+					circle.style.backgroundColor = `rgb(${civColor.city[0]}, ${civColor.city[1]}, ${civColor.city[2]})`;
+					civHeader.appendChild(circle);
+				} else {
+					// Minor civ - use rectangle with default color
+					const rect = document.createElement('span');
+					rect.className = 'civ-rectangle';
+					civHeader.appendChild(rect);
+				}
 
 				// Create civ name text
 				const civNameEl = document.createElement('span');
+				civNameEl.className = 'civ-name';
 				civNameEl.textContent = civName;
-				civNameEl.style.fontWeight = 'bold';
-				civNameEl.style.fontSize = '0.9em';
 
-				civHeader.appendChild(circle);
 				civHeader.appendChild(civNameEl);
 				msg.appendChild(civHeader);
 			}
@@ -141,6 +140,7 @@ export class EventLog {
 
 		// Add event text
 		const eventText = document.createElement('div');
+		eventText.className = 'event-text';
 		eventText.textContent = event.text || '';
 		msg.appendChild(eventText);
 

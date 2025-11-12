@@ -187,7 +187,7 @@ export class ReplayMap {
 					if (state.owner) {
 						var civColors = CivColors[state.owner];
 						var color = civColors ? civColors.territory : [0, 0, 0];
-						ctx.fillStyle = `rgba(${color.join(',')}, ${(land ? 0.7 : 0.3)})`;
+						ctx.fillStyle = `rgba(${color.join(',')}, ${(land ? 0.7 : 0.2)})`;
 						ctx.fill();
 					}
 				}
@@ -259,15 +259,61 @@ export class ReplayMap {
 		this.map.fitBounds(bounds);
 	}
 
+	// Get hexes that have changed between two turns
+	getChangedHexes(fromTurn: number, toTurn: number): string[] {
+		const changedHexes: string[] = [];
+		const fromState = this.turnStates[fromTurn] || {};
+		const toState = this.turnStates[toTurn] || {};
+
+		// Check for changes in toState
+		for (const hexKey in toState) {
+			const fromHex = fromState[hexKey];
+			const toHex = toState[hexKey];
+
+			// Check if hex is new or has changed
+			if (!fromHex ||
+				fromHex.owner !== toHex.owner ||
+				fromHex.city !== toHex.city) {
+				changedHexes.push(hexKey);
+			}
+		}
+
+		// Check for removed hexes
+		for (const hexKey in fromState) {
+			if (!toState[hexKey]) {
+				changedHexes.push(hexKey);
+			}
+		}
+
+		return changedHexes;
+	}
+
 	// Update map display for specified turn
 	renderTurn(turn: number) {
+		const previousTurn = this.turn;
 		this.turn = turn;
 		this.turnState = this.turnStates[turn];
 
 		this.layers.city.turnState = this.turnState;
 		this.layers.territory.turnState = this.turnState;
 
-		if (this.layers.city._map) { this.layers.city.redraw(); }
-		if (this.layers.territory._map) { this.layers.territory.redraw(); }
+		// Only redraw changed hexes if we have a valid previous turn
+		if (previousTurn >= 0 && previousTurn < this.turnStates.length) {
+			const changedHexes = this.getChangedHexes(previousTurn, turn);
+
+			if (changedHexes.length > 0) {
+				// Use selective redraw for changed hexes only
+				if (this.layers.city._map) {
+					this.layers.city.redrawHexes(changedHexes);
+				}
+				if (this.layers.territory._map) {
+					this.layers.territory.redrawHexes(changedHexes);
+				}
+			}
+		} else {
+			// Full redraw for initial load or invalid turns
+			if (this.layers.city._map) { this.layers.city.redraw(); }
+			if (this.layers.territory._map) { this.layers.territory.redraw(); }
+		}
 	}
 }
