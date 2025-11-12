@@ -30,10 +30,10 @@ export class EventLog {
 		const eventSelect = document.getElementById('event-select');
 		eventSelect.addEventListener('change', (e: Event) => {
 			// Bootstrap selectpicker still needs jQuery, so we'll get value through its API
-			this.setTypes($(e.target).val());
+			this.setTypes(($(e.target) as any).val());
 		});
 
-		this.setTypes($(eventSelect).selectpicker('val'));
+		this.setTypes(($(eventSelect) as any).selectpicker('val'));
 
 		// Add events and do initial rendering
 		this.addAll(events);
