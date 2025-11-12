@@ -9,6 +9,7 @@ import { Map } from './map/map';
 import { HexLayer } from './map/hex-layer';
 import { ControlBar } from './ui/control-bar';
 import { EventLog } from './ui/event-log';
+import { EventType } from './types';
 
 // External libraries accessed as globals - types defined in globals.d.ts
 
@@ -23,12 +24,12 @@ $('#event-select').selectpicker({
 });
 
 $('#event-select').selectpicker('val', [
-	'MESSAGE',
-	'CITY_FOUNDED',
-	'CITIES_TRANSFERRED',
-	'CITY_RAZED',
-	'PANTHEON_SELECTED',
-	'RELIGION_FOUNDED'
+	EventType.Message,
+	EventType.CityFounded,
+	EventType.CitiesTransferred,
+	EventType.CityRazed,
+	EventType.PantheonSelected,
+	EventType.ReligionFounded
 ]);
 
 

@@ -34,9 +34,6 @@ export class EventParser {
       event.index = index;
       event.civ = this.getCivName(event.civId, civs);
 
-      // Convert typeId to EventType enum
-      event.type = (event.typeId ?? 0) as EventType;
-
       // Add x/y reference for single-tile events
       if (event.tiles && event.tiles.length === 1 &&
           event.type !== EventType.TilesClaimed) {

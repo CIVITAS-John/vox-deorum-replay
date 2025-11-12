@@ -145,15 +145,13 @@ export class Replay {
         x: 0, // Will be set later
         y: 0, // Will be set later
         elevation: (tile.elevationId ?? ElevationType.AboveSeaLevel) as ElevationType,
-        type: (tile.typeId ?? TileType.Grassland) as TileType,
+        type: tile.type,
         feature: (tile.featureId ?? FeatureType.NoFeature) as FeatureType
       };
 
       // Copy any additional raw properties
       Object.keys(tile).forEach(key => {
-        if (!['x', 'y', 'elevation', 'elevationId', 'type', 'typeId', 'feature', 'featureId'].includes(key)) {
-          (processed as any)[key] = tile[key];
-        }
+        (processed as any)[key] = tile[key];
       });
 
       return processed;

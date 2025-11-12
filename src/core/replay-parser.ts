@@ -103,7 +103,7 @@ const DEFAULT_FILE_CONFIG: FileConfig = {
     type: 'array',
     items: {
       turn: 'int32',
-      typeId: 'int32',
+      type: 'int32',
       tiles: {
         type: 'array',
         items: {
@@ -122,9 +122,9 @@ const DEFAULT_FILE_CONFIG: FileConfig = {
     items: {
       _1: 'int32', // always 1?
       _2: 'int32', // always 267?
-      elevationId: 'int8',
-      typeId: 'int8',
-      featureId: 'int8',
+      elevation: 'int8',
+      type: 'int8',
+      feature: 'int8',
       _5: 'int8'
     }
   }

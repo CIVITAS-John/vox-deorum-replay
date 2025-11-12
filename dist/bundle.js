@@ -341,21 +341,6 @@
      * Used primarily for UI rendering and debugging
      */
     /**
-     * Convert EventType enum to display name
-     */
-    function getEventTypeName(type) {
-        switch (type) {
-            case EventType.Message: return 'Message';
-            case EventType.CityFounded: return 'City Founded';
-            case EventType.TilesClaimed: return 'Tiles Claimed';
-            case EventType.CitiesTransferred: return 'Cities Transferred';
-            case EventType.CityRazed: return 'City Razed';
-            case EventType.ReligionFounded: return 'Religion Founded';
-            case EventType.PantheonSelected: return 'Pantheon Selected';
-            default: return `Unknown Event ${type}`;
-        }
-    }
-    /**
      * Convert ElevationType enum to display name
      */
     function getElevationName(elevation) {
@@ -653,14 +638,13 @@
             }
             const msg = document.createElement('li');
             msg.className = 'message';
-            const eventTypeName = getEventTypeName(event.type);
-            msg.setAttribute('type', eventTypeName);
+            msg.setAttribute('type', String(event.type));
             msg.setAttribute('civid', String(event.civId || ''));
             msg.setAttribute('turn', String(event.turn));
             msg.textContent = event.text || '';
             // Store event data on element
             msg._eventData = event;
-            if (this.types.indexOf(eventTypeName) == -1) {
+            if (this.types.indexOf(event.type) === -1) {
                 msg.classList.add('hidden');
             }
             this.messagesEl.appendChild(msg);
@@ -719,10 +703,11 @@
         }
         // Set visible event types based on filter selection
         setTypes(types) {
-            this.types = types;
+            // Convert to EventType array (handles both string and number inputs)
+            this.types = types.map(t => Number(t));
             const messages = this.messagesEl.querySelectorAll('.message');
             messages.forEach((msg) => msg.classList.add('hidden'));
-            types.forEach(type => {
+            this.types.forEach(type => {
                 const typeMessages = this.messagesEl.querySelectorAll(`[type="${type}"]`);
                 typeMessages.forEach((msg) => msg.classList.remove('hidden'));
             });
@@ -1129,7 +1114,7 @@
             type: 'array',
             items: {
                 turn: 'int32',
-                typeId: 'int32',
+                type: 'int32',
                 tiles: {
                     type: 'array',
                     items: {
@@ -1148,9 +1133,9 @@
             items: {
                 _1: 'int32', // always 1?
                 _2: 'int32', // always 267?
-                elevationId: 'int8',
-                typeId: 'int8',
-                featureId: 'int8',
+                elevation: 'int8',
+                type: 'int8',
+                feature: 'int8',
                 _5: 'int8'
             }
         }
@@ -1202,12 +1187,9 @@
             this.cities = {};
             const processedEvents = [];
             events.forEach((event, index) => {
-                var _a;
                 const eventsToAdd = [event];
                 event.index = index;
                 event.civ = this.getCivName(event.civId, civs);
-                // Convert typeId to EventType enum
-                event.type = ((_a = event.typeId) !== null && _a !== void 0 ? _a : 0);
                 // Add x/y reference for single-tile events
                 if (event.tiles && event.tiles.length === 1 &&
                     event.type !== EventType.TilesClaimed) {
@@ -1431,19 +1413,17 @@
                 return;
             // Convert raw tile data to use enums
             const processedTiles = tiles.map((tile) => {
-                var _a, _b, _c;
+                var _a, _b;
                 const processed = {
                     x: 0, // Will be set later
                     y: 0, // Will be set later
                     elevation: ((_a = tile.elevationId) !== null && _a !== void 0 ? _a : ElevationType.AboveSeaLevel),
-                    type: ((_b = tile.typeId) !== null && _b !== void 0 ? _b : TileType.Grassland),
-                    feature: ((_c = tile.featureId) !== null && _c !== void 0 ? _c : FeatureType.NoFeature)
+                    type: tile.type,
+                    feature: ((_b = tile.featureId) !== null && _b !== void 0 ? _b : FeatureType.NoFeature)
                 };
                 // Copy any additional raw properties
                 Object.keys(tile).forEach(key => {
-                    if (!['x', 'y', 'elevation', 'elevationId', 'type', 'typeId', 'feature', 'featureId'].includes(key)) {
-                        processed[key] = tile[key];
-                    }
+                    processed[key] = tile[key];
                 });
                 return processed;
             });
@@ -1803,12 +1783,12 @@
         }
     });
     $('#event-select').selectpicker('val', [
-        'MESSAGE',
-        'CITY_FOUNDED',
-        'CITIES_TRANSFERRED',
-        'CITY_RAZED',
-        'PANTHEON_SELECTED',
-        'RELIGION_FOUNDED'
+        EventType.Message,
+        EventType.CityFounded,
+        EventType.CitiesTransferred,
+        EventType.CityRazed,
+        EventType.PantheonSelected,
+        EventType.ReligionFounded
     ]);
     // Init the sliders to get the styling
     $('#speedSlider').slider({

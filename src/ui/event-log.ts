@@ -5,8 +5,7 @@
  */
 
 import { GameEvent, EventType } from '../types/replay.types';
-import { EventFilter, MessageElement } from '../types/ui.types';
-import { getEventTypeName } from '../utils/enum-names';
+import { MessageElement } from '../types/ui.types';
 
 // External libraries accessed as globals - types defined in globals.d.ts
 
@@ -18,7 +17,7 @@ export class EventLog {
 	logContainer: HTMLElement;      // Main container element for the log
 	messagesEl: HTMLElement;         // Element containing message list
 	events: GameEvent[];             // Array of all game events
-	types: EventFilter[];            // Currently selected event type filters
+	types: EventType[];              // Currently selected event type filters
 
 	constructor(events: GameEvent[]) {
 		this.logContainer = document.querySelector('.log-container');
@@ -51,8 +50,7 @@ export class EventLog {
 
 		const msg = document.createElement('li');
 		msg.className = 'message';
-		const eventTypeName = getEventTypeName(event.type);
-		msg.setAttribute('type', eventTypeName);
+		msg.setAttribute('type', String(event.type));
 		msg.setAttribute('civid', String(event.civId || ''));
 		msg.setAttribute('turn', String(event.turn));
 		msg.textContent = event.text || '';
@@ -60,7 +58,7 @@ export class EventLog {
 		// Store event data on element
 		(msg as MessageElement)._eventData = event;
 
-		if (this.types.indexOf(eventTypeName as EventFilter) == -1) {
+		if (this.types.indexOf(event.type) === -1) {
 			msg.classList.add('hidden');
 		}
 
@@ -134,13 +132,14 @@ export class EventLog {
 	}
 
 	// Set visible event types based on filter selection
-	setTypes(types: string[]) {
-		this.types = types;
+	setTypes(types: string[] | number[]) {
+		// Convert to EventType array (handles both string and number inputs)
+		this.types = types.map(t => Number(t) as EventType);
 
 		const messages = this.messagesEl.querySelectorAll('.message');
 		messages.forEach((msg: Element) => msg.classList.add('hidden'));
 
-		types.forEach(type => {
+		this.types.forEach(type => {
 			const typeMessages = this.messagesEl.querySelectorAll(`[type="${type}"]`);
 			typeMessages.forEach((msg: Element) => msg.classList.remove('hidden'));
 		});
