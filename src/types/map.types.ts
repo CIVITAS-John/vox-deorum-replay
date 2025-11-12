@@ -7,88 +7,88 @@ import { Tile, GameEvent } from './replay.types';
 
 // Hex layer configuration
 export interface HexLayerConfig {
-  tileSize: number;
-  continuousWorld?: boolean;
-  noWrap?: boolean;
-  drawHex?: (ctx: CanvasRenderingContext2D, hex: HexData, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) => void;
+  tileSize: number;                        // Size of each hexagon tile in pixels
+  continuousWorld?: boolean;               // Whether world wraps horizontally
+  noWrap?: boolean;                        // Disable world wrapping
+  drawHex?: (ctx: CanvasRenderingContext2D, hex: HexData, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) => void;  // Custom hex drawing function
 }
 
 // Hex data structure
 export interface HexData {
-  x: number;
-  y: number;
-  terrain?: number;
-  owner?: number;
-  city?: number;
-  improvement?: number;
-  route?: number;
-  visibility?: number[];
-  resource?: number;
-  feature?: number | string;
-  type?: number | string;
-  natural_wonder?: number;
-  [key: string]: number | number[] | string | undefined;
+  x: number;                                               // X coordinate on hex grid
+  y: number;                                               // Y coordinate on hex grid
+  terrain?: number;                                        // Terrain type ID
+  owner?: number;                                          // Owning civilization ID
+  city?: number;                                           // City ID if present
+  improvement?: number;                                    // Improvement ID (farm, mine, etc.)
+  route?: number;                                          // Route type ID (road, railroad)
+  visibility?: number[];                                   // Civilizations that can see this hex
+  resource?: number;                                       // Resource ID if present
+  feature?: number | string;                               // Feature (forest, jungle) - ID or name
+  type?: number | string;                                  // Tile type - ID or name
+  natural_wonder?: number;                                 // Natural wonder ID if present
+  [key: string]: number | number[] | string | undefined;   // Allow additional properties
 }
 
 // Turn state
 export interface TurnState {
-  turn: number;
-  tiles: HexData[][];
-  events?: GameEvent[];
-  [key: string]: unknown;
+  turn: number;                            // Current turn number
+  tiles: HexData[][];                      // 2D array of tile data for this turn
+  events?: GameEvent[];                    // Events that occurred this turn
+  [key: string]: unknown;                  // Allow additional properties
 }
 
 // Map layer interface - using any for Leaflet map to avoid namespace issues
 export interface MapLayer {
-  addTo(map: any): void;
-  setData(tiles: HexData[][]): void;
-  redraw(): void;
-  options?: HexLayerConfig;
-  turnState?: any;
-  _map?: any;
+  addTo(map: any): void;                   // Add layer to Leaflet map
+  setData(tiles: HexData[][]): void;       // Set tile data for rendering
+  redraw(): void;                          // Force redraw of layer
+  options?: HexLayerConfig;                // Layer configuration options
+  turnState?: any;                         // Current turn state
+  _map?: any;                              // Reference to Leaflet map instance
 }
 
 // Map control interface - using any for Leaflet map to avoid namespace issues
 export interface MapControl {
-  addTo(map: any): void;
-  update?(turnState: TurnState): void;
+  addTo(map: any): void;                   // Add control to Leaflet map
+  update?(turnState: TurnState): void;     // Update control with new turn state
 }
 
 // Coordinate types
 export interface MapCoordinates {
-  lat: number;
-  lng: number;
+  lat: number;                             // Latitude coordinate
+  lng: number;                             // Longitude coordinate
 }
 
 export interface TileCoordinates {
-  x: number;
-  y: number;
+  x: number;                               // Tile X coordinate
+  y: number;                               // Tile Y coordinate
 }
 
 // Layer options for different visualization types
 export interface TerrainLayerOptions extends HexLayerConfig {
-  type: 'terrain';
+  type: 'terrain';                         // Layer type identifier
 }
 
 export interface OwnerLayerOptions extends HexLayerConfig {
-  type: 'owner';
-  civColors?: Record<number, string>;
+  type: 'owner';                           // Layer type identifier
+  civColors?: Record<number, string>;      // Map of civilization ID to color
 }
 
 export interface CityLayerOptions extends HexLayerConfig {
-  type: 'city';
-  showNames?: boolean;
+  type: 'city';                            // Layer type identifier
+  showNames?: boolean;                     // Whether to display city names
 }
 
 export interface ImprovementLayerOptions extends HexLayerConfig {
-  type: 'improvement';
+  type: 'improvement';                     // Layer type identifier
 }
 
 export interface RouteLayerOptions extends HexLayerConfig {
-  type: 'route';
+  type: 'route';                           // Layer type identifier
 }
 
 export interface FogLayerOptions extends HexLayerConfig {
-  type: 'fog';
-  playerIndex?: number;
+  type: 'fog';                             // Layer type identifier
+  playerIndex?: number;                    // Player index for fog of war
 }
