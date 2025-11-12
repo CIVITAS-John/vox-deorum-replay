@@ -12,7 +12,8 @@
       "Bash(npm install)",
       "Bash(npm install:*)",
       "Bash(npx tsc:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(WebSearch)"
     ],
     "deny": [],
     "ask": []

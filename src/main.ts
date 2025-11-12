@@ -25,6 +25,7 @@ $('#event-select').selectpicker({
 
 $('#event-select').selectpicker('val', [
 	EventType.Message,
+	EventType.Reasoning,
 	EventType.CityFounded,
 	EventType.CitiesTransferred,
 	EventType.CityRazed,

@@ -54,6 +54,8 @@ export class EventParser {
         this.processCitiesTransferredEvent(event);
       } else if (event.type === EventType.TilesClaimed) {
         this.processTilesClaimedEvent(event);
+      } else if (event.type === EventType.Message) {
+        this.processMessageEvent(event);
       }
 
       processedEvents.push(...eventsToAdd);
@@ -140,6 +142,18 @@ export class EventParser {
       event.text = `${civName} has claimed ${tileCount} tile${tileCount > 1 ? 's' : ''}.`;
     } else {
       event.text = `${tileCount} tile${tileCount > 1 ? 's have' : ' has'} been abandoned!`;
+    }
+  }
+
+  /**
+   * Process message event
+   */
+  private processMessageEvent(event: GameEvent): void {
+    if (!event.text) return;
+
+    // Find the mistakenly encoded UTF8 arrow and replace it
+    if (event.text.includes("â")) {
+      event.text = event.text.replace(/â/g, "→");
     }
   }
 
