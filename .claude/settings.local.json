@@ -6,7 +6,10 @@
       "Bash(mkdir:*)",
       "Bash(cp:*)",
       "Bash(rm:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(dir:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm install)"
     ],
     "deny": [],
     "ask": []
