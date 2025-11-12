@@ -1,6 +1,7 @@
 # Civilization V Replay Viewer for Community Patch/Vox Populi
 
-** Compatible with Community Patch/Vox Populi - not tested on Civ5Replay files created by vanilla Civilization V**
+** Compatible with Community Patch/Vox Populi - not tested on Civ5Replay files created by vanilla Civilization V.**
+
 Drag a .Civ5Replay file onto the page to load a replay: https://civitas-john.github.io/vox-deorum-replay/.
 
 You can also [direct link](http://aiwebb.github.io/civ5replay/?file=hrbho1q4dtro8pa/Ramesses%20II_0267%20AD-1987_42%20(9).Civ5Replay&turn=177) a URL with a Dropbox file ID included to easily share replays with others.
