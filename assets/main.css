@@ -421,6 +421,26 @@ input[type=checkbox]:checked {
 	display: none;
 }
 
+/* Turn Separator Styling */
+.turn-separator {
+	padding: 5px 10px;
+	background: linear-gradient(to right, var(--bg-gradient-start), var(--bg-gradient-end));
+	color: var(--primary-color);
+	font-weight: bold;
+	font-family: 'EB Garamond', serif;
+	font-size: 14px;
+	text-align: center;
+	border-top: 2px solid var(--border-gold);
+	border-bottom: 2px solid var(--border-gold);
+	margin: 5px 0;
+}
+
+.turn-separator:not(.active) {
+	background: linear-gradient(to right, #1a1a14, #2a2a1f);
+	color: var(--text-inactive);
+	border-color: var(--message-border);
+}
+
 /* ============================================
    10. CONTROL BAR & MEDIA CONTROLS
    ============================================ */

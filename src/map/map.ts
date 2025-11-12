@@ -183,11 +183,11 @@ export class ReplayMap {
 					if (!this.turnState) { return; }
 					var state = this.turnState[hex.x + ',' + hex.y];
 					if (!state) { return; }
-
-					if (state.owner && hex.type !== TileType.Coast && hex.type !== TileType.Ocean) {
+					var land = hex.type !== TileType.Coast && hex.type !== TileType.Ocean;
+					if (state.owner) {
 						var civColors = CivColors[state.owner];
 						var color = civColors ? civColors.territory : [0, 0, 0];
-						ctx.fillStyle = `rgba(${color.join(',')}, 0.85)`;
+						ctx.fillStyle = `rgba(${color.join(',')}, ${(land ? 0.7 : 0.3)})`;
 						ctx.fill();
 					}
 				}
@@ -207,7 +207,7 @@ export class ReplayMap {
 					if (state.city) {
 						var civColors = CivColors[state.owner];
 						var color = civColors ? civColors.city : [255, 255, 255];
-						ctx.fillStyle = `rgba(${color.join(',')}, 0.85)`;
+						ctx.fillStyle = `rgba(${color.join(',')}, 0.9)`;
 						ctx.fill();
 					}
 				}

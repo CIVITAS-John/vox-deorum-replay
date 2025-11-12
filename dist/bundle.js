@@ -555,10 +555,11 @@
                         if (!state) {
                             return;
                         }
-                        if (state.owner && hex.type !== TileType.Coast && hex.type !== TileType.Ocean) {
+                        var land = hex.type !== TileType.Coast && hex.type !== TileType.Ocean;
+                        if (state.owner) {
                             var civColors = CivColors[state.owner];
                             var color = civColors ? civColors.territory : [0, 0, 0];
-                            ctx.fillStyle = `rgba(${color.join(',')}, 0.85)`;
+                            ctx.fillStyle = `rgba(${color.join(',')}, ${(land ? 0.7 : 0.3)})`;
                             ctx.fill();
                         }
                     }
@@ -580,7 +581,7 @@
                         if (state.city) {
                             var civColors = CivColors[state.owner];
                             var color = civColors ? civColors.city : [255, 255, 255];
-                            ctx.fillStyle = `rgba(${color.join(',')}, 0.85)`;
+                            ctx.fillStyle = `rgba(${color.join(',')}, 0.9)`;
                             ctx.fill();
                         }
                     }
@@ -647,16 +648,19 @@
      * Manages and displays game events with filtering and turn-based navigation
      */
     class EventLog {
-        constructor(events) {
+        constructor(events, replay) {
             this.types = new Set();
             // WeakMap for associating DOM elements with their event data
             this.elementToEvent = new WeakMap();
             this.eventToElement = new Map();
             // Track current turn for scrolling optimization
             this.currentTurn = 0;
+            // Track turn separator elements for scrolling
+            this.turnSeparators = new Map();
             this.logContainer = document.querySelector('.log-container');
             this.messagesEl = this.logContainer.querySelector('.log-messages');
             this.events = events;
+            this.replay = replay;
             this.initializeEventFilter();
             this.renderEvents();
             if (events.length > 0) {
@@ -716,7 +720,39 @@
             msg.dataset.type = String(event.type);
             msg.dataset.civId = String(event.civId || '');
             msg.dataset.turn = String(event.turn);
-            msg.textContent = event.text || '';
+            // Add civilization header if civId exists
+            if (event.civId !== undefined && event.civId >= 0) {
+                const civName = this.replay.getCivName(event.civId);
+                const civColor = this.replay.getCivColor(event.civId);
+                if (civName && civColor) {
+                    // Create civ header with colored circle
+                    const civHeader = document.createElement('div');
+                    civHeader.className = 'civ-header';
+                    civHeader.style.display = 'flex';
+                    civHeader.style.alignItems = 'center';
+                    civHeader.style.marginBottom = '4px';
+                    // Create colored circle
+                    const circle = document.createElement('span');
+                    circle.style.display = 'inline-block';
+                    circle.style.width = '10px';
+                    circle.style.height = '10px';
+                    circle.style.borderRadius = '50%';
+                    circle.style.backgroundColor = `rgb(${civColor.city[0]}, ${civColor.city[1]}, ${civColor.city[2]})`;
+                    circle.style.marginRight = '6px';
+                    // Create civ name text
+                    const civNameEl = document.createElement('span');
+                    civNameEl.textContent = civName;
+                    civNameEl.style.fontWeight = 'bold';
+                    civNameEl.style.fontSize = '0.9em';
+                    civHeader.appendChild(circle);
+                    civHeader.appendChild(civNameEl);
+                    msg.appendChild(civHeader);
+                }
+            }
+            // Add event text
+            const eventText = document.createElement('div');
+            eventText.textContent = event.text || '';
+            msg.appendChild(eventText);
             // Store bidirectional association using WeakMap and Map
             this.elementToEvent.set(msg, event);
             this.eventToElement.set(event, msg);
@@ -727,17 +763,65 @@
             return msg;
         }
         /**
+         * Create a turn separator element
+         */
+        createTurnSeparator(turn) {
+            const separator = document.createElement('div');
+            separator.className = 'turn-separator';
+            separator.dataset.turn = String(turn);
+            separator.textContent = `Turn ${turn}`;
+            return separator;
+        }
+        /**
          * Render all events
          */
         renderEvents() {
             this.clear();
+            // If no events, return early
+            if (this.events.length === 0) {
+                return;
+            }
             const fragment = document.createDocumentFragment();
+            // Find the range of turns
+            let minTurn = Infinity;
+            let maxTurn = -Infinity;
             this.events.forEach(event => {
-                const element = this.renderEvent(event);
-                if (element) {
-                    fragment.appendChild(element);
-                }
+                if (event.turn < minTurn)
+                    minTurn = event.turn;
+                if (event.turn > maxTurn)
+                    maxTurn = event.turn;
             });
+            // Handle case where all events were empty and got filtered
+            if (minTurn === Infinity || maxTurn === -Infinity) {
+                return;
+            }
+            // Group events by turn for easier processing
+            const eventsByTurn = new Map();
+            this.events.forEach(event => {
+                // Skip empty message events
+                if (event.type === EventType.Message && !event.text) {
+                    return;
+                }
+                if (!eventsByTurn.has(event.turn)) {
+                    eventsByTurn.set(event.turn, []);
+                }
+                eventsByTurn.get(event.turn).push(event);
+            });
+            // Create turn separators for all turns in range
+            for (let turn = minTurn; turn <= maxTurn; turn++) {
+                // Add turn separator for every turn
+                const separator = this.createTurnSeparator(turn);
+                this.turnSeparators.set(turn, separator);
+                fragment.appendChild(separator);
+                // Add events for this turn if they exist
+                const turnEvents = eventsByTurn.get(turn) || [];
+                turnEvents.forEach(event => {
+                    const element = this.renderEvent(event);
+                    if (element) {
+                        fragment.appendChild(element);
+                    }
+                });
+            }
             this.messagesEl.appendChild(fragment);
         }
         /**
@@ -746,56 +830,48 @@
         clear() {
             // Clear associations
             this.eventToElement.clear();
+            this.turnSeparators.clear();
             // WeakMap will be garbage collected automatically
             this.messagesEl.innerHTML = '';
         }
         /**
          * Update log display to show events up to specified turn
-         * and scroll to the first event of the new turn
+         * and scroll to the turn separator for that turn
          */
         renderTurn(turn) {
             const messages = this.messagesEl.querySelectorAll('.message');
-            let firstNewTurnElement = null;
-            let lastActiveElement = null;
+            const separators = this.messagesEl.querySelectorAll('.turn-separator');
+            // Update active state for messages
             messages.forEach(msg => {
                 const msgTurn = parseInt(msg.dataset.turn || '0');
                 if (msgTurn <= turn) {
                     msg.classList.add('active');
-                    lastActiveElement = msg;
-                    // Find first element of the new turn (when advancing)
-                    if (!firstNewTurnElement && msgTurn === turn && turn > this.currentTurn) {
-                        firstNewTurnElement = msg;
-                    }
                 }
                 else {
                     msg.classList.remove('active');
                 }
             });
-            // Determine which element to scroll to
-            let targetElement = null;
+            // Update active state for turn separators
+            separators.forEach(sep => {
+                const sepTurn = parseInt(sep.dataset.turn || '0');
+                if (sepTurn <= turn) {
+                    sep.classList.add('active');
+                }
+                else {
+                    sep.classList.remove('active');
+                }
+            });
+            // Scroll to the turn separator if it exists
             if (turn === 0) {
                 // Scroll to top when at turn 0
                 this.messagesEl.scrollTop = 0;
                 this.currentTurn = turn;
                 return;
             }
-            if (turn > this.currentTurn) {
-                // Moving forward: scroll to first element of new turn
-                targetElement = firstNewTurnElement || lastActiveElement;
-            }
-            else if (turn < this.currentTurn) {
-                // Moving backward: find first element of this turn
-                const turnElements = Array.from(messages).filter(msg => parseInt(msg.dataset.turn || '0') === turn);
-                targetElement = turnElements[0] || lastActiveElement;
-            }
-            else {
-                // Same turn, no scrolling needed
-                return;
-            }
-            // Perform scrolling
-            if (targetElement) {
-                this.scrollToElement(targetElement);
-            }
+            // Try to get the turn separator for this turn
+            const turnSeparator = this.turnSeparators.get(turn);
+            if (turnSeparator)
+                this.scrollToElement(turnSeparator);
             this.currentTurn = turn;
         }
         /**
@@ -804,9 +880,9 @@
         scrollToElement(element) {
             const containerRect = this.messagesEl.getBoundingClientRect();
             const elementRect = element.getBoundingClientRect();
-            // Calculate the scroll position to center the element in view
+            // Calculate the scroll position to put the element at the top
             const relativeTop = elementRect.top - containerRect.top;
-            const scrollOffset = this.messagesEl.scrollTop + relativeTop - (containerRect.height / 3);
+            const scrollOffset = this.messagesEl.scrollTop + relativeTop;
             // Direct scroll without animation
             this.messagesEl.scrollTop = Math.max(0, scrollOffset);
         }
@@ -1815,7 +1891,7 @@
             if (!this.replay)
                 return;
             // Initialize event log
-            this.eventLog = new EventLog(this.replay.events);
+            this.eventLog = new EventLog(this.replay.events, this.replay);
             // Initialize map layers
             this.map.initLayers(this.replay.tiles, this.replay.events, this.replay);
             // Initialize control bar

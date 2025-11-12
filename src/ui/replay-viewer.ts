@@ -218,7 +218,7 @@ export class ReplayViewer {
     if (!this.replay) return;
 
     // Initialize event log
-    this.eventLog = new EventLog(this.replay.events);
+    this.eventLog = new EventLog(this.replay.events, this.replay);
 
     // Initialize map layers
     this.map.initLayers(this.replay.tiles, this.replay.events, this.replay);
