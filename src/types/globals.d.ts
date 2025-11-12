@@ -70,8 +70,8 @@ interface JQuery {
 }
 
 // Import types for window extensions
-import { ReplayViewer } from '../core/replay-viewer';
-import { Map } from '../map/map';
+import { ReplayViewer } from '../ui/replay-viewer';
+import { ReplayMap } from '../map/map';
 import { HexLayer } from '../map/hex-layer';
 import { ControlBar } from '../ui/control-bar';
 import { EventLog } from '../ui/event-log';
@@ -80,7 +80,7 @@ import { EventLog } from '../ui/event-log';
 interface Window {
   replayViewer: ReplayViewer;
   ReplayViewer: typeof ReplayViewer;
-  Map: typeof Map;
+  ReplayMap: typeof ReplayMap;
   HexLayer: typeof HexLayer;
   ControlBar: typeof ControlBar;
   EventLog: typeof EventLog;

@@ -5,7 +5,7 @@
  */
 
 import { ReplayViewer } from './ui/replay-viewer';
-import { Map } from './map/map';
+import { ReplayMap } from './map/map';
 import { HexLayer } from './map/hex-layer';
 import { ControlBar } from './ui/control-bar';
 import { EventLog } from './ui/event-log';
@@ -56,7 +56,7 @@ window.replayViewer = new ReplayViewer();
 
 // Export classes to window for backward compatibility
 window.ReplayViewer = ReplayViewer;
-window.Map = Map;
+window.ReplayMap = ReplayMap;
 window.HexLayer = HexLayer;
 window.ControlBar = ControlBar;
 window.EventLog = EventLog;

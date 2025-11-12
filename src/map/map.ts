@@ -14,10 +14,10 @@ import { Replay } from '../core/replay';
 // External libraries accessed as globals - types defined in globals.d.ts
 
 /**
- * Map class
+ * ReplayMap class
  * Creates and initializes the Leaflet map instance
  */
-export class Map {
+export class ReplayMap {
 	map: any;                             // Leaflet Map instance
 	turn: number;                         // Current turn being displayed
 	turnStates: TurnState[];              // Array of tile states for each turn

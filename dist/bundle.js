@@ -419,10 +419,10 @@
      */
     // External libraries accessed as globals - types defined in globals.d.ts
     /**
-     * Map class
+     * ReplayMap class
      * Creates and initializes the Leaflet map instance
      */
-    class Map {
+    class ReplayMap {
         constructor(replay) {
             this.replay = replay || null;
             this.map = L.map(document.querySelector('.map'), {
@@ -644,111 +644,190 @@
     // External libraries accessed as globals - types defined in globals.d.ts
     /**
      * EventLog class
-     * @param {Array} events - Array of game events to display
+     * Manages and displays game events with filtering and turn-based navigation
      */
     class EventLog {
         constructor(events) {
+            this.types = new Set();
+            // WeakMap for associating DOM elements with their event data
+            this.elementToEvent = new WeakMap();
+            this.eventToElement = new Map();
+            // Track current turn for scrolling optimization
+            this.currentTurn = 0;
             this.logContainer = document.querySelector('.log-container');
             this.messagesEl = this.logContainer.querySelector('.log-messages');
             this.events = events;
-            // Types
-            this.types = [];
+            this.initializeEventFilter();
+            this.renderEvents();
+            if (events.length > 0) {
+                this.renderTurn(events[0].turn);
+            }
+        }
+        /**
+         * Initialize event type filtering
+         */
+        initializeEventFilter() {
             const eventSelect = document.getElementById('event-select');
-            // Bootstrap selectpicker requires different event handling
+            // Bootstrap selectpicker event handling
             $(eventSelect).on('changed.bs.select', (e) => {
                 const selectedValues = $(e.target).val() || [];
                 console.log('Event filter changed:', selectedValues);
-                this.setTypes(selectedValues);
+                this.updateTypeFilter(selectedValues);
             });
-            this.setTypes($(eventSelect).selectpicker('val'));
-            // Add events and do initial rendering
-            this.addAll(events);
-            this.renderTurn(events[0].turn);
+            // Set initial filter values
+            const initialValues = $(eventSelect).selectpicker('val') || [];
+            this.updateTypeFilter(initialValues);
         }
-        // Add a single event to the log
-        add(event) {
-            // Occasionally a message is blank? Just don't include it
+        /**
+         * Update the type filter with new values
+         */
+        updateTypeFilter(types) {
+            this.types.clear();
+            types.forEach(type => this.types.add(Number(type)));
+            console.log('Setting types:', Array.from(this.types));
+            this.applyTypeFilter();
+        }
+        /**
+         * Apply type filter to all message elements
+         */
+        applyTypeFilter() {
+            const messages = this.messagesEl.querySelectorAll('.message');
+            console.log('Total messages:', messages.length);
+            messages.forEach(msg => {
+                const event = this.elementToEvent.get(msg);
+                if (event && this.types.has(event.type)) {
+                    msg.classList.remove('hidden');
+                }
+                else {
+                    msg.classList.add('hidden');
+                }
+            });
+        }
+        /**
+         * Create a message element for an event
+         */
+        renderEvent(event) {
+            // Skip empty messages
             if (event.type === EventType.Message && !event.text) {
-                return;
+                return null;
             }
             const msg = document.createElement('li');
             msg.className = 'message';
-            msg.setAttribute('type', String(event.type));
-            msg.setAttribute('civid', String(event.civId || ''));
-            msg.setAttribute('turn', String(event.turn));
+            msg.dataset.type = String(event.type);
+            msg.dataset.civId = String(event.civId || '');
+            msg.dataset.turn = String(event.turn);
             msg.textContent = event.text || '';
-            // Store event data on element
-            msg._eventData = event;
-            if (this.types.indexOf(event.type) === -1) {
+            // Store bidirectional association using WeakMap and Map
+            this.elementToEvent.set(msg, event);
+            this.eventToElement.set(event, msg);
+            // Apply initial filter
+            if (!this.types.has(event.type)) {
                 msg.classList.add('hidden');
             }
-            this.messagesEl.appendChild(msg);
+            return msg;
         }
-        // Add all events to the log
-        addAll(events) {
-            this.removeAll();
-            _.each(this.events, this.add.bind(this));
+        /**
+         * Render all events
+         */
+        renderEvents() {
+            this.clear();
+            const fragment = document.createDocumentFragment();
+            this.events.forEach(event => {
+                const element = this.renderEvent(event);
+                if (element) {
+                    fragment.appendChild(element);
+                }
+            });
+            this.messagesEl.appendChild(fragment);
         }
-        // Remove a single event (not implemented)
-        remove() {
-        }
-        // Clear all events from the log
-        removeAll() {
+        /**
+         * Clear all events from the log
+         */
+        clear() {
+            // Clear associations
+            this.eventToElement.clear();
+            // WeakMap will be garbage collected automatically
             this.messagesEl.innerHTML = '';
         }
-        // Update log display to show events up to specified turn
+        /**
+         * Update log display to show events up to specified turn
+         * and scroll to the first event of the new turn
+         */
         renderTurn(turn) {
             const messages = this.messagesEl.querySelectorAll('.message');
-            messages.forEach((msg) => {
-                msg.classList.remove('active');
-                if (parseInt(msg.getAttribute('turn')) <= turn) {
+            let firstNewTurnElement = null;
+            let lastActiveElement = null;
+            messages.forEach(msg => {
+                const msgTurn = parseInt(msg.dataset.turn || '0');
+                if (msgTurn <= turn) {
                     msg.classList.add('active');
+                    lastActiveElement = msg;
+                    // Find first element of the new turn (when advancing)
+                    if (!firstNewTurnElement && msgTurn === turn && turn > this.currentTurn) {
+                        firstNewTurnElement = msg;
+                    }
+                }
+                else {
+                    msg.classList.remove('active');
                 }
             });
-            const activeMessages = this.messagesEl.querySelectorAll('.message.active');
-            const lastMessage = activeMessages[activeMessages.length - 1];
-            if (lastMessage) {
-                const messageOffset = lastMessage.offsetTop;
-                const listOffset = this.messagesEl.offsetTop;
-                const listScroll = this.messagesEl.scrollTop;
-                const listHeight = this.messagesEl.offsetHeight;
-                // Simple animation for scrolling
-                const targetScroll = turn ? (listScroll + (messageOffset - listOffset) - (listHeight / 2)) : 0;
-                this.smoothScroll(this.messagesEl, targetScroll, 200);
+            // Determine which element to scroll to
+            let targetElement = null;
+            if (turn === 0) {
+                // Scroll to top when at turn 0
+                this.messagesEl.scrollTop = 0;
+                this.currentTurn = turn;
+                return;
             }
+            if (turn > this.currentTurn) {
+                // Moving forward: scroll to first element of new turn
+                targetElement = firstNewTurnElement || lastActiveElement;
+            }
+            else if (turn < this.currentTurn) {
+                // Moving backward: find first element of this turn
+                const turnElements = Array.from(messages).filter(msg => parseInt(msg.dataset.turn || '0') === turn);
+                targetElement = turnElements[0] || lastActiveElement;
+            }
+            else {
+                // Same turn, no scrolling needed
+                return;
+            }
+            // Perform scrolling
+            if (targetElement) {
+                this.scrollToElement(targetElement);
+            }
+            this.currentTurn = turn;
         }
-        // Smooth scroll animation to target position
-        smoothScroll(element, target, duration) {
-            const start = element.scrollTop;
-            const distance = target - start;
-            const startTime = performance.now();
-            const animateScroll = (currentTime) => {
-                const elapsed = currentTime - startTime;
-                const progress = Math.min(elapsed / duration, 1);
-                // Easing function (ease-in-out)
-                const easeInOut = progress < 0.5
-                    ? 2 * progress * progress
-                    : 1 - Math.pow(-2 * progress + 2, 2) / 2;
-                element.scrollTop = start + (distance * easeInOut);
-                if (progress < 1) {
-                    requestAnimationFrame(animateScroll);
-                }
-            };
-            requestAnimationFrame(animateScroll);
+        /**
+         * Scroll to a specific element in the messages container
+         */
+        scrollToElement(element) {
+            const containerRect = this.messagesEl.getBoundingClientRect();
+            const elementRect = element.getBoundingClientRect();
+            // Calculate the scroll position to center the element in view
+            const relativeTop = elementRect.top - containerRect.top;
+            const scrollOffset = this.messagesEl.scrollTop + relativeTop - (containerRect.height / 3);
+            // Direct scroll without animation
+            this.messagesEl.scrollTop = Math.max(0, scrollOffset);
         }
-        // Set visible event types based on filter selection
+        /**
+         * Set visible event types based on filter selection
+         * @deprecated Use updateTypeFilter instead
+         */
         setTypes(types) {
-            // Convert to EventType array (handles both string and number inputs)
-            this.types = types.map(t => Number(t));
-            console.log('Setting types:', this.types);
-            const messages = this.messagesEl.querySelectorAll('.message');
-            console.log('Total messages:', messages.length);
-            messages.forEach((msg) => msg.classList.add('hidden'));
-            this.types.forEach(type => {
-                const typeMessages = this.messagesEl.querySelectorAll(`[type="${type}"]`);
-                console.log(`Type ${type} messages:`, typeMessages.length);
-                typeMessages.forEach((msg) => msg.classList.remove('hidden'));
-            });
+            this.updateTypeFilter(types);
+        }
+        /**
+         * Get event data for a message element
+         */
+        getEventData(element) {
+            return this.elementToEvent.get(element);
+        }
+        /**
+         * Get message element for an event
+         */
+        getElementForEvent(event) {
+            return this.eventToElement.get(event);
         }
     }
 
@@ -1578,7 +1657,7 @@
          */
         initialize() {
             // Initialize map visualization
-            this.map = new Map();
+            this.map = new ReplayMap();
             // Setup file handling (drag-and-drop and click-to-open)
             this.setupFileHandling();
             // Check for URL parameters
@@ -1858,7 +1937,7 @@
     window.replayViewer = new ReplayViewer();
     // Export classes to window for backward compatibility
     window.ReplayViewer = ReplayViewer;
-    window.Map = Map;
+    window.ReplayMap = ReplayMap;
     window.HexLayer = HexLayer;
     window.ControlBar = ControlBar;
     window.EventLog = EventLog;

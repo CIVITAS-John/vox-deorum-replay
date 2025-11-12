@@ -42,11 +42,10 @@ interface Array<T> {
 interface Window {
   replayViewer: any;
   ReplayViewer: any;
-  Map: any;
+  ReplayMap: any;
   HexLayer: any;
   ControlBar: any;
   EventLog: any;
   Replay: any;
   BinaryParser: any;
-  CIV_COLORS: any;
 }

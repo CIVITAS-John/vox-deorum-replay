@@ -4,7 +4,7 @@
  * Manages user interactions, file handling, and coordinates between data and visualization
  */
 
-import { Map } from '../map/map';
+import { ReplayMap } from '../map/map';
 import { EventLog } from './event-log';
 import { ControlBar } from './control-bar';
 import { Replay } from '../core/replay';
@@ -15,7 +15,7 @@ import { MapLayer, MapControl } from '../types/map.types';
  * Handles user interactions and coordinates between replay data and visualization components
  */
 export class ReplayViewer {
-  private map: Map;                    // Map visualization instance
+  private map: ReplayMap;                    // Map visualization instance
   private replay: Replay | null = null; // Replay data hub instance
   private eventLog: EventLog | null = null; // Event log UI component
   private controlBar: ControlBar | null = null; // Playback control UI component
@@ -34,7 +34,7 @@ export class ReplayViewer {
    */
   private initialize(): void {
     // Initialize map visualization
-    this.map = new Map();
+    this.map = new ReplayMap();
 
     // Setup file handling (drag-and-drop and click-to-open)
     this.setupFileHandling();
