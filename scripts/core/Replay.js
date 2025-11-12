@@ -1,50 +1,60 @@
 
+/**
+ * replay.js
+ * Core replay file parser for Civilization V (Vox Populi) replay files
+ * Handles parsing game metadata, player data, map data, and turn events
+ */
 
-var Replay = function(file, size) {
-	this.parser   = new BinaryParser(file, size)
-	this.meta     = {}
-	this.players  = []
-	this.cities   = []
+/**
+ * Replay constructor
+ * @param {ArrayBuffer} file - The replay file buffer
+ * @param {number} size - Size of the replay file
+ */
+var Replay = function (file, size) {
+	this.parser = new BinaryParser(file, size)
+	this.meta = {}
+	this.players = []
+	this.cities = []
 	this.messages = []
 	this.datasets = []
-	this.map      = []
+	this.map = []
 
 	this.fileConfig = {
-		game:        {type: 'str', length: 0x04}, // CIV5
-		_0:          'int32', // 01 00 00 0g0
-		version:     'varstr',
-		build:       'varstr',
-		_1:          {type: 'byte', length: 0x05}, // 41 01 00 00 01 ?
-		playerCiv:   'varstr',
-		difficulty:  'varstr',
-		eraStart:    'varstr',
-		eraEnd:      'varstr',
-		gameSpeed:   'varstr',
-		worldSize:   'varstr',
-		mapScript:   'varstr',
+		game: { type: 'str', length: 0x04 }, // CIV5
+		_0: 'int32', // 01 00 00 0g0
+		version: 'varstr',
+		build: 'varstr',
+		_1: { type: 'byte', length: 0x05 }, // 41 01 00 00 01 ?
+		playerCiv: 'varstr',
+		difficulty: 'varstr',
+		eraStart: 'varstr',
+		eraEnd: 'varstr',
+		gameSpeed: 'varstr',
+		worldSize: 'varstr',
+		mapScript: 'varstr',
 		dlc: {
 			type: 'array',
 			items: {
-				id:      {type: 'str', length: 0x10},
+				id: { type: 'str', length: 0x10 },
 				enabled: 'int32',
-				name:    'varstr'
+				name: 'varstr'
 			}
 		},
 		mods: {
 			type: 'array',
 			items: {
-				id:      'varstr',
+				id: 'varstr',
 				version: 'int32',
-				name:    'varstr'
+				name: 'varstr'
 			}
 		},
-		_2:            'varstr', // 00 00 00 00
-		_3:            'varstr', // 00 00 00 00
-		playerColor:   'varstr',
+		_2: 'varstr', // 00 00 00 00
+		_3: 'varstr', // 00 00 00 00
+		playerColor: 'varstr',
 		// 4 bytes for Vox Populi - not sure why, instead of 8
-		_4:            {type: 'byte', length: 4}, 
-		mapScript2:    'varstr',
-		_5: function() {
+		_4: { type: 'byte', length: 4 },
+		mapScript2: 'varstr',
+		_5: function () {
 			// Heuristic to get around something I don't understand :-(
 			// This section still stumps me - it's variable length, but doesn't
 			// seem to follow the conventions of the rest of the file. Probably
@@ -77,23 +87,23 @@ var Replay = function(file, size) {
 			this.view.seek(this.view.tell() - 7)
 			console.log(`Found the start year: ${this.decToHex(this.view.tell())}`);
 		},
-		startTurn:     'int32',
-		startYear:     'int32',
-		endTurn:       'int32',
-		endYear:       'varstr',
+		startTurn: 'int32',
+		startYear: 'int32',
+		endTurn: 'int32',
+		endYear: 'varstr',
 		zeroStartYear: 'int32',
-		zeroEndYear:   'int32',
+		zeroEndYear: 'int32',
 		civs: {
 			type: 'array',
 			items: {
-				_1:       'int32',
-				_2:       'int32',
-				_3:       'int32',
-				_4:       'int32',
-				leader:   'varstr',
+				_1: 'int32',
+				_2: 'int32',
+				_3: 'int32',
+				_4: 'int32',
+				leader: 'varstr',
 				longName: 'varstr',
-				name:     'varstr',
-				demonym:  'varstr'
+				name: 'varstr',
+				demonym: 'varstr'
 			}
 		},
 		datasets: {
@@ -109,7 +119,7 @@ var Replay = function(file, size) {
 				items: {
 					type: 'array',
 					items: {
-						turn:  'int32',
+						turn: 'int32',
 						value: 'int32'
 					}
 				}
@@ -119,7 +129,7 @@ var Replay = function(file, size) {
 		events: {
 			type: 'array',
 			items: {
-				turn:   'int32',
+				turn: 'int32',
 				typeId: 'int32',
 				tiles: {
 					type: 'array',
@@ -132,17 +142,17 @@ var Replay = function(file, size) {
 				text: 'varstr'
 			}
 		},
-		mapWidth:  'int32',
+		mapWidth: 'int32',
 		mapHeight: 'int32',
 		tiles: {
 			type: 'array',
 			items: {
-				_1:          'int32', // always 1?
-				_2:          'int32', // always 267?
+				_1: 'int32', // always 1?
+				_2: 'int32', // always 267?
 				elevationId: 'int8',
-				typeId:      'int8',
-				featureId:   'int8',
-				_5:          'int8'
+				typeId: 'int8',
+				featureId: 'int8',
+				_5: 'int8'
 			}
 		}
 	}
@@ -150,7 +160,7 @@ var Replay = function(file, size) {
 	return this
 }
 
-Replay.prototype.process = function() {
+Replay.prototype.process = function () {
 	// Do initial basic parsing
 	this.rawData = this.parser.parseItems(this.fileConfig, false)
 
@@ -177,18 +187,18 @@ Replay.prototype.process = function() {
 		var eventsToAdd = [event]
 
 		event.index = i
-		event.civ   = this.civs[event.civId] ? this.civs[event.civId].name : null
+		event.civ = this.civs[event.civId] ? this.civs[event.civId].name : null
 
 		// Add type name
 		switch (event.typeId) {
-			case 0:  event.type  = 'MESSAGE';            break
-			case 1:  event.type  = 'CITY_FOUNDED';       break
-			case 2:  event.type  = 'TILES_CLAIMED';      break
-			case 3:  event.type  = 'CITIES_TRANSFERRED'; break
-			case 4:  event.type  = 'CITY_RAZED';         break
-			case 5:  event.type  = 'RELIGION_FOUNDED';   break
-			case 6:  event.type  = 'PANTHEON_SELECTED';  break
-			default: event.type  = event.typeId;         break
+			case 0: event.type = 'MESSAGE'; break
+			case 1: event.type = 'CITY_FOUNDED'; break
+			case 2: event.type = 'TILES_CLAIMED'; break
+			case 3: event.type = 'CITIES_TRANSFERRED'; break
+			case 4: event.type = 'CITY_RAZED'; break
+			case 5: event.type = 'RELIGION_FOUNDED'; break
+			case 6: event.type = 'PANTHEON_SELECTED'; break
+			default: event.type = event.typeId; break
 		}
 
 		// Add x/y reference to keep things easy
@@ -200,20 +210,20 @@ Replay.prototype.process = function() {
 		if (event.type == 'CITY_FOUNDED') {
 			// Keep track of the city
 			var cityName = event.text.replace(' is founded.', '')
-			event.city = {name: cityName, owner: event.civ}
+			event.city = { name: cityName, owner: event.civ }
 			cities[event.x + ',' + event.y] = event.city
 		}
 		else if (event.type == 'CITY_RAZED') {
-			event.x    = event.tiles[0].x
-			event.y    = event.tiles[0].y
+			event.x = event.tiles[0].x
+			event.y = event.tiles[0].y
 			event.city = cities[event.x + ',' + event.y]
 			event.text = `${event.city.name} has been burned to the ground by ${event.civ}!`
 
 			// Mass razings are compounded into one event; we want to separate them
 			_.each(event.tiles.slice(1), tile => {
-				var eventCopy  = Object.assign({}, event)
-				eventCopy.x    = tile.x
-				eventCopy.y    = tile.y
+				var eventCopy = Object.assign({}, event)
+				eventCopy.x = tile.x
+				eventCopy.y = tile.y
 				eventCopy.city = cities[eventCopy.x + ',' + eventCopy.y]
 				eventCopy.text = `${eventCopy.city.name} has been burned to the ground by ${eventCopy.civ}!`
 				eventsToAdd.push(eventCopy)
@@ -259,37 +269,37 @@ Replay.prototype.process = function() {
 	// Add human-readable stuff to tiles
 	this.tiles = _.each(this.rawData.tiles, (tile, i) => {
 		switch (tile.elevationId) {
-			case 0:  tile.elevation = 'MOUNTAIN';        break
-			case 1:  tile.elevation = 'HILLS';           break
-			case 2:  tile.elevation = 'ABOVE_SEA_LEVEL'; break
-			case 3:  tile.elevation = 'BELOW_SEA_LEVEL'; break
-			default: tile.elevation = tile.elevationId;  break
+			case 0: tile.elevation = 'MOUNTAIN'; break
+			case 1: tile.elevation = 'HILLS'; break
+			case 2: tile.elevation = 'ABOVE_SEA_LEVEL'; break
+			case 3: tile.elevation = 'BELOW_SEA_LEVEL'; break
+			default: tile.elevation = tile.elevationId; break
 		}
 
 		switch (tile.typeId) {
-			case 0:  tile.type = 'GRASSLAND'; break
-			case 1:  tile.type = 'PLAINS';    break
-			case 2:  tile.type = 'DESERT';    break
-			case 3:  tile.type = 'TUNDRA';    break
-			case 4:  tile.type = 'SNOW';      break
-			case 5:  tile.type = 'COAST';     break
-			case 6:  tile.type = 'OCEAN';     break
+			case 0: tile.type = 'GRASSLAND'; break
+			case 1: tile.type = 'PLAINS'; break
+			case 2: tile.type = 'DESERT'; break
+			case 3: tile.type = 'TUNDRA'; break
+			case 4: tile.type = 'SNOW'; break
+			case 5: tile.type = 'COAST'; break
+			case 6: tile.type = 'OCEAN'; break
 			default: tile.type = tile.typeId; break
 		}
 
 		switch (tile.featureId) {
-			case -1: tile.feature = 'NO_FEATURE';      break
-			case  0: tile.feature = 'ICE';             break
-			case  1: tile.feature = 'JUNGLE';          break
-			case  2: tile.feature = 'MARSH';           break
-			case  3: tile.feature = 'OASIS';           break
-			case  4: tile.feature = 'FLOOD_PLAINS';    break
-			case  5: tile.feature = 'FOREST';          break
+			case -1: tile.feature = 'NO_FEATURE'; break
+			case 0: tile.feature = 'ICE'; break
+			case 1: tile.feature = 'JUNGLE'; break
+			case 2: tile.feature = 'MARSH'; break
+			case 3: tile.feature = 'OASIS'; break
+			case 4: tile.feature = 'FLOOD_PLAINS'; break
+			case 5: tile.feature = 'FOREST'; break
 			case 15: tile.feature = 'CERRO_DE_POTOSI'; break
-			case 17: tile.feature = 'ATOLL';           break
-			case 18: tile.feature = 'SRI_PADA';        break
-			case 19: tile.feature = 'MT_SINAI';        break
-			default: tile.feature = tile.featureId;    break
+			case 17: tile.feature = 'ATOLL'; break
+			case 18: tile.feature = 'SRI_PADA'; break
+			case 19: tile.feature = 'MT_SINAI'; break
+			default: tile.feature = tile.featureId; break
 			// TODO: enumerate the rest of the natural wonders and feature types
 		}
 	})
@@ -315,17 +325,17 @@ Replay.prototype.process = function() {
 // 	case 'COAST':     setPixel(x * 20, (replay.mapHeight - y - 1) * 20,  90, 145, 143); break
 // 	case 'OCEAN':     setPixel(x * 20, (replay.mapHeight - y - 1) * 20,  49,  77,  99); break
 // }
-	//
-	//
-	//
-	//
-	//
-	//
-	//
-	// for (var y = 0; y < replay.mapHeight; y++) {
-	// 	for (var x = 0; x < replay.mapWidth; x++) {
-	// 		var tile = replay.tiles[(y * replay.mapWidth) + x]
-	//
-	// 	}
-	// }
+//
+//
+//
+//
+//
+//
+//
+// for (var y = 0; y < replay.mapHeight; y++) {
+// 	for (var x = 0; x < replay.mapWidth; x++) {
+// 		var tile = replay.tiles[(y * replay.mapWidth) + x]
+//
+// 	}
+// }
 // }

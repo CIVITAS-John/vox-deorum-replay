@@ -1,12 +1,23 @@
-var BinaryParser = function(file, size) {
+/**
+ * binary-parser.js
+ * Handles parsing of binary replay files for Civilization V
+ * Uses jDataView library to read binary data with proper byte order handling
+ */
+
+/**
+ * BinaryParser constructor
+ * @param {ArrayBuffer} file - The binary file to parse
+ * @param {number} size - Size of the file in bytes
+ */
+var BinaryParser = function (file, size) {
 	this.view = new jDataView(file, 0, size, false)
 
 	return this
 }
 
-BinaryParser.prototype.parseItem = function(itemConfig, includeJunk) {
+BinaryParser.prototype.parseItem = function (itemConfig, includeJunk) {
 	if (typeof itemConfig === 'string') {
-		itemConfig = {type: itemConfig}
+		itemConfig = { type: itemConfig }
 	}
 
 	if (typeof itemConfig == 'function') {
@@ -14,22 +25,22 @@ BinaryParser.prototype.parseItem = function(itemConfig, includeJunk) {
 	}
 
 	switch (itemConfig.type) {
-		case 'byte':   return this.getBytes(itemConfig.length)
-		case 'str':    return this.getString(itemConfig.length)
+		case 'byte': return this.getBytes(itemConfig.length)
+		case 'str': return this.getString(itemConfig.length)
 		case 'varstr': return this.getVarString()
-		case 'int32':  return this.getInt32()
-		case 'int16':  return this.getInt16()
-		case 'int8':   return this.getInt8()
-		case 'until':  return this.getUntil(itemConfig.value)
-		case 'tell':   return this.tell()
-		case 'array':  return this.getArray(itemConfig.items, includeJunk)
+		case 'int32': return this.getInt32()
+		case 'int16': return this.getInt16()
+		case 'int8': return this.getInt8()
+		case 'until': return this.getUntil(itemConfig.value)
+		case 'tell': return this.tell()
+		case 'array': return this.getArray(itemConfig.items, includeJunk)
 
 		default:
 			break
 	}
 }
 
-BinaryParser.prototype.parseItems = function(itemConfigs, includeJunk) {
+BinaryParser.prototype.parseItems = function (itemConfigs, includeJunk) {
 	if (itemConfigs.type == 'array') {
 		return this.parseItem(itemConfigs, includeJunk)
 	}
@@ -46,7 +57,7 @@ BinaryParser.prototype.parseItems = function(itemConfigs, includeJunk) {
 			if (key == "events") console.log(`Parsed ${value.length} events`);
 
 			// Bail if we don't want to include junk data
-			if (key.startsWith('_') && includeJunk === false) {return}
+			if (key.startsWith('_') && includeJunk === false) { return }
 
 			data[key] = value
 		} catch (e) {
@@ -57,7 +68,7 @@ BinaryParser.prototype.parseItems = function(itemConfigs, includeJunk) {
 			console.log(`Next 200 bytes: ${this.getBytes(200).toHex().toUpperCase()}`);
 			// Print the current data
 			console.log(data);
-			throw(e);
+			throw (e);
 		}
 	})
 
@@ -65,11 +76,11 @@ BinaryParser.prototype.parseItems = function(itemConfigs, includeJunk) {
 	return data
 }
 
-BinaryParser.prototype.tell = function() {
+BinaryParser.prototype.tell = function () {
 	return this.view.tell()
 }
 
-BinaryParser.prototype.getBytes = function(length) {
+BinaryParser.prototype.getBytes = function (length) {
 	try {
 		return this.view.getBytes(length)
 	} catch (e) {
@@ -77,7 +88,7 @@ BinaryParser.prototype.getBytes = function(length) {
 	}
 }
 
-BinaryParser.prototype.getString = function(length) {
+BinaryParser.prototype.getString = function (length) {
 	try {
 		return this.view.getString(length)
 	} catch (e) {
@@ -85,19 +96,19 @@ BinaryParser.prototype.getString = function(length) {
 	}
 }
 
-BinaryParser.prototype.getInt32 = function() {
+BinaryParser.prototype.getInt32 = function () {
 	return this.view.getInt32(this.tell(), true)
 }
 
-BinaryParser.prototype.getInt16 = function() {
+BinaryParser.prototype.getInt16 = function () {
 	return this.view.getInt16(this.tell(), true)
 }
 
-BinaryParser.prototype.getInt8 = function() {
+BinaryParser.prototype.getInt8 = function () {
 	return this.view.getInt8(this.tell(), true)
 }
 
-BinaryParser.prototype.getUntil = function(test) {
+BinaryParser.prototype.getUntil = function (test) {
 	var result = []
 	var val = null
 
@@ -109,15 +120,15 @@ BinaryParser.prototype.getUntil = function(test) {
 	return result
 }
 
-BinaryParser.prototype.getVarString = function() {
+BinaryParser.prototype.getVarString = function () {
 	// Variable-length string - uses first four bytes to specify length
 	var length = this.getInt32()
-	var value  = this.getString(length)
+	var value = this.getString(length)
 	return value
 }
 
-BinaryParser.prototype.getArray = function(config, includeJunk) {
-	var length  = this.getInt32()
+BinaryParser.prototype.getArray = function (config, includeJunk) {
+	var length = this.getInt32()
 	var records = []
 
 	for (var i = 0; i < length; i++) {
@@ -136,7 +147,7 @@ BinaryParser.prototype.getArray = function(config, includeJunk) {
 	return records
 }
 
-BinaryParser.prototype.decToHex = function(dec) {
+BinaryParser.prototype.decToHex = function (dec) {
 	// arbitrary length decimal to hex conversion
 	return parseInt(dec).toString(16).toUpperCase().padStart(2, '0');
 }

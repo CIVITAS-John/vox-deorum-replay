@@ -1,3 +1,13 @@
+/**
+ * event-log.js
+ * Manages the event log display for game events
+ * Shows filtered messages and events from the replay based on turn and event type
+ */
+
+/**
+ * EventLog constructor
+ * @param {Array} events - Array of game events to display
+ */
 window.EventLog = function (events) {
 	this.$log = $('.log-container')
 	this.$messages = this.$log.find('.log-messages')

@@ -1,3 +1,13 @@
+/**
+ * control-bar.js
+ * UI control bar for replay playback
+ * Manages play/pause, speed control, and turn navigation
+ */
+
+/**
+ * ControlBar constructor
+ * @param {Object} config - Configuration with start/end turns and onChange callback
+ */
 window.ControlBar = function (config) {
 	this.config = config
 

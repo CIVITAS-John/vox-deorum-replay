@@ -1,5 +1,19 @@
+/**
+ * hex-layer.js
+ * Custom Leaflet layer for rendering hexagonal tile maps
+ * Extends Leaflet's Canvas TileLayer to draw hexagonal grids for Civilization V maps
+ */
+
+/**
+ * HexLayer - Custom layer for rendering hexagonal tiles
+ * @extends L.TileLayer.Canvas
+ */
 window.HexLayer = L.TileLayer.Canvas.extend({
-	initialize: function(config) {
+	/**
+	 * Initialize the hex layer with configuration
+	 * @param {Object} config - Configuration object containing hexes, dimensions, and drawing options
+	 */
+	initialize: function (config) {
 		this.options = _.clone(this.options, true)
 
 		this.config = config
@@ -17,7 +31,7 @@ window.HexLayer = L.TileLayer.Canvas.extend({
 				var row = []
 
 				for (var j = 0; j < this.config.width; j++) {
-					row.push({x: j, y: i})
+					row.push({ x: j, y: i })
 				}
 
 				this.hexes.push(row)
@@ -25,7 +39,7 @@ window.HexLayer = L.TileLayer.Canvas.extend({
 		}
 
 		this.baseHexHeight = 2
-		this.baseHexWidth  = Math.sqrt(3) / 2 * this.baseHexHeight // ~13.856406464
+		this.baseHexWidth = Math.sqrt(3) / 2 * this.baseHexHeight // ~13.856406464
 
 		if (this.config.opacity) {
 			this.setOpacity(this.config.opacity)
@@ -42,8 +56,8 @@ window.HexLayer = L.TileLayer.Canvas.extend({
 		this.tileCache = {}
 	},
 
-	drawTile: function(tileCanvas, tilePoint, zoom) {
-		if (!this.config.drawHex) {return}
+	drawTile: function (tileCanvas, tilePoint, zoom) {
+		if (!this.config.drawHex) { return }
 
 		// Get canvas context for drawing
 		var ctx = tileCanvas.getContext('2d')
@@ -77,13 +91,13 @@ window.HexLayer = L.TileLayer.Canvas.extend({
 		}
 
 		// Calculate cell dimensions and distance
-		var hexWidth  = this.baseHexWidth  * scalingFactor
+		var hexWidth = this.baseHexWidth * scalingFactor
 		var hexHeight = this.baseHexHeight * scalingFactor
-		var hexDistX  = hexWidth
-		var hexDistY  = hexHeight * 3 / 4
+		var hexDistX = hexWidth
+		var hexDistY = hexHeight * 3 / 4
 
 		// Calculate how many tile cells fit on this canvas
-		var gridCellsX = tileCanvas.width  / hexDistX
+		var gridCellsX = tileCanvas.width / hexDistX
 		var gridCellsY = tileCanvas.height / hexDistY
 
 		// Calculate our starting tiles
@@ -126,7 +140,7 @@ window.HexLayer = L.TileLayer.Canvas.extend({
 				}
 
 				// Skip if out of bounds
-				if (!this.hexes[flippedGridY] || !this.hexes[flippedGridY][gridX]) {continue}
+				if (!this.hexes[flippedGridY] || !this.hexes[flippedGridY][gridX]) { continue }
 
 				// Our own drawing function sets up the ctx with a hex polygon
 				this.preDrawHex(ctx, x, y, hexWidth, hexHeight + (this.config.overdraw || 0), this.config.gridStyle, gridX, flippedGridY)
@@ -174,7 +188,7 @@ window.HexLayer = L.TileLayer.Canvas.extend({
 		var globalCompositeOperation = ctx.globalCompositeOperation
 		ctx.globalCompositeOperation = 'destination-over'
 
-		var angle  = 2 * Math.PI / 6 * (0 + 0.5)
+		var angle = 2 * Math.PI / 6 * (0 + 0.5)
 		var startX = x + (height * 0.5) * Math.cos(angle)
 		var startY = y + (height * 0.5) * Math.sin(angle)
 
@@ -185,7 +199,7 @@ window.HexLayer = L.TileLayer.Canvas.extend({
 		var lastY = startY
 
 		for (var i = 1; i <= 6; i++) {
-			angle    = 2 * Math.PI / 6 * (i + 0.5)
+			angle = 2 * Math.PI / 6 * (i + 0.5)
 			var endX = x + (height * 0.5) * Math.cos(angle)
 			var endY = y + (height * 0.5) * Math.sin(angle)
 
@@ -193,12 +207,12 @@ window.HexLayer = L.TileLayer.Canvas.extend({
 			var otherEdgeName
 
 			switch (i) {
-				case 1: otherEdgeName = [gridX,     flippedGridY + 1, 4].join(','); break
+				case 1: otherEdgeName = [gridX, flippedGridY + 1, 4].join(','); break
 				case 2: otherEdgeName = [gridX - 1, flippedGridY + 1, 5].join(','); break
-				case 3: otherEdgeName = [gridX - 1, flippedGridY,     6].join(','); break
-				case 4: otherEdgeName = [gridX,     flippedGridY - 1, 1].join(','); break
+				case 3: otherEdgeName = [gridX - 1, flippedGridY, 6].join(','); break
+				case 4: otherEdgeName = [gridX, flippedGridY - 1, 1].join(','); break
 				case 5: otherEdgeName = [gridX + 1, flippedGridY - 1, 2].join(','); break
-				case 6: otherEdgeName = [gridX + 1, flippedGridY,     3].join(','); break
+				case 6: otherEdgeName = [gridX + 1, flippedGridY, 3].join(','); break
 			}
 
 			var edgeName = selfEdgeName < otherEdgeName ? selfEdgeName : otherEdgeName
@@ -241,7 +255,7 @@ window.HexLayer = L.TileLayer.Canvas.extend({
 		}
 	},
 
-	drawNonAntiAliasedLine: function(ctx, startX, startY, endX, endY, style) {
+	drawNonAntiAliasedLine: function (ctx, startX, startY, endX, endY, style) {
 		// This is NOT a general purpose line drawing function! It's purely for bypassing
 		// a bug in canvas that anti-aliases lines even when they're perfectly horizontal
 		// or vertical, which distorts the color. Note that this is NOT solvable by using
@@ -261,7 +275,7 @@ window.HexLayer = L.TileLayer.Canvas.extend({
 		// ctx.fillRect(endX,   endY,   1, 1)
 	},
 
-	drawImage: function(ctx, id, sx, sy, sw, sh) {
+	drawImage: function (ctx, id, sx, sy, sw, sh) {
 		var img = document.getElementById(id)
 		ctx.drawImage(img, 0, 0, img.width, img.height, sx, sy, sw, sh)
 	}
