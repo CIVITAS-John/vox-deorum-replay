@@ -9,18 +9,20 @@
  * @param {Array} events - Array of game events to display
  */
 window.EventLog = function (events) {
-	this.$log = $('.log-container')
-	this.$messages = this.$log.find('.log-messages')
+	this.logContainer = document.querySelector('.log-container')
+	this.messagesEl = this.logContainer.querySelector('.log-messages')
 	this.events = events
 
 	// Types
 	this.types = []
 
-	$('#event-select').on('change', e => {
+	const eventSelect = document.getElementById('event-select')
+	eventSelect.addEventListener('change', e => {
+		// Bootstrap selectpicker still needs jQuery, so we'll get value through its API
 		this.setTypes($(e.target).val())
 	})
 
-	this.setTypes($('#event-select').selectpicker('val'))
+	this.setTypes($(eventSelect).selectpicker('val'))
 
 	// Add events and do initial rendering
 	this.addAll(events)
@@ -36,18 +38,21 @@ EventLog.prototype.add = function (event) {
 		return
 	}
 
-	var $msg = $('<li>').addClass('message')
-		.attr('type', event.type)
-		.attr('civid', event.civId)
-		.attr('turn', event.turn)
-		.text(event.text)
-		.data(event)
+	const msg = document.createElement('li')
+	msg.className = 'message'
+	msg.setAttribute('type', event.type)
+	msg.setAttribute('civid', event.civId)
+	msg.setAttribute('turn', event.turn)
+	msg.textContent = event.text
+
+	// Store event data on element
+	msg._eventData = event
 
 	if (this.types.indexOf(event.type) == -1) {
-		$msg.addClass('hidden')
+		msg.classList.add('hidden')
 	}
 
-	$msg.appendTo(this.$messages)
+	this.messagesEl.appendChild(msg)
 }
 
 EventLog.prototype.addAll = function () {
@@ -59,33 +64,66 @@ EventLog.prototype.remove = function () {
 }
 
 EventLog.prototype.removeAll = function () {
-	this.$messages.empty()
+	this.messagesEl.innerHTML = ''
 }
 
 EventLog.prototype.renderTurn = function (turn) {
-	this.$messages.find('.message').removeClass('active').filter(function () {
-		return $(this).attr('turn') <= turn
-	}).addClass('active')
+	const messages = this.messagesEl.querySelectorAll('.message')
 
-	var $lastMessage = this.$messages.find('.message.active').last()
-	var messageOffset = $lastMessage.offset().top
-	var listOffset = this.$messages.offset().top
-	var listScroll = this.$messages.scrollTop()
-	var listHeight = this.$messages.height()
+	messages.forEach(msg => {
+		msg.classList.remove('active')
+		if (parseInt(msg.getAttribute('turn')) <= turn) {
+			msg.classList.add('active')
+		}
+	})
 
-	this.$messages.finish().animate({
-		scrollTop: turn ? (listScroll + (messageOffset - listOffset) - (listHeight / 2)) : 0
-	}, 200)
+	const activeMessages = this.messagesEl.querySelectorAll('.message.active')
+	const lastMessage = activeMessages[activeMessages.length - 1]
+
+	if (lastMessage) {
+		const messageOffset = lastMessage.offsetTop
+		const listOffset = this.messagesEl.offsetTop
+		const listScroll = this.messagesEl.scrollTop
+		const listHeight = this.messagesEl.offsetHeight
+
+		// Simple animation for scrolling
+		const targetScroll = turn ? (listScroll + (messageOffset - listOffset) - (listHeight / 2)) : 0
+		this.smoothScroll(this.messagesEl, targetScroll, 200)
+	}
+}
+
+EventLog.prototype.smoothScroll = function(element, target, duration) {
+	const start = element.scrollTop
+	const distance = target - start
+	const startTime = performance.now()
+
+	const animateScroll = (currentTime) => {
+		const elapsed = currentTime - startTime
+		const progress = Math.min(elapsed / duration, 1)
+
+		// Easing function (ease-in-out)
+		const easeInOut = progress < 0.5
+			? 2 * progress * progress
+			: 1 - Math.pow(-2 * progress + 2, 2) / 2
+
+		element.scrollTop = start + (distance * easeInOut)
+
+		if (progress < 1) {
+			requestAnimationFrame(animateScroll)
+		}
+	}
+
+	requestAnimationFrame(animateScroll)
 }
 
 EventLog.prototype.setTypes = function (types) {
 	this.types = types
 
-	this.$messages.find('.message').addClass('hidden')
+	const messages = this.messagesEl.querySelectorAll('.message')
+	messages.forEach(msg => msg.classList.add('hidden'))
 
-	var searchString = _.map(types, type => {
-		return `[type=${type}]`
-	}).join(', ')
-
-	this.$messages.find(searchString).removeClass('hidden')
+	types.forEach(type => {
+		const typeMessages = this.messagesEl.querySelectorAll(`[type="${type}"]`)
+		typeMessages.forEach(msg => msg.classList.remove('hidden'))
+	})
 }

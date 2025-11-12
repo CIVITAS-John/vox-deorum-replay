@@ -5,6 +5,7 @@
  */
 
 // Init event selectpicker
+// Note: Bootstrap components require jQuery, so we keep it for vendor libraries only
 $('#event-select').selectpicker({
 	width: 275,
 	noneSelectedText: 'No event types selected',

@@ -9,7 +9,7 @@
  * Creates and initializes the Leaflet map instance
  */
 window.Map = function () {
-	this.map = L.map($('.map').get(0), {
+	this.map = L.map(document.querySelector('.map'), {
 		attributionControl: false,
 		keyboardPanOffset: 0
 	}).setView([0, 0], 0)

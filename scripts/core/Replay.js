@@ -314,28 +314,3 @@ Replay.prototype.process = function () {
 		}
 	}
 }
-
-
-// switch (tile.type) {
-// 	case 'GRASSLAND': setPixel(x * 20, (replay.mapHeight - y - 1) * 20, 115, 134,  57); break
-// 	case 'PLAINS':    setPixel(x * 20, (replay.mapHeight - y - 1) * 20, 129, 122,  71); break
-// 	case 'DESERT':    setPixel(x * 20, (replay.mapHeight - y - 1) * 20, 181, 182, 148); break
-// 	case 'TUNDRA':    setPixel(x * 20, (replay.mapHeight - y - 1) * 20, 115, 109, 107); break
-// 	case 'SNOW':      setPixel(x * 20, (replay.mapHeight - y - 1) * 20, 242, 251, 255); break
-// 	case 'COAST':     setPixel(x * 20, (replay.mapHeight - y - 1) * 20,  90, 145, 143); break
-// 	case 'OCEAN':     setPixel(x * 20, (replay.mapHeight - y - 1) * 20,  49,  77,  99); break
-// }
-//
-//
-//
-//
-//
-//
-//
-// for (var y = 0; y < replay.mapHeight; y++) {
-// 	for (var x = 0; x < replay.mapWidth; x++) {
-// 		var tile = replay.tiles[(y * replay.mapWidth) + x]
-//
-// 	}
-// }
-// }

@@ -48,6 +48,30 @@
 	outline: none !important;
 }
 
+/* Drag and drop styles */
+body.drag-over {
+	position: relative;
+}
+
+body.drag-over::after {
+	content: "Drop Civ5Replay file here";
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(13, 54, 48, 0.95);
+	border: 4px dashed var(--border-gold);
+	z-index: 10000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 2rem;
+	color: var(--primary-color);
+	font-family: 'EB Garamond', serif;
+	pointer-events: none;
+}
+
 body {
 	width: 100%;
 	height: 100%;

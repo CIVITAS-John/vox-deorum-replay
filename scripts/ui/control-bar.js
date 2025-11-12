@@ -11,19 +11,20 @@
 window.ControlBar = function (config) {
 	this.config = config
 
-	this.config.onChange = (this.config.onChange || $.noop).bind(this)
+	this.config.onChange = (this.config.onChange || function() {}).bind(this)
 
 	// Play/pause button
-	this.$playPause = $('#playPause')
-	this.$playPause.on('click', this.togglePlay.bind(this))
+	this.playPauseBtn = document.getElementById('playPause')
+	this.playPauseBtn.addEventListener('click', this.togglePlay.bind(this))
 
 	// Speed slider
 	this.playIntervals = [2000, 1000, 600, 400, 0]
 	this.playInterval = this.playIntervals[2]
 
-	this.$speedSlider = $('#speedSlider')
+	this.speedSliderEl = document.getElementById('speedSlider')
 
-	this.$speedSlider.slider({
+	// Note: Bootstrap slider still requires jQuery internally, we'll keep using it through its API
+	$(this.speedSliderEl).slider({
 		id: 'speedSlider',
 		min: 0,
 		max: 4,
@@ -33,14 +34,14 @@ window.ControlBar = function (config) {
 		ticks_snap_bounds: 1
 	})
 
-	this.speedSlider = this.$speedSlider.data().slider
+	this.speedSlider = $(this.speedSliderEl).data().slider
 
-	this.$speedSlider.on('change', e => this.setSpeed(e.value.newValue))
+	this.speedSliderEl.addEventListener('change', e => this.setSpeed(e.value.newValue))
 
 	// Turn slider
-	this.$turnSlider = $('#turnSlider')
+	this.turnSliderEl = document.getElementById('turnSlider')
 
-	this.$turnSlider.slider({
+	$(this.turnSliderEl).slider({
 		id: 'turnSlider',
 		min: this.config.start,
 		max: this.config.end,
@@ -49,13 +50,13 @@ window.ControlBar = function (config) {
 		tooltip_position: 'bottom'
 	})
 
-	this.turnSlider = this.$turnSlider.data().slider
+	this.turnSlider = $(this.turnSliderEl).data().slider
 
-	this.$turnSlider.on('change', e => this.config.onChange(e.value.newValue))
-	this.$turnSlider.on('slide', e => this.config.onChange(e.value))
+	this.turnSliderEl.addEventListener('change', e => this.config.onChange(e.value.newValue))
+	this.turnSliderEl.addEventListener('slide', e => this.config.onChange(e.value))
 
 	// Listen for spacebar to toggle play/pause
-	$(document).keydown(e => {
+	document.addEventListener('keydown', e => {
 		switch (e.keyCode) {
 			case 32: this.togglePlay(); return // space
 			case 33: this.setTurn(this.config.start); return // page up
@@ -116,17 +117,20 @@ ControlBar.prototype.pause = function () {
 	if (!this.playTimer) { return }
 
 	clearInterval(this.playTimer)
-	delete this.playTimer
+	this.playTimer = null
 }
 
 ControlBar.prototype.togglePlay = function () {
+	const icon = this.playPauseBtn.querySelector('i')
 	if (this.playTimer) {
 		this.pause()
-		this.$playPause.find('i').removeClass('fa-pause').addClass('fa-play')
+		icon.classList.remove('fa-pause')
+		icon.classList.add('fa-play')
 	}
 	else {
 		this.play()
-		this.$playPause.find('i').removeClass('fa-play').addClass('fa-pause')
+		icon.classList.remove('fa-play')
+		icon.classList.add('fa-pause')
 	}
 }
 
