@@ -179,7 +179,7 @@ Replay.prototype.process = function () {
 	this.datasets = _.zipObject(datasetNames, this.datasets)
 
 	// Add human-readable stuff to events
-	var cities = {}
+	this.cities = {}
 	this.events = []
 
 	_.each(this.rawData.events, (event, i) => {
@@ -211,12 +211,12 @@ Replay.prototype.process = function () {
 			// Keep track of the city
 			var cityName = event.text.replace(' is founded.', '')
 			event.city = { name: cityName, owner: event.civ }
-			cities[event.x + ',' + event.y] = event.city
+			this.cities[event.x + ',' + event.y] = event.city
 		}
 		else if (event.type == 'CITY_RAZED') {
 			event.x = event.tiles[0].x
 			event.y = event.tiles[0].y
-			event.city = cities[event.x + ',' + event.y]
+			event.city = this.cities[event.x + ',' + event.y]
 			event.text = `${event.city.name} has been burned to the ground by ${event.civ}!`
 
 			// Mass razings are compounded into one event; we want to separate them
@@ -224,14 +224,14 @@ Replay.prototype.process = function () {
 				var eventCopy = Object.assign({}, event)
 				eventCopy.x = tile.x
 				eventCopy.y = tile.y
-				eventCopy.city = cities[eventCopy.x + ',' + eventCopy.y]
+				eventCopy.city = this.cities[eventCopy.x + ',' + eventCopy.y]
 				eventCopy.text = `${eventCopy.city.name} has been burned to the ground by ${eventCopy.civ}!`
 				eventsToAdd.push(eventCopy)
 			})
 		}
 		else if (event.type == 'CITIES_TRANSFERRED') {
 			var cityNames = _.map(event.tiles, tile => {
-				return cities[tile.x + ',' + tile.y].name
+				return this.cities[tile.x + ',' + tile.y].name
 			})
 
 			if (cityNames.length == 1) {
@@ -260,10 +260,6 @@ Replay.prototype.process = function () {
 		}
 
 		this.events = this.events.concat(eventsToAdd)
-
-		// if (!event.text) {
-		// 	console.dir(event)
-		// }
 	})
 
 	// Add human-readable stuff to tiles
