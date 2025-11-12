@@ -456,6 +456,118 @@ input[type=checkbox]:checked {
 	line-height: 1.4;
 }
 
+/* Strategy Change Styling */
+.strategy-change {
+	margin-top: 4px;
+}
+
+.strategy-change-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-bottom: 4px;
+	flex-wrap: wrap;
+}
+
+/* Base styles for all strategy elements */
+.strategy-key {
+	font-weight: bold;
+	min-width: fit-content;
+}
+
+.strategy-from,
+.strategy-to {
+	padding: 2px 6px;
+	border-radius: 3px;
+	font-size: 0.9em;
+	border-width: 1px;
+	border-style: solid;
+}
+
+.strategy-to {
+	font-weight: 500;
+}
+
+.strategy-arrow {
+	font-weight: bold;
+	font-size: 1.1em;
+}
+
+.strategy-rationale {
+	margin-top: 6px;
+	padding: 6px 8px;
+	border-radius: 0 3px 3px 0;
+	line-height: 1.4;
+	border-left-width: 3px;
+	border-left-style: solid;
+}
+
+.rationale-label {
+	font-weight: bold;
+	font-style: normal;
+}
+
+/* Active state colors */
+.message.active .strategy-key {
+	color: var(--primary-color);
+}
+
+.message.active .strategy-from {
+	background-color: rgba(165, 139, 76, 0.2);
+	color: #d4c5a3;
+	border-color: rgba(165, 139, 76, 0.4);
+}
+
+.message.active .strategy-to {
+	background-color: rgba(14, 93, 84, 0.4);
+	color: var(--primary-color);
+	border-color: rgba(14, 93, 84, 0.8);
+}
+
+.message.active .strategy-arrow {
+	color: var(--border-gold);
+}
+
+.message.active .strategy-rationale {
+	background-color: rgba(13, 54, 48, 0.3);
+	border-left-color: var(--border-gold);
+}
+
+.message.active .rationale-label {
+	color: var(--border-gold);
+}
+
+/* Inactive state colors */
+.message:not(.active) .strategy-key {
+	color: var(--text-inactive);
+}
+
+.message:not(.active) .strategy-from {
+	background-color: rgba(61, 61, 48, 0.2);
+	color: #5a5a4a;
+	border-color: rgba(61, 61, 48, 0.4);
+}
+
+.message:not(.active) .strategy-to {
+	background-color: rgba(61, 61, 48, 0.3);
+	color: #6a6a5a;
+	border-color: rgba(61, 61, 48, 0.5);
+}
+
+.message:not(.active) .strategy-arrow {
+	color: #5a5a4a;
+}
+
+.message:not(.active) .strategy-rationale {
+	background-color: rgba(26, 26, 20, 0.3);
+	border-left-color: #4a4a3a;
+	color: var(--text-inactive);
+}
+
+.message:not(.active) .rationale-label {
+	color: #5a5a4a;
+}
+
 /* Turn Separator Styling */
 .turn-separator {
 	padding: 5px 10px;
@@ -628,6 +740,11 @@ input[type=checkbox]:checked {
 
 .leaflet-control-layers-list label {
 	color: var(--primary-color);
+	font-size: 13px;
+}
+
+.leaflet-control-layers-list span {
+	padding: 0 5px;
 }
 
 /* ============================================

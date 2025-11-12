@@ -39,6 +39,9 @@ export class ReplayViewer {
     // Setup file handling (drag-and-drop and click-to-open)
     this.setupFileHandling();
 
+    // Setup window resize handler
+    this.setupResizeHandler();
+
     // Check for URL parameters
     this.handleUrlParameters();
   }
@@ -106,6 +109,24 @@ export class ReplayViewer {
       }
     };
     input.click();
+  }
+
+  /**
+   * Setup window resize handler to refit map
+   */
+  private setupResizeHandler(): void {
+    let resizeTimeout: number;
+
+    window.addEventListener('resize', () => {
+      // Debounce resize events
+      clearTimeout(resizeTimeout);
+      resizeTimeout = window.setTimeout(() => {
+        // Only refit if we have a loaded replay
+        if (this.hasReplay()) {
+          this.map.fitMap();
+        }
+      }, 250);
+    });
   }
 
   /**
@@ -205,6 +226,12 @@ export class ReplayViewer {
       // Trigger initial render
       this.renderTurn(initialTurn);
 
+      // Fit map to container after everything is loaded
+      // Use setTimeout to ensure DOM has updated
+      setTimeout(() => {
+        this.map.fitMap();
+      }, 100);
+
     } catch (error) {
       console.error('Error processing replay:', error);
       this.showError('Failed to process replay file: ' + error.message);
@@ -222,6 +249,9 @@ export class ReplayViewer {
 
     // Initialize map layers
     this.map.initLayers(this.replay.tiles, this.replay.events, this.replay);
+
+    // Fit map immediately after layers are initialized
+    this.map.fitMap();
 
     // Initialize control bar
     this.controlBar = new ControlBar({

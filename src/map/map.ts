@@ -25,12 +25,14 @@ export class ReplayMap {
 	layers: Record<string, MapLayer>;    // Map visualization layers by name
 	controls: Record<string, MapControl>; // Map UI controls by name
 	replay: Replay | null;               // Reference to replay instance for civ name lookups
+	mapBounds: any;                       // Stored bounds for refitting the map
 
 	constructor(replay?: Replay) {
 		this.replay = replay || null;
 		this.map = L.map(document.querySelector('.map'), {
 			attributionControl: false,
-			keyboardPanOffset: 0
+			keyboardPanOffset: 0,
+			zoomSnap: 0.2          // Allow fractional zoom levels with 0.25 increments
 		}).setView([0, 0], 0);
 
 		this.turn = 0;
@@ -256,7 +258,11 @@ export class ReplayMap {
 		this.map.on('click', onMapClick);
 
 		var bounds = [[south, west], [north, east]];
-		this.map.fitBounds(bounds);
+		// Store bounds for later use when map needs to be refit
+		this.mapBounds = bounds;
+
+		// Don't fit bounds here - let it be done after the replay loads
+		// to ensure the container is properly sized
 	}
 
 	// Get hexes that have changed between two turns
@@ -314,6 +320,29 @@ export class ReplayMap {
 			// Full redraw for initial load or invalid turns
 			if (this.layers.city._map) { this.layers.city.redraw(); }
 			if (this.layers.territory._map) { this.layers.territory.redraw(); }
+		}
+	}
+
+	// Refit map to container and bounds
+	fitMap() {
+		if (this.map && this.mapBounds) {
+			// Force a synchronous reflow to ensure container dimensions are calculated
+			const container = this.map.getContainer();
+			if (container) {
+				// Force layout recalculation
+				container.offsetHeight;
+			}
+
+			// Invalidate the size to ensure Leaflet recalculates container dimensions
+			this.map.invalidateSize(false);
+
+			// Fit to bounds with padding
+			// Add padding to ensure the map fits well within the container
+			// Don't set maxZoom to allow fractional zoom calculation
+			this.map.fitBounds(this.mapBounds, {
+				padding: [30, 30, 30, 30],
+				animate: false
+			});
 		}
 	}
 }

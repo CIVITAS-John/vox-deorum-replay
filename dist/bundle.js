@@ -491,7 +491,8 @@
             this.replay = replay || null;
             this.map = L.map(document.querySelector('.map'), {
                 attributionControl: false,
-                keyboardPanOffset: 0
+                keyboardPanOffset: 0,
+                zoomSnap: 0.2 // Allow fractional zoom levels with 0.25 increments
             }).setView([0, 0], 0);
             this.turn = 0;
         }
@@ -684,7 +685,10 @@
             }
             this.map.on('click', onMapClick);
             var bounds = [[south, west], [north, east]];
-            this.map.fitBounds(bounds);
+            // Store bounds for later use when map needs to be refit
+            this.mapBounds = bounds;
+            // Don't fit bounds here - let it be done after the replay loads
+            // to ensure the container is properly sized
         }
         // Get hexes that have changed between two turns
         getChangedHexes(fromTurn, toTurn) {
@@ -740,6 +744,209 @@
                 }
             }
         }
+        // Refit map to container and bounds
+        fitMap() {
+            if (this.map && this.mapBounds) {
+                // Force a synchronous reflow to ensure container dimensions are calculated
+                const container = this.map.getContainer();
+                if (container) {
+                    // Force layout recalculation
+                    container.offsetHeight;
+                }
+                // Invalidate the size to ensure Leaflet recalculates container dimensions
+                this.map.invalidateSize(false);
+                // Fit to bounds with padding
+                // Add padding to ensure the map fits well within the container
+                // Don't set maxZoom to allow fractional zoom calculation
+                this.map.fitBounds(this.mapBounds, {
+                    padding: [30, 30, 30, 30],
+                    animate: false
+                });
+            }
+        }
+    }
+
+    /**
+     * strategy-parser.ts
+     * Parses strategy change events and formats them for display
+     */
+    /**
+     * Configurable patterns for different strategy change types
+     * Add new patterns here to support additional event types
+     */
+    const PATTERN_CONFIGS = [
+        {
+            type: 'strategies',
+            prefix: 'Changed strategies:',
+            isComplex: true
+        },
+        {
+            type: 'persona',
+            prefix: 'Changed persona values:',
+            isComplex: true
+        },
+        {
+            type: 'research',
+            prefix: 'Changed next research:',
+            displayLabel: 'Next Research'
+        },
+        {
+            type: 'policy_branch',
+            prefix: 'Changed next policy branch:',
+            displayLabel: 'Next Policy Branch'
+        },
+        {
+            type: 'policy',
+            prefix: 'Changed next policy:',
+            displayLabel: 'Next Policy'
+        }
+    ];
+    /**
+     * Parse rationale from text
+     * Extracts the rationale portion after "Rationale:" marker
+     */
+    function parseRationale(text) {
+        const rationaleMatch = text.match(/\.\s*Rationale:\s*(.+?)$/);
+        if (rationaleMatch) {
+            const mainText = text.substring(0, rationaleMatch.index);
+            const rationale = rationaleMatch[1].trim();
+            return { mainText, rationale };
+        }
+        return { mainText: text, rationale: null };
+    }
+    /**
+     * Parse complex strategy changes from the main text
+     * Handles format: "GrandStrategy: None → Conquest; EconomicStrategies: [None] → [EarlyExpansion]"
+     */
+    function parseComplexChanges(text) {
+        const changes = [];
+        // Split by semicolon to get individual strategy changes
+        const parts = text.split(';');
+        for (const part of parts) {
+            const colonIndex = part.indexOf(':');
+            if (colonIndex === -1)
+                continue;
+            const key = part.substring(0, colonIndex).trim();
+            const values = part.substring(colonIndex + 1).trim();
+            // Look for arrow
+            const arrowMatch = values.match(/(.+?)\s*→\s*(.+)/);
+            if (arrowMatch) {
+                changes.push({
+                    key: key,
+                    from: arrowMatch[1].trim(),
+                    to: arrowMatch[2].trim()
+                });
+            }
+        }
+        return changes;
+    }
+    /**
+     * Parse a simple change
+     * Handles format: "None → Pottery" or "None → Tradition"
+     */
+    function parseSimpleChange(text, displayLabel) {
+        const arrowMatch = text.match(/(.+?)\s*→\s*(.+)/);
+        if (arrowMatch) {
+            return [{
+                    key: displayLabel,
+                    from: arrowMatch[1].trim(),
+                    to: arrowMatch[2].trim()
+                }];
+        }
+        return [];
+    }
+    /**
+     * Parse strategy event text containing arrow notation
+     * Returns null if the text doesn't match expected patterns
+     */
+    function parseStrategyEvent(text) {
+        // Check if text contains arrow notation
+        if (!text.includes('→')) {
+            return null;
+        }
+        // First, extract rationale if present
+        const { mainText, rationale } = parseRationale(text);
+        // Try each configured pattern
+        for (const config of PATTERN_CONFIGS) {
+            if (mainText.startsWith(config.prefix)) {
+                const contentText = mainText.substring(config.prefix.length).trim();
+                let changes;
+                if (config.isComplex) {
+                    // Complex pattern with multiple possible changes
+                    changes = parseComplexChanges(contentText);
+                }
+                else {
+                    // Simple pattern with single change
+                    changes = parseSimpleChange(contentText, config.displayLabel);
+                }
+                if (changes.length > 0) {
+                    return {
+                        type: config.type,
+                        changes,
+                        rationale
+                    };
+                }
+            }
+        }
+        // Fallback: try to parse as generic strategy changes if it has colons and arrows
+        if (mainText.includes(':') && mainText.includes('→')) {
+            const changes = parseComplexChanges(mainText);
+            if (changes.length > 0) {
+                return {
+                    type: 'other',
+                    changes,
+                    rationale
+                };
+            }
+        }
+        return null;
+    }
+    /**
+     * Create DOM elements for a parsed strategy event
+     */
+    function renderStrategyEvent(parsed) {
+        const container = document.createElement('div');
+        container.className = 'strategy-change';
+        // Render each change
+        parsed.changes.forEach(change => {
+            const item = document.createElement('div');
+            item.className = 'strategy-change-item';
+            // Key
+            const keyEl = document.createElement('span');
+            keyEl.className = 'strategy-key';
+            keyEl.textContent = change.key + ':';
+            item.appendChild(keyEl);
+            // From value
+            const fromEl = document.createElement('span');
+            fromEl.className = 'strategy-from';
+            fromEl.textContent = change.from;
+            item.appendChild(fromEl);
+            // Arrow
+            const arrowEl = document.createElement('span');
+            arrowEl.className = 'strategy-arrow';
+            arrowEl.textContent = '→';
+            item.appendChild(arrowEl);
+            // To value
+            const toEl = document.createElement('span');
+            toEl.className = 'strategy-to';
+            toEl.textContent = change.to;
+            item.appendChild(toEl);
+            container.appendChild(item);
+        });
+        // Render rationale if present
+        if (parsed.rationale) {
+            const rationaleEl = document.createElement('div');
+            rationaleEl.className = 'strategy-rationale';
+            const label = document.createElement('span');
+            label.className = 'rationale-label';
+            label.textContent = 'Rationale: ';
+            rationaleEl.appendChild(label);
+            const text = document.createElement('span');
+            text.textContent = parsed.rationale;
+            rationaleEl.appendChild(text);
+            container.appendChild(rationaleEl);
+        }
+        return container;
     }
 
     /**
@@ -855,10 +1062,22 @@
                 }
             }
             // Add event text
-            const eventText = document.createElement('div');
-            eventText.className = 'event-text';
-            eventText.textContent = event.text || '';
-            msg.appendChild(eventText);
+            if (event.text) {
+                // Try to parse as strategy event
+                const parsed = parseStrategyEvent(event.text);
+                if (parsed) {
+                    // Render as formatted strategy change
+                    const strategyElement = renderStrategyEvent(parsed);
+                    msg.appendChild(strategyElement);
+                }
+                else {
+                    // Render as plain text
+                    const eventText = document.createElement('div');
+                    eventText.className = 'event-text';
+                    eventText.textContent = event.text;
+                    msg.appendChild(eventText);
+                }
+            }
             // Store bidirectional association using WeakMap and Map
             this.elementToEvent.set(msg, event);
             this.eventToElement.set(event, msg);
@@ -1834,6 +2053,8 @@
             this.map = new ReplayMap();
             // Setup file handling (drag-and-drop and click-to-open)
             this.setupFileHandling();
+            // Setup window resize handler
+            this.setupResizeHandler();
             // Check for URL parameters
             this.handleUrlParameters();
         }
@@ -1892,6 +2113,22 @@
                 }
             };
             input.click();
+        }
+        /**
+         * Setup window resize handler to refit map
+         */
+        setupResizeHandler() {
+            let resizeTimeout;
+            window.addEventListener('resize', () => {
+                // Debounce resize events
+                clearTimeout(resizeTimeout);
+                resizeTimeout = window.setTimeout(() => {
+                    // Only refit if we have a loaded replay
+                    if (this.hasReplay()) {
+                        this.map.fitMap();
+                    }
+                }, 250);
+            });
         }
         /**
          * Handle URL parameters for file loading
@@ -1976,6 +2213,11 @@
                     : this.replay.startTurn;
                 // Trigger initial render
                 this.renderTurn(initialTurn);
+                // Fit map to container after everything is loaded
+                // Use setTimeout to ensure DOM has updated
+                setTimeout(() => {
+                    this.map.fitMap();
+                }, 100);
             }
             catch (error) {
                 console.error('Error processing replay:', error);
@@ -1992,6 +2234,8 @@
             this.eventLog = new EventLog(this.replay.events, this.replay);
             // Initialize map layers
             this.map.initLayers(this.replay.tiles, this.replay.events, this.replay);
+            // Fit map immediately after layers are initialized
+            this.map.fitMap();
             // Initialize control bar
             this.controlBar = new ControlBar({
                 start: this.replay.startTurn,

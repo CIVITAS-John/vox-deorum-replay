@@ -6,6 +6,7 @@
 
 import { GameEvent, EventType } from '../types/replay.types';
 import { Replay } from '../core/replay';
+import { parseStrategyEvent, renderStrategyEvent } from '../utils/strategy-parser';
 
 // External libraries accessed as globals - types defined in globals.d.ts
 
@@ -90,6 +91,7 @@ export class EventLog {
 		});
 	}
 
+
 	/**
 	 * Create a message element for an event
 	 */
@@ -139,10 +141,22 @@ export class EventLog {
 		}
 
 		// Add event text
-		const eventText = document.createElement('div');
-		eventText.className = 'event-text';
-		eventText.textContent = event.text || '';
-		msg.appendChild(eventText);
+		if (event.text) {
+			// Try to parse as strategy event
+			const parsed = parseStrategyEvent(event.text);
+
+			if (parsed) {
+				// Render as formatted strategy change
+				const strategyElement = renderStrategyEvent(parsed);
+				msg.appendChild(strategyElement);
+			} else {
+				// Render as plain text
+				const eventText = document.createElement('div');
+				eventText.className = 'event-text';
+				eventText.textContent = event.text;
+				msg.appendChild(eventText);
+			}
+		}
 
 		// Store bidirectional association using WeakMap and Map
 		this.elementToEvent.set(msg, event);

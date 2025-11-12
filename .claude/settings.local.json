@@ -14,7 +14,8 @@
       "Bash(npx tsc:*)",
       "Bash(find:*)",
       "Bash(WebFetch)",
-      "Bash(WebSearch)"
+      "Bash(WebSearch)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
