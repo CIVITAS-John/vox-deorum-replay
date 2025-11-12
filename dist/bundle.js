@@ -108,8 +108,10 @@
             // Normalize tile x/y coordinates
             var tileX = tilePoint.x % scalingFactor;
             var tileY = tilePoint.y % scalingFactor;
-            // Get cache key
-            var cacheKey = [tileX, tileY, zoom].join(',');
+            // Get cache key - round zoom to avoid floating point precision issues
+            // (e.g., 2.8000000000003 becomes 2.8)
+            var roundedZoom = Math.round(zoom * 10000) / 10000;
+            var cacheKey = [tileX, tileY, roundedZoom].join(',');
             if (this.config.cacheKeySuffix) {
                 cacheKey += this.config.cacheKeySuffix();
             }
@@ -255,6 +257,17 @@
             ctx.drawImage(img, 0, 0, img.width, img.height, sx, sy, sw, sh);
         },
         /**
+         * Clear the tile cache
+         * Should be called when loading a new replay to prevent showing old cached tiles
+         */
+        clearCache: function () {
+            this.tileCache = {};
+            // Force a redraw of all visible tiles
+            if (this._map) {
+                this.redraw();
+            }
+        },
+        /**
          * Selectively redraw only specific hexes that have changed
          * This is more efficient than redrawing the entire layer
          * @param {string[]} changedHexKeys - Array of hex keys in format "x,y"
@@ -292,10 +305,12 @@
                 const minTileY = Math.floor((hexCenterY - hexHeight) / tileSize.y);
                 const maxTileY = Math.floor((hexCenterY + hexHeight) / tileSize.y);
                 // Add all affected tiles to redraw set
+                // Round zoom to match the cache key generation
+                const roundedZoom = Math.round(zoom * 10000) / 10000;
                 for (let tx = minTileX; tx <= maxTileX; tx++) {
                     for (let ty = minTileY; ty <= maxTileY; ty++) {
                         if (tx >= 0 && ty >= 0 && tx < scalingFactor && ty < scalingFactor) {
-                            tilesToRedraw.add(`${tx},${ty},${zoom}`);
+                            tilesToRedraw.add(`${tx},${ty},${roundedZoom}`);
                         }
                     }
                 }
@@ -477,6 +492,51 @@
     }
 
     /**
+     * throttle.ts
+     * Utility function to throttle function execution
+     * Prevents a function from being called more than once within a specified time period
+     */
+    /**
+     * Creates a throttled version of a function that limits execution frequency
+     * @param func - The function to throttle
+     * @param delay - The minimum delay in milliseconds between executions
+     * @returns A throttled version of the function
+     */
+    function throttle(func, delay) {
+        let timeoutId = null;
+        let lastExecutionTime = 0;
+        let pendingArgs = null;
+        return function (...args) {
+            const currentTime = Date.now();
+            const timeSinceLastExecution = currentTime - lastExecutionTime;
+            const context = this;
+            // Clear any existing timeout
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+            // If enough time has passed, execute immediately
+            if (timeSinceLastExecution >= delay) {
+                lastExecutionTime = currentTime;
+                func.apply(context, args);
+            }
+            else {
+                // Otherwise, store the args and schedule execution
+                pendingArgs = args;
+                const remainingDelay = delay - timeSinceLastExecution;
+                timeoutId = setTimeout(() => {
+                    if (pendingArgs !== null) {
+                        lastExecutionTime = Date.now();
+                        func.apply(context, pendingArgs);
+                        pendingArgs = null;
+                    }
+                    timeoutId = null;
+                }, remainingDelay);
+            }
+        };
+    }
+
+    /**
      * map.ts
      * Manages the Leaflet map display for the replay viewer
      * Handles rendering of terrain, cities, territories, and turn-based state changes
@@ -495,6 +555,10 @@
                 zoomSnap: 0.2 // Allow fractional zoom levels with 0.25 increments
             }).setView([0, 0], 0);
             this.turn = -1; // Initialize to -1 so first renderTurn always triggers a redraw
+            // Create throttled version of renderTurn to prevent excessive rendering
+            // when dragging through many turns quickly (e.g., slider dragging)
+            // 100ms throttle provides smooth visual feedback while limiting render calls
+            this.renderTurnThrottled = throttle(this.renderTurn.bind(this), 100);
         }
         // Initialize map layers and process turn states from events
         initLayers(tiles, events, replay) {
@@ -503,15 +567,16 @@
                 this.replay = replay;
             }
             var self = this;
-            // Store the start turn for proper indexing
-            this.startTurn = events[0].turn;
             // Track the state of each tile at every turn
             this.turnStates = [];
             var eventsByTurn = _.groupBy(events, 'turn');
             var lastState = {};
-            for (var t = events[0].turn; t <= events[events.length - 1].turn; t++) {
+            // Always start from turn 0, regardless of when first event occurs
+            const lastTurn = events[events.length - 1].turn;
+            for (var t = 0; t <= lastTurn; t++) {
                 // Start by copying last state
                 var state = _.clone(lastState, true);
+                // Get events for this turn
                 var turnEvents = eventsByTurn[t] || [];
                 for (var e = 0; e < turnEvents.length; e++) {
                     var event = turnEvents[e];
@@ -695,9 +760,9 @@
         // Get hexes that have changed between two turns
         getChangedHexes(fromTurn, toTurn) {
             const changedHexes = [];
-            // Convert turn numbers to array indices
-            const fromIndex = fromTurn - this.startTurn;
-            const toIndex = toTurn - this.startTurn;
+            // Turn numbers are now directly array indices (0-based)
+            const fromIndex = fromTurn;
+            const toIndex = toTurn;
             const fromState = this.turnStates[fromIndex] || {};
             const toState = this.turnStates[toIndex] || {};
             // Check for changes in toState
@@ -722,27 +787,63 @@
         // Update map display for specified turn
         renderTurn(turn) {
             const previousTurn = this.turn;
-            this.turn = turn;
-            // Convert turn number to array index
-            const turnIndex = turn - this.startTurn;
+            // Turn is now directly the array index (0-based)
+            const turnIndex = turn;
             this.turnState = this.turnStates[turnIndex];
-            this.layers.city.turnState = this.turnState;
-            this.layers.territory.turnState = this.turnState;
+            // Always update the turn state for the layers
+            if (this.layers.city) {
+                this.layers.city.turnState = this.turnState;
+            }
+            if (this.layers.territory) {
+                this.layers.territory.turnState = this.turnState;
+            }
             // Skip if turn hasn't changed
             if (previousTurn === turn) {
                 return;
             }
-            // For layers with dynamic content (city, territory), we always need to redraw
-            // because the cache key includes the turn number
+            // Check if layers are properly attached to the map
+            const cityLayerReady = this.layers.city && this.layers.city._map;
+            const territoryLayerReady = this.layers.territory && this.layers.territory._map;
+            // If layers aren't ready, skip rendering (they'll render when attached)
+            if (!cityLayerReady || !territoryLayerReady) {
+                console.log('Layers not ready, skipping render');
+                return;
+            }
+            console.log(`Rendering turn ${turn}, previous turn was ${this.turn}`);
+            this.turn = turn;
+            // Use incremental rendering to update only changed hexes
+            // This works for forward navigation
+            if (previousTurn !== undefined && previousTurn >= 0 && turn > previousTurn) {
+                // Get list of hexes that changed between turns
+                const changedHexes = this.getChangedHexes(previousTurn, turn);
+                if (changedHexes.length === 0)
+                    return;
+                // If only a few hexes changed, use incremental rendering
+                // Otherwise fall back to full redraw for major changes
+                if (changedHexes.length < 100) {
+                    // Use incremental rendering for both layers
+                    this.layers.city.redrawHexes(changedHexes);
+                    this.layers.territory.redrawHexes(changedHexes);
+                    return;
+                }
+            }
+            // Fall back to full redraw for initial load or major changes
             // Clear the cache and force redraw for these layers
-            if (this.layers.city && this.layers.city._map) {
+            if (cityLayerReady) {
                 this.layers.city.tileCache = {};
                 this.layers.city.redraw();
             }
-            if (this.layers.territory && this.layers.territory._map) {
+            if (territoryLayerReady) {
                 this.layers.territory.tileCache = {};
                 this.layers.territory.redraw();
             }
+        }
+        // Reset turn tracking state
+        resetTurnState() {
+            // Reset turn to -1 so the first renderTurn will trigger a full redraw
+            this.turn = -1;
+            // Note: We can't cancel pending throttled calls, but resetting turn to -1
+            // ensures the next renderTurn will perform a full redraw regardless
         }
         // Refit map to container and bounds
         fitMap() {
@@ -1305,10 +1406,10 @@
                     const civHeader = document.createElement('div');
                     civHeader.className = 'civ-header';
                     if (civColor) {
-                        // Major civ - use colored circle
+                        // Major civ - use colored circle with territory/tile color
                         const circle = document.createElement('span');
                         circle.className = 'civ-circle';
-                        circle.style.backgroundColor = `rgb(${civColor.city[0]}, ${civColor.city[1]}, ${civColor.city[2]})`;
+                        circle.style.backgroundColor = `rgb(${civColor.territory[0]}, ${civColor.territory[1]}, ${civColor.territory[2]})`;
                         civHeader.appendChild(circle);
                     }
                     else {
@@ -1514,95 +1615,125 @@
      */
     class ControlBar {
         constructor(config) {
+            this.initialized = false; // Track if the control bar has been initialized
+            this.keydownHandler = null; // Store keydown handler for cleanup
+            this.playPauseHandler = null; // Store play/pause handler for cleanup
+            // Allow constructor to be called without config for initial instance creation
+            if (config) {
+                this.initialize(config);
+            }
+        }
+        // Initialize or reinitialize the control bar with new config
+        initialize(config) {
             this.config = config;
             this.config.onChange = (this.config.onChange || function () { }).bind(this);
-            // Play/pause button
-            this.playPauseBtn = document.getElementById('playPause');
-            this.playPauseBtn.addEventListener('click', this.togglePlay.bind(this));
-            // Speed slider
-            this.playIntervals = [2000, 1000, 600, 400, 0];
-            this.playInterval = this.playIntervals[2];
-            this.speedSliderEl = document.getElementById('speedSlider');
-            // Note: Bootstrap slider still requires jQuery internally, we'll keep using it through its API
-            $(this.speedSliderEl).slider({
-                id: 'speedSlider',
-                min: 0,
-                max: 4,
-                value: 2,
-                tooltip: 'hide',
-                ticks: [0, 1, 2, 3, 4],
-                ticks_snap_bounds: 1
-            });
-            this.speedSlider = $(this.speedSliderEl).data().slider;
-            $(this.speedSliderEl).on('change', (e) => this.setSpeed(e.value.newValue));
-            // Turn slider
-            this.turnSliderEl = document.getElementById('turnSlider');
-            $(this.turnSliderEl).slider({
-                id: 'turnSlider',
-                min: this.config.start,
-                max: this.config.end,
-                value: this.config.start,
-                tooltip: 'always',
-                tooltip_position: 'bottom'
-            });
-            this.turnSlider = $(this.turnSliderEl).data().slider;
-            // Listen for slider change events (fires when user releases the slider)
-            $(this.turnSliderEl).on('change', (e) => {
+            // Stop any existing playback
+            this.pause();
+            // Only set up event handlers on first initialization
+            if (!this.initialized) {
+                // Play/pause button
+                this.playPauseBtn = document.getElementById('playPause');
+                this.playPauseHandler = this.togglePlay.bind(this);
+                this.playPauseBtn.addEventListener('click', this.playPauseHandler);
+                // Speed slider
+                this.playIntervals = [2000, 1000, 600, 400, 0];
+                this.playInterval = this.playIntervals[2];
+                this.speedSliderEl = document.getElementById('speedSlider');
+                // Note: Bootstrap slider still requires jQuery internally, we'll keep using it through its API
+                $(this.speedSliderEl).slider({
+                    id: 'speedSlider',
+                    min: 0,
+                    max: 4,
+                    value: 2,
+                    tooltip: 'hide',
+                    ticks: [0, 1, 2, 3, 4],
+                    ticks_snap_bounds: 1
+                });
+                this.speedSlider = $(this.speedSliderEl).data().slider;
+                $(this.speedSliderEl).on('change', (e) => this.setSpeed(e.value.newValue));
+                // Turn slider
+                this.turnSliderEl = document.getElementById('turnSlider');
+                $(this.turnSliderEl).slider({
+                    id: 'turnSlider',
+                    min: this.config.start,
+                    max: this.config.end,
+                    value: this.config.initial || this.config.start,
+                    tooltip: 'always',
+                    tooltip_position: 'bottom'
+                });
+                this.turnSlider = $(this.turnSliderEl).data().slider;
+                // Listen for spacebar to toggle play/pause
+                this.keydownHandler = (e) => {
+                    // Prevent handling if not initialized with a config
+                    if (!this.config)
+                        return;
+                    switch (e.keyCode) {
+                        case 32:
+                            this.togglePlay();
+                            return; // space
+                        case 33:
+                            this.setTurn(this.config.start);
+                            return; // page up
+                        case 34:
+                            this.setTurn(this.config.end);
+                            return; // page down
+                        case 35:
+                            this.setTurn(this.config.end);
+                            return; // end
+                        case 36:
+                            this.setTurn(this.config.start);
+                            return; // home
+                        case 37:
+                            this.step(-1);
+                            return; // left
+                        case 39:
+                            this.step(1);
+                            return; // right
+                        case 38:
+                            this.step(-10);
+                            return; // up
+                        case 40:
+                            this.step(10);
+                            return; // down
+                        case 49:
+                            this.speedSlider.setValue(0, true, true);
+                            return; // 1
+                        case 50:
+                            this.speedSlider.setValue(1, true, true);
+                            return; // 2
+                        case 51:
+                            this.speedSlider.setValue(2, true, true);
+                            return; // 3
+                        case 52:
+                            this.speedSlider.setValue(3, true, true);
+                            return; // 4
+                        case 53:
+                            this.speedSlider.setValue(4, true, true);
+                            return; // 5
+                        default: return;
+                    }
+                };
+                document.addEventListener('keydown', this.keydownHandler);
+                this.initialized = true;
+            }
+            else {
+                // On subsequent initializations, just update the turn slider range
+                // Update the slider's min, max, and value without destroying it
+                this.turnSlider.setAttribute({
+                    min: this.config.start,
+                    max: this.config.end
+                });
+                this.turnSlider.setValue(this.config.initial || this.config.start, true, true);
+            }
+            // Update turn slider event handlers (remove old ones first)
+            $(this.turnSliderEl).off('change').on('change', (e) => {
                 this.config.onChange(e.value.newValue);
             });
             // Listen for slide events (fires continuously while dragging)
-            $(this.turnSliderEl).on('slide', (e) => {
+            $(this.turnSliderEl).off('slide').on('slide', (e) => {
                 this.config.onChange(e.value);
             });
-            // Listen for spacebar to toggle play/pause
-            document.addEventListener('keydown', (e) => {
-                switch (e.keyCode) {
-                    case 32:
-                        this.togglePlay();
-                        return; // space
-                    case 33:
-                        this.setTurn(this.config.start);
-                        return; // page up
-                    case 34:
-                        this.setTurn(this.config.end);
-                        return; // page down
-                    case 35:
-                        this.setTurn(this.config.end);
-                        return; // end
-                    case 36:
-                        this.setTurn(this.config.start);
-                        return; // home
-                    case 37:
-                        this.step(-1);
-                        return; // left
-                    case 39:
-                        this.step(1);
-                        return; // right
-                    case 38:
-                        this.step(-10);
-                        return; // up
-                    case 40:
-                        this.step(10);
-                        return; // down
-                    case 49:
-                        this.speedSlider.setValue(0, true, true);
-                        return; // 1
-                    case 50:
-                        this.speedSlider.setValue(1, true, true);
-                        return; // 2
-                    case 51:
-                        this.speedSlider.setValue(2, true, true);
-                        return; // 3
-                    case 52:
-                        this.speedSlider.setValue(3, true, true);
-                        return; // 4
-                    case 53:
-                        this.speedSlider.setValue(4, true, true);
-                        return; // 5
-                    default: return;
-                }
-            });
-            this.setTurn(this.config.initial);
+            this.setTurn(this.config.initial || this.config.start);
         }
         // Get current turn number from slider
         getTurn() {
@@ -1665,6 +1796,21 @@
             if (this.playTimer) {
                 this.pause();
                 this.play();
+            }
+        }
+        // Clear the control bar (cleanup timers)
+        clear() {
+            var _a;
+            // Stop playback timer if running
+            if (this.playTimer) {
+                clearInterval(this.playTimer);
+                this.playTimer = null;
+            }
+            // Reset play/pause button to play icon
+            const icon = (_a = this.playPauseBtn) === null || _a === void 0 ? void 0 : _a.querySelector('i');
+            if (icon) {
+                icon.classList.remove('fa-pause');
+                icon.classList.add('fa-play');
             }
         }
     }
@@ -2320,6 +2466,8 @@
             this.initialTurn = null;
             this.isLoading = false;
             this.initialize();
+            // Create control bar instance once (will be reinitialized with each replay)
+            this.controlBar = new ControlBar();
         }
         /**
          * Initialize the UI component
@@ -2512,8 +2660,8 @@
             this.map.initLayers(this.replay.tiles, this.replay.events, this.replay);
             // Fit map immediately after layers are initialized
             this.map.fitMap();
-            // Initialize control bar
-            this.controlBar = new ControlBar({
+            // Reinitialize control bar with new replay data (reuses existing instance)
+            this.controlBar.initialize({
                 start: this.replay.startTurn,
                 end: this.replay.endTurn,
                 initial: this.initialTurn
@@ -2545,8 +2693,14 @@
             }
             // Clean up map layers and controls
             if (this.map && this.map.map) {
+                // Reset the map's turn tracking state
+                this.map.resetTurnState();
                 if (this.map.layers) {
                     Object.values(this.map.layers).forEach(layer => {
+                        // Clear tile cache if the layer has this method
+                        if (layer.clearCache) {
+                            layer.clearCache();
+                        }
                         this.map.map.removeLayer(layer);
                     });
                 }
@@ -2556,8 +2710,8 @@
                     });
                 }
             }
-            // Clean up control bar
-            this.controlBar = null;
+            // Clean up control bar (but don't null it - we'll reuse the instance)
+            this.controlBar.clear();
             // Clean up replay data
             this.replay = null;
         }

@@ -119,10 +119,10 @@ export class EventLog {
 				civHeader.className = 'civ-header';
 
 				if (civColor) {
-					// Major civ - use colored circle
+					// Major civ - use colored circle with territory/tile color
 					const circle = document.createElement('span');
 					circle.className = 'civ-circle';
-					circle.style.backgroundColor = `rgb(${civColor.city[0]}, ${civColor.city[1]}, ${civColor.city[2]})`;
+					circle.style.backgroundColor = `rgb(${civColor.territory[0]}, ${civColor.territory[1]}, ${civColor.territory[2]})`;
 					civHeader.appendChild(circle);
 				} else {
 					// Minor civ - use rectangle with default color

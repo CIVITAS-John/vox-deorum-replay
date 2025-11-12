@@ -36,6 +36,7 @@ export interface MapLayer {
   setData(tiles: HexData[][]): void;       // Set tile data for rendering
   redraw(): void;                          // Force redraw of layer
   redrawHexes(changedHexKeys: string[]): void; // Selectively redraw specific hexes
+  clearCache?(): void;                     // Clear tile cache (optional, for HexLayer)
   options?: HexLayerConfig;                // Layer configuration options
   turnState?: any;                         // Current turn state
   _map?: any;                              // Reference to Leaflet map instance

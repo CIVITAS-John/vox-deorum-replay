@@ -5,11 +5,12 @@
  */
 
 import { HexLayer } from './hex-layer';
-import { CivColors } from '../config/civ-colors';
+import { CivColors } from '../utils/civ-colors';
 import { TurnState, MapLayer, MapControl, HexData } from '../types/map.types';
 import { Tile, GameEvent, EventType, TileType, FeatureType, ElevationType } from '../types/replay.types';
 import { getTileTypeName, getFeatureName, getElevationName } from '../utils/enum-names';
 import { Replay } from '../core/replay';
+import { throttle } from '../utils/throttle';
 
 // External libraries accessed as globals - types defined in globals.d.ts
 
@@ -26,7 +27,7 @@ export class ReplayMap {
 	controls: Record<string, MapControl>; // Map UI controls by name
 	replay: Replay | null;               // Reference to replay instance for civ name lookups
 	mapBounds: any;                       // Stored bounds for refitting the map
-	startTurn: number;                    // First turn number in the replay
+	renderTurnThrottled: (turn: number) => void; // Throttled version of renderTurn
 
 	constructor(replay?: Replay) {
 		this.replay = replay || null;
@@ -37,6 +38,11 @@ export class ReplayMap {
 		}).setView([0, 0], 0);
 
 		this.turn = -1; // Initialize to -1 so first renderTurn always triggers a redraw
+
+		// Create throttled version of renderTurn to prevent excessive rendering
+		// when dragging through many turns quickly (e.g., slider dragging)
+		// 100ms throttle provides smooth visual feedback while limiting render calls
+		this.renderTurnThrottled = throttle(this.renderTurn.bind(this), 100);
 	}
 
 	// Initialize map layers and process turn states from events
@@ -47,18 +53,19 @@ export class ReplayMap {
 		}
 		var self = this;
 
-		// Store the start turn for proper indexing
-		this.startTurn = events[0].turn;
-
 		// Track the state of each tile at every turn
 		this.turnStates = [];
 		var eventsByTurn = _.groupBy(events, 'turn');
 		var lastState: TurnState = {} as TurnState;
 
-		for (var t = events[0].turn; t <= events[events.length - 1].turn; t++) {
+		// Always start from turn 0, regardless of when first event occurs
+		const lastTurn = events[events.length - 1].turn;
+
+		for (var t = 0; t <= lastTurn; t++) {
 			// Start by copying last state
 			var state = _.clone(lastState, true);
 
+			// Get events for this turn
 			var turnEvents = eventsByTurn[t] || [];
 
 			for (var e = 0; e < turnEvents.length; e++) {
@@ -272,9 +279,9 @@ export class ReplayMap {
 	// Get hexes that have changed between two turns
 	getChangedHexes(fromTurn: number, toTurn: number): string[] {
 		const changedHexes: string[] = [];
-		// Convert turn numbers to array indices
-		const fromIndex = fromTurn - this.startTurn;
-		const toIndex = toTurn - this.startTurn;
+		// Turn numbers are now directly array indices (0-based)
+		const fromIndex = fromTurn;
+		const toIndex = toTurn;
 		const fromState = this.turnStates[fromIndex] || {};
 		const toState = this.turnStates[toIndex] || {};
 
@@ -304,30 +311,71 @@ export class ReplayMap {
 	// Update map display for specified turn
 	renderTurn(turn: number) {
 		const previousTurn = this.turn;
-		this.turn = turn;
-		// Convert turn number to array index
-		const turnIndex = turn - this.startTurn;
+		// Turn is now directly the array index (0-based)
+		const turnIndex = turn;
 		this.turnState = this.turnStates[turnIndex];
 
-		this.layers.city.turnState = this.turnState;
-		this.layers.territory.turnState = this.turnState;
+		// Always update the turn state for the layers
+		if (this.layers.city) {
+			this.layers.city.turnState = this.turnState;
+		}
+		if (this.layers.territory) {
+			this.layers.territory.turnState = this.turnState;
+		}
 
 		// Skip if turn hasn't changed
 		if (previousTurn === turn) {
 			return;
 		}
 
-		// For layers with dynamic content (city, territory), we always need to redraw
-		// because the cache key includes the turn number
+		// Check if layers are properly attached to the map
+		const cityLayerReady = this.layers.city && this.layers.city._map;
+		const territoryLayerReady = this.layers.territory && this.layers.territory._map;
+
+		// If layers aren't ready, skip rendering (they'll render when attached)
+		if (!cityLayerReady || !territoryLayerReady) {
+			console.log('Layers not ready, skipping render');
+			return;
+		}
+
+		console.log(`Rendering turn ${turn}, previous turn was ${this.turn}`);
+		this.turn = turn;
+		
+		// Use incremental rendering to update only changed hexes
+		// This works for forward navigation
+		if (previousTurn !== undefined && previousTurn >= 0 && turn > previousTurn) {
+			// Get list of hexes that changed between turns
+			const changedHexes = this.getChangedHexes(previousTurn, turn);
+			if (changedHexes.length === 0) return;
+
+			// If only a few hexes changed, use incremental rendering
+			// Otherwise fall back to full redraw for major changes
+			if (changedHexes.length < 100) {
+				// Use incremental rendering for both layers
+				this.layers.city.redrawHexes(changedHexes);
+				this.layers.territory.redrawHexes(changedHexes);
+				return;
+			}
+		}
+
+		// Fall back to full redraw for initial load or major changes
 		// Clear the cache and force redraw for these layers
-		if (this.layers.city && this.layers.city._map) {
+		if (cityLayerReady) {
 			(this.layers.city as any).tileCache = {};
 			this.layers.city.redraw();
 		}
-		if (this.layers.territory && this.layers.territory._map) {
+		if (territoryLayerReady) {
 			(this.layers.territory as any).tileCache = {};
 			this.layers.territory.redraw();
 		}
+	}
+
+	// Reset turn tracking state
+	resetTurnState() {
+		// Reset turn to -1 so the first renderTurn will trigger a full redraw
+		this.turn = -1;
+		// Note: We can't cancel pending throttled calls, but resetting turn to -1
+		// ensures the next renderTurn will perform a full redraw regardless
 	}
 
 	// Refit map to container and bounds

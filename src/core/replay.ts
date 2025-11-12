@@ -6,7 +6,7 @@
 
 import { ReplayParser } from './replay-parser';
 import { EventParser } from './event-parser';
-import { CivColors } from '../config/civ-colors';
+import { CivColors } from '../utils/civ-colors';
 import {
   Civilization,
   City,

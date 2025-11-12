@@ -125,8 +125,10 @@ export const HexLayer = L.GridLayer.extend({
 		var tileX = tilePoint.x % scalingFactor;
 		var tileY = tilePoint.y % scalingFactor;
 
-		// Get cache key
-		var cacheKey = [tileX, tileY, zoom].join(',');
+		// Get cache key - round zoom to avoid floating point precision issues
+		// (e.g., 2.8000000000003 becomes 2.8)
+		var roundedZoom = Math.round(zoom * 10000) / 10000;
+		var cacheKey = [tileX, tileY, roundedZoom].join(',');
 
 		if (this.config.cacheKeySuffix) {
 			cacheKey += this.config.cacheKeySuffix();
@@ -305,6 +307,18 @@ export const HexLayer = L.GridLayer.extend({
 	},
 
 	/**
+	 * Clear the tile cache
+	 * Should be called when loading a new replay to prevent showing old cached tiles
+	 */
+	clearCache: function () {
+		this.tileCache = {};
+		// Force a redraw of all visible tiles
+		if (this._map) {
+			this.redraw();
+		}
+	},
+
+	/**
 	 * Selectively redraw only specific hexes that have changed
 	 * This is more efficient than redrawing the entire layer
 	 * @param {string[]} changedHexKeys - Array of hex keys in format "x,y"
@@ -352,10 +366,12 @@ export const HexLayer = L.GridLayer.extend({
 			const maxTileY = Math.floor((hexCenterY + hexHeight) / tileSize.y);
 
 			// Add all affected tiles to redraw set
+			// Round zoom to match the cache key generation
+			const roundedZoom = Math.round(zoom * 10000) / 10000;
 			for (let tx = minTileX; tx <= maxTileX; tx++) {
 				for (let ty = minTileY; ty <= maxTileY; ty++) {
 					if (tx >= 0 && ty >= 0 && tx < scalingFactor && ty < scalingFactor) {
-						tilesToRedraw.add(`${tx},${ty},${zoom}`);
+						tilesToRedraw.add(`${tx},${ty},${roundedZoom}`);
 					}
 				}
 			}

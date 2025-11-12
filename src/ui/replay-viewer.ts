@@ -27,6 +27,8 @@ export class ReplayViewer {
 
   constructor() {
     this.initialize();
+    // Create control bar instance once (will be reinitialized with each replay)
+    this.controlBar = new ControlBar();
   }
 
   /**
@@ -253,8 +255,8 @@ export class ReplayViewer {
     // Fit map immediately after layers are initialized
     this.map.fitMap();
 
-    // Initialize control bar
-    this.controlBar = new ControlBar({
+    // Reinitialize control bar with new replay data (reuses existing instance)
+    this.controlBar.initialize({
       start: this.replay.startTurn,
       end: this.replay.endTurn,
       initial: this.initialTurn
@@ -289,8 +291,15 @@ export class ReplayViewer {
 
     // Clean up map layers and controls
     if (this.map && this.map.map) {
+      // Reset the map's turn tracking state
+      this.map.resetTurnState();
+
       if (this.map.layers) {
         Object.values(this.map.layers).forEach(layer => {
+          // Clear tile cache if the layer has this method
+          if (layer.clearCache) {
+            layer.clearCache();
+          }
           this.map.map.removeLayer(layer);
         });
       }
@@ -301,8 +310,8 @@ export class ReplayViewer {
       }
     }
 
-    // Clean up control bar
-    this.controlBar = null;
+    // Clean up control bar (but don't null it - we'll reuse the instance)
+    this.controlBar.clear();
 
     // Clean up replay data
     this.replay = null;
