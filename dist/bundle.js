@@ -398,7 +398,8 @@
      * Creates and initializes the Leaflet map instance
      */
     class Map {
-        constructor() {
+        constructor(replay) {
+            this.replay = replay || null;
             this.map = L.map(document.querySelector('.map'), {
                 attributionControl: false,
                 keyboardPanOffset: 0
@@ -406,7 +407,11 @@
             this.turn = 0;
         }
         // Initialize map layers and process turn states from events
-        initLayers(tiles, events) {
+        initLayers(tiles, events, replay) {
+            // Store replay reference if provided
+            if (replay) {
+                this.replay = replay;
+            }
             var self = this;
             // Track the state of each tile at every turn
             this.turnStates = [];
@@ -421,15 +426,17 @@
                     switch (event.type) {
                         case EventType.CityFounded:
                             var index = [event.x, event.y].join(',');
-                            state[index] = { owner: event.civ, city: event.city.name };
+                            var civName = self.replay ? self.replay.getCivName(event.civId) : null;
+                            state[index] = { owner: civName, city: event.city.name };
                             break;
                         case EventType.TilesClaimed:
                             for (var i = 0; i < event.tiles.length; i++) {
                                 var tile = event.tiles[i];
                                 var index = [tile.x, tile.y].join(',');
                                 state[index] = state[index] || {};
-                                if (event.civ) {
-                                    state[index].owner = event.civ;
+                                var civName = self.replay ? self.replay.getCivName(event.civId) : null;
+                                if (civName) {
+                                    state[index].owner = civName;
                                 }
                                 else {
                                     delete state[index];
@@ -441,7 +448,8 @@
                                 var tile = event.tiles[i];
                                 var index = [tile.x, tile.y].join(',');
                                 state[index] = state[index] || {};
-                                state[index].owner = event.civ;
+                                var civName = self.replay ? self.replay.getCivName(event.civId) : null;
+                                state[index].owner = civName;
                             }
                             break;
                         case EventType.CityRazed:
@@ -1174,22 +1182,21 @@
      * Processes raw game events and enriches them with contextual information
      */
     class EventParser {
-        constructor() {
+        constructor(replay) {
             this.cities = {};
+            this.replay = replay;
         }
         /**
          * Process game events and add human-readable information
          * @param events Raw events from replay data
-         * @param civs List of civilizations for name lookup
          * @returns Processed events with enriched data
          */
-        processEvents(events, civs) {
+        processEvents(events) {
             this.cities = {};
             const processedEvents = [];
             events.forEach((event, index) => {
                 const eventsToAdd = [event];
                 event.index = index;
-                event.civ = this.getCivName(event.civId, civs);
                 // Add x/y reference for single-tile events
                 if (event.tiles && event.tiles.length === 1 &&
                     event.type !== EventType.TilesClaimed) {
@@ -1214,20 +1221,12 @@
             return processedEvents;
         }
         /**
-         * Get civilization name from ID
-         */
-        getCivName(civId, civs) {
-            if (civId === undefined || civId < 0 || civId >= civs.length) {
-                return null;
-            }
-            return civs[civId].name;
-        }
-        /**
          * Process city founded event
          */
         processCityFoundedEvent(event) {
             const cityName = (event.text || '').replace(' is founded.', '');
-            event.city = { name: cityName, owner: event.civ };
+            const civName = this.replay.getCivName(event.civId);
+            event.city = { name: cityName, owner: civName };
             if (event.x !== undefined && event.y !== undefined) {
                 this.cities[`${event.x},${event.y}`] = event.city;
             }
@@ -1242,7 +1241,8 @@
                 event.y = event.tiles[0].y;
                 event.city = this.cities[`${event.x},${event.y}`];
                 if (event.city) {
-                    event.text = `${event.city.name} has been burned to the ground by ${event.civ}!`;
+                    const civName = this.replay.getCivName(event.civId);
+                    event.text = `${event.city.name} has been burned to the ground by ${civName}!`;
                 }
                 // Handle mass razings
                 event.tiles.slice(1).forEach((tile) => {
@@ -1251,7 +1251,8 @@
                     eventCopy.y = tile.y;
                     eventCopy.city = this.cities[`${tile.x},${tile.y}`];
                     if (eventCopy.city) {
-                        eventCopy.text = `${eventCopy.city.name} has been burned to the ground by ${eventCopy.civ}!`;
+                        const civName = this.replay.getCivName(eventCopy.civId);
+                        eventCopy.text = `${eventCopy.city.name} has been burned to the ground by ${civName}!`;
                     }
                     additionalEvents.push(eventCopy);
                 });
@@ -1268,13 +1269,14 @@
                 const city = this.cities[`${tile.x},${tile.y}`];
                 return city ? city.name : 'Unknown';
             });
+            const civName = this.replay.getCivName(event.civId);
             if (cityNames.length === 1) {
-                event.text = `${event.civ} now controls the city of ${cityNames[0]}.`;
+                event.text = `${civName} now controls the city of ${cityNames[0]}.`;
             }
             else if (cityNames.length > 1) {
                 const lastCity = cityNames.pop();
                 const citiesString = cityNames.length === 1 ? cityNames[0] : cityNames.join(', ') + ',';
-                event.text = `${event.civ} now controls the cities of ${citiesString} and ${lastCity}.`;
+                event.text = `${civName} now controls the cities of ${citiesString} and ${lastCity}.`;
             }
         }
         /**
@@ -1284,8 +1286,9 @@
             if (!event.tiles)
                 return;
             const tileCount = event.tiles.length;
-            if (event.civ) {
-                event.text = `${event.civ} has claimed ${tileCount} tile${tileCount > 1 ? 's' : ''}.`;
+            const civName = this.replay.getCivName(event.civId);
+            if (civName) {
+                event.text = `${civName} has claimed ${tileCount} tile${tileCount > 1 ? 's' : ''}.`;
             }
             else {
                 event.text = `${tileCount} tile${tileCount > 1 ? 's have' : ' has'} been abandoned!`;
@@ -1401,8 +1404,8 @@
          * Process game events and add human-readable information
          */
         processEvents(events) {
-            const eventParser = new EventParser();
-            this.events = eventParser.processEvents(events, this.civs);
+            const eventParser = new EventParser(this);
+            this.events = eventParser.processEvents(events);
             this.cities = eventParser.getCities();
         }
         /**
@@ -1690,7 +1693,7 @@
             // Initialize event log
             this.eventLog = new EventLog(this.replay.events);
             // Initialize map layers
-            this.map.initLayers(this.replay.tiles, this.replay.events);
+            this.map.initLayers(this.replay.tiles, this.replay.events, this.replay);
             // Initialize control bar
             this.controlBar = new ControlBar({
                 start: this.replay.startTurn,

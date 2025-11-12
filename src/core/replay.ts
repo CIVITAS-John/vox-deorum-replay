@@ -128,8 +128,8 @@ export class Replay {
    * Process game events and add human-readable information
    */
   private processEvents(events: GameEvent[]): void {
-    const eventParser = new EventParser();
-    this.events = eventParser.processEvents(events, this.civs);
+    const eventParser = new EventParser(this);
+    this.events = eventParser.processEvents(events);
     this.cities = eventParser.getCities();
   }
 

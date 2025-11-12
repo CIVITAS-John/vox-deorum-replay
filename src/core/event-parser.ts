@@ -10,6 +10,7 @@ import {
   City,
   Tile
 } from '../types';
+import { Replay } from './replay';
 
 /**
  * EventParser class
@@ -17,14 +18,18 @@ import {
  */
 export class EventParser {
   private cities: Record<string, City> = {};
+  private replay: Replay;
+
+  constructor(replay: Replay) {
+    this.replay = replay;
+  }
 
   /**
    * Process game events and add human-readable information
    * @param events Raw events from replay data
-   * @param civs List of civilizations for name lookup
    * @returns Processed events with enriched data
    */
-  public processEvents(events: GameEvent[], civs: { name: string }[]): GameEvent[] {
+  public processEvents(events: GameEvent[]): GameEvent[] {
     this.cities = {};
     const processedEvents: GameEvent[] = [];
 
@@ -32,7 +37,6 @@ export class EventParser {
       const eventsToAdd: GameEvent[] = [event];
 
       event.index = index;
-      event.civ = this.getCivName(event.civId, civs);
 
       // Add x/y reference for single-tile events
       if (event.tiles && event.tiles.length === 1 &&
@@ -58,22 +62,14 @@ export class EventParser {
     return processedEvents;
   }
 
-  /**
-   * Get civilization name from ID
-   */
-  private getCivName(civId: number | undefined, civs: { name: string }[]): string | null {
-    if (civId === undefined || civId < 0 || civId >= civs.length) {
-      return null;
-    }
-    return civs[civId].name;
-  }
 
   /**
    * Process city founded event
    */
   private processCityFoundedEvent(event: GameEvent): void {
     const cityName = (event.text || '').replace(' is founded.', '');
-    event.city = { name: cityName, owner: event.civ };
+    const civName = this.replay.getCivName(event.civId);
+    event.city = { name: cityName, owner: civName };
     if (event.x !== undefined && event.y !== undefined) {
       this.cities[`${event.x},${event.y}`] = event.city;
     }
@@ -90,7 +86,8 @@ export class EventParser {
       event.y = event.tiles[0].y;
       event.city = this.cities[`${event.x},${event.y}`];
       if (event.city) {
-        event.text = `${event.city.name} has been burned to the ground by ${event.civ}!`;
+        const civName = this.replay.getCivName(event.civId);
+        event.text = `${event.city.name} has been burned to the ground by ${civName}!`;
       }
 
       // Handle mass razings
@@ -100,7 +97,8 @@ export class EventParser {
         eventCopy.y = tile.y;
         eventCopy.city = this.cities[`${tile.x},${tile.y}`];
         if (eventCopy.city) {
-          eventCopy.text = `${eventCopy.city.name} has been burned to the ground by ${eventCopy.civ}!`;
+          const civName = this.replay.getCivName(eventCopy.civId);
+          eventCopy.text = `${eventCopy.city.name} has been burned to the ground by ${civName}!`;
         }
         additionalEvents.push(eventCopy);
       });
@@ -120,12 +118,13 @@ export class EventParser {
       return city ? city.name : 'Unknown';
     });
 
+    const civName = this.replay.getCivName(event.civId);
     if (cityNames.length === 1) {
-      event.text = `${event.civ} now controls the city of ${cityNames[0]}.`;
+      event.text = `${civName} now controls the city of ${cityNames[0]}.`;
     } else if (cityNames.length > 1) {
       const lastCity = cityNames.pop();
       const citiesString = cityNames.length === 1 ? cityNames[0] : cityNames.join(', ') + ',';
-      event.text = `${event.civ} now controls the cities of ${citiesString} and ${lastCity}.`;
+      event.text = `${civName} now controls the cities of ${citiesString} and ${lastCity}.`;
     }
   }
 
@@ -136,8 +135,9 @@ export class EventParser {
     if (!event.tiles) return;
 
     const tileCount = event.tiles.length;
-    if (event.civ) {
-      event.text = `${event.civ} has claimed ${tileCount} tile${tileCount > 1 ? 's' : ''}.`;
+    const civName = this.replay.getCivName(event.civId);
+    if (civName) {
+      event.text = `${civName} has claimed ${tileCount} tile${tileCount > 1 ? 's' : ''}.`;
     } else {
       event.text = `${tileCount} tile${tileCount > 1 ? 's have' : ' has'} been abandoned!`;
     }

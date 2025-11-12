@@ -9,6 +9,7 @@ import { CivColors } from '../config/civ-colors';
 import { TurnState, MapLayer, MapControl, HexData } from '../types/map.types';
 import { Tile, GameEvent, EventType, TileType, FeatureType, ElevationType } from '../types/replay.types';
 import { getTileTypeName, getFeatureName, getElevationName } from '../utils/enum-names';
+import { Replay } from '../core/replay';
 
 // External libraries accessed as globals - types defined in globals.d.ts
 
@@ -23,8 +24,10 @@ export class Map {
 	turnState: TurnState;                 // Current turn's tile state
 	layers: Record<string, MapLayer>;    // Map visualization layers by name
 	controls: Record<string, MapControl>; // Map UI controls by name
+	replay: Replay | null;               // Reference to replay instance for civ name lookups
 
-	constructor() {
+	constructor(replay?: Replay) {
+		this.replay = replay || null;
 		this.map = L.map(document.querySelector('.map'), {
 			attributionControl: false,
 			keyboardPanOffset: 0
@@ -34,7 +37,11 @@ export class Map {
 	}
 
 	// Initialize map layers and process turn states from events
-	initLayers(tiles: Tile[][], events: GameEvent[]) {
+	initLayers(tiles: Tile[][], events: GameEvent[], replay?: Replay) {
+		// Store replay reference if provided
+		if (replay) {
+			this.replay = replay;
+		}
 		var self = this;
 
 		// Track the state of each tile at every turn
@@ -54,7 +61,8 @@ export class Map {
 				switch (event.type) {
 					case EventType.CityFounded:
 						var index = [event.x, event.y].join(',');
-						state[index] = { owner: event.civ, city: event.city.name };
+						var civName = self.replay ? self.replay.getCivName(event.civId) : null;
+						state[index] = { owner: civName, city: event.city.name };
 						break;
 
 					case EventType.TilesClaimed:
@@ -63,8 +71,9 @@ export class Map {
 							var index = [tile.x, tile.y].join(',');
 							state[index] = state[index] || {};
 
-							if (event.civ) {
-								state[index].owner = event.civ;
+							var civName = self.replay ? self.replay.getCivName(event.civId) : null;
+							if (civName) {
+								state[index].owner = civName;
 							}
 							else {
 								delete state[index];
@@ -78,7 +87,8 @@ export class Map {
 							var tile = event.tiles[i];
 							var index = [tile.x, tile.y].join(',');
 							state[index] = state[index] || {};
-							state[index].owner = event.civ;
+							var civName = self.replay ? self.replay.getCivName(event.civId) : null;
+							state[index].owner = civName;
 						}
 
 						break;

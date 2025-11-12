@@ -88,7 +88,6 @@ export interface GameEvent {
   type: EventType;                                       // Event type enum
   tiles?: Tile[];                                        // Tiles affected by this event
   civId?: number;                                        // Primary civilization ID for event
-  civ?: string | null;                                   // Civilization name (parsed)
   text?: string;                                         // Event text or message
   x?: number;                                            // X coordinate where event occurred
   y?: number;                                            // Y coordinate where event occurred

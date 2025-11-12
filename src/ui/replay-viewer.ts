@@ -221,7 +221,7 @@ export class ReplayViewer {
     this.eventLog = new EventLog(this.replay.events);
 
     // Initialize map layers
-    this.map.initLayers(this.replay.tiles, this.replay.events);
+    this.map.initLayers(this.replay.tiles, this.replay.events, this.replay);
 
     // Initialize control bar
     this.controlBar = new ControlBar({
