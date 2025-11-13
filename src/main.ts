@@ -5,7 +5,7 @@
  */
 
 import { ReplayViewer } from './ui/replay-viewer';
-import { ReplayMap } from './map/map';
+import { ReplayMap } from './map/replay-map';
 import { HexLayer } from './map/hex-layer';
 import { ControlBar } from './ui/control-bar';
 import { EventLog } from './ui/event-log';

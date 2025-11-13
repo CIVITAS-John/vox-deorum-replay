@@ -1,10 +1,12 @@
 /**
- * map.ts
+ * replay-map.ts
  * Manages the Leaflet map display for the replay viewer
  * Handles rendering of terrain, cities, territories, and turn-based state changes
+ * Includes highlighting features for hexes and civilization boundaries
  */
 
 import { HexLayer } from './hex-layer';
+import { MapHighlighting } from './map-highlighting';
 import { CivColors } from '../utils/civ-colors';
 import { TurnState, MapLayer, MapControl, HexData } from '../types/map.types';
 import { Tile, GameEvent, EventType, TileType, FeatureType, ElevationType } from '../types/replay.types';
@@ -21,13 +23,15 @@ import { throttle } from '../utils/throttle';
 export class ReplayMap {
 	map: any;                             // Leaflet Map instance
 	turn: number;                         // Current turn being displayed
-	turnStates: TurnState[];              // Array of tile states for each turn
-	turnState: TurnState;                 // Current turn's tile state
+	turnStates: any[];                    // Array of tile states for each turn
+	turnState: any;                       // Current turn's tile state
 	layers: Record<string, MapLayer>;    // Map visualization layers by name
 	controls: Record<string, MapControl>; // Map UI controls by name
 	replay: Replay | null;               // Reference to replay instance for civ name lookups
 	mapBounds: any;                       // Stored bounds for refitting the map
 	renderTurnThrottled: (turn: number) => void; // Throttled version of renderTurn
+	highlighting: MapHighlighting;       // Highlighting module instance
+	events: GameEvent[];                 // Reference to all events for turn-based highlighting
 
 	constructor(replay?: Replay) {
 		this.replay = replay || null;
@@ -38,6 +42,10 @@ export class ReplayMap {
 		}).setView([0, 0], 0);
 
 		this.turn = -1; // Initialize to -1 so first renderTurn always triggers a redraw
+		this.events = []; // Will be populated when initLayers is called
+
+		// Initialize highlighting module
+		this.highlighting = new MapHighlighting(this);
 
 		// Create throttled version of renderTurn to prevent excessive rendering
 		// when dragging through many turns quickly (e.g., slider dragging)
@@ -52,6 +60,9 @@ export class ReplayMap {
 			this.replay = replay;
 		}
 		var self = this;
+
+		// Store events for turn-based highlighting
+		this.events = events;
 
 		// Track the state of each tile at every turn
 		this.turnStates = [];
@@ -189,9 +200,6 @@ export class ReplayMap {
 				hexes: tiles,
 				zIndex: 30,
 				overdraw: 1,
-				cacheKeySuffix: function () {
-					return '-territory-' + self.turn;
-				},
 				drawHex: function (ctx: CanvasRenderingContext2D, hex: HexData, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) {
 					if (!this.turnState) { return; }
 					var state = this.turnState[hex.x + ',' + hex.y];
@@ -209,9 +217,6 @@ export class ReplayMap {
 			city: new HexLayer({
 				hexes: tiles,
 				zIndex: 40,
-				cacheKeySuffix: function () {
-					return '-city-' + self.turn;
-				},
 				drawHex: function (ctx: CanvasRenderingContext2D, hex: HexData, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) {
 					if (!this.turnState) { return; }
 					var state = this.turnState[hex.x + ',' + hex.y];
@@ -237,6 +242,12 @@ export class ReplayMap {
 
 		_.each(this.layers, (layer: MapLayer) => layer.addTo(this.map));
 
+		// Initialize highlighting layers
+		this.highlighting.initLayers(this.map, tiles);
+
+		// Get highlighting layers for overlay controls
+		const highlightLayers = this.highlighting.getLayers();
+
 		// Add layer switcher
 		var overlays = {
 			Terrain: this.layers.terrain,
@@ -244,7 +255,10 @@ export class ReplayMap {
 			Features: this.layers.feature,
 			Territory: this.layers.territory,
 			Cities: this.layers.city,
-			Grid: this.layers.grid
+			Grid: this.layers.grid,
+			Selection: highlightLayers.selection,
+			Events: highlightLayers.events,
+			Boundaries: highlightLayers.boundaries
 		};
 
 		this.controls = {
@@ -328,6 +342,13 @@ export class ReplayMap {
 			return;
 		}
 
+		// Highlight events from the current turn
+		if (this.events && this.highlighting) {
+			// Get events for this specific turn
+			const turnEvents = this.events.filter(e => e.turn === turn);
+			this.highlighting.highlightEventHexes(turnEvents);
+		}
+
 		// Check if layers are properly attached to the map
 		const cityLayerReady = this.layers.city && this.layers.city._map;
 		const territoryLayerReady = this.layers.territory && this.layers.territory._map;
@@ -376,6 +397,49 @@ export class ReplayMap {
 		this.turn = -1;
 		// Note: We can't cancel pending throttled calls, but resetting turn to -1
 		// ensures the next renderTurn will perform a full redraw regardless
+
+		// Clear all highlighting
+		if (this.highlighting) {
+			this.highlighting.clearAll();
+		}
+	}
+
+	// Delegate highlighting methods to the highlighting module
+
+	highlightHexes(hexKeys: string[]) {
+		this.highlighting.highlightHexes(hexKeys);
+	}
+
+	addHighlightedHexes(hexKeys: string[]) {
+		this.highlighting.addHighlightedHexes(hexKeys);
+	}
+
+	removeHighlightedHexes(hexKeys: string[]) {
+		this.highlighting.removeHighlightedHexes(hexKeys);
+	}
+
+	clearHexHighlights() {
+		this.highlighting.clearHexHighlights();
+	}
+
+	highlightCivBoundaries(civNames: string[]) {
+		this.highlighting.highlightCivBoundaries(civNames);
+	}
+
+	addHighlightedCivs(civNames: string[]) {
+		this.highlighting.addHighlightedCivs(civNames);
+	}
+
+	removeHighlightedCivs(civNames: string[]) {
+		this.highlighting.removeHighlightedCivs(civNames);
+	}
+
+	clearCivHighlights() {
+		this.highlighting.clearCivHighlights();
+	}
+
+	setHighlightColors(hexColor?: string, boundaryColor?: string, eventColor?: string) {
+		this.highlighting.setHighlightColors(hexColor, boundaryColor, eventColor);
 	}
 
 	// Refit map to container and bounds

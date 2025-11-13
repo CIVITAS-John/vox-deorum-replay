@@ -4,7 +4,7 @@
  * Manages user interactions, file handling, and coordinates between data and visualization
  */
 
-import { ReplayMap } from '../map/map';
+import { ReplayMap } from '../map/replay-map';
 import { EventLog } from './event-log';
 import { ControlBar } from './control-bar';
 import { Replay } from '../core/replay';
