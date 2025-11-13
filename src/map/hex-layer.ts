@@ -28,9 +28,7 @@ export const HexLayer = L.GridLayer.extend({
 			width: config.width,
 			drawHex: config.drawHex,
 			overdraw: config.overdraw,
-			gridStyle: config.gridStyle,
-			cacheKeySuffix: config.cacheKeySuffix,
-			nocache: config.nocache
+			gridStyle: config.gridStyle
 		};
 
 		// Keep standard Leaflet options
@@ -43,7 +41,6 @@ export const HexLayer = L.GridLayer.extend({
 		// Call parent initialize
 		L.GridLayer.prototype.initialize.call(this, leafletOptions);
 
-		this.tileCache = {};
 		this.hexes = this.config.hexes;
 
 		if (this.config.hexes) {
@@ -69,8 +66,6 @@ export const HexLayer = L.GridLayer.extend({
 		if (this.config.drawHex) {
 			this.config.drawHex = this.config.drawHex.bind(this);
 		}
-
-		this.tileCache = {};
 
 		// Store turnState reference for dynamic layers
 		this.turnState = null;
@@ -124,21 +119,6 @@ export const HexLayer = L.GridLayer.extend({
 		// Normalize tile x/y coordinates
 		var tileX = tilePoint.x % scalingFactor;
 		var tileY = tilePoint.y % scalingFactor;
-
-		// Get cache key - round zoom to avoid floating point precision issues
-		// (e.g., 2.8000000000003 becomes 2.8)
-		var roundedZoom = Math.round(zoom * 10000) / 10000;
-		var cacheKey = [tileX, tileY, roundedZoom].join(',');
-
-		if (this.config.cacheKeySuffix) {
-			cacheKey += this.config.cacheKeySuffix();
-		}
-
-		// Load from cache if we have it
-		if (this.tileCache[cacheKey] && !this.config.nocache) {
-			ctx.putImageData(this.tileCache[cacheKey], 0, 0);
-			return;
-		}
 
 		// Calculate cell dimensions and distance
 		var hexWidth = this.baseHexWidth * scalingFactor;
@@ -206,8 +186,6 @@ export const HexLayer = L.GridLayer.extend({
 				ctx.restore();
 			}
 		}
-
-		this.tileCache[cacheKey] = ctx.getImageData(0, 0, tileCanvas.width, tileCanvas.height);
 	},
 
 	preDrawHex: function (ctx: any, x: number, y: number, width: number, height: number, gridStyle: string, gridX: number, flippedGridY: number) {
@@ -307,27 +285,11 @@ export const HexLayer = L.GridLayer.extend({
 	},
 
 	/**
-	 * Clear the tile cache
-	 * Should be called when loading a new replay to prevent showing old cached tiles
-	 */
-	clearCache: function () {
-		this.tileCache = {};
-		// Force a redraw of all visible tiles
-		if (this._map) {
-			this.redraw();
-		}
-	},
-
-	/**
 	 * Selectively redraw only specific hexes that have changed
-	 * This is more efficient than redrawing the entire layer
 	 * @param {string[]} changedHexKeys - Array of hex keys in format "x,y"
 	 */
 	redrawHexes: function (changedHexKeys: string[]) {
 		if (!this._map || changedHexKeys.length === 0) return;
-
-		// Convert hex keys to coordinates
-		const changedCoords = new Set(changedHexKeys);
 
 		// Get current zoom level
 		const zoom = this._map.getZoom();
@@ -366,7 +328,6 @@ export const HexLayer = L.GridLayer.extend({
 			const maxTileY = Math.floor((hexCenterY + hexHeight) / tileSize.y);
 
 			// Add all affected tiles to redraw set
-			// Round zoom to match the cache key generation
 			const roundedZoom = Math.round(zoom * 10000) / 10000;
 			for (let tx = minTileX; tx <= maxTileX; tx++) {
 				for (let ty = minTileY; ty <= maxTileY; ty++) {
@@ -377,14 +338,8 @@ export const HexLayer = L.GridLayer.extend({
 			}
 		}
 
-		// Clear cache for affected tiles and trigger redraw
+		// Trigger redraw for affected tiles
 		for (const tileKey of tilesToRedraw) {
-			// Clear cache entry
-			const cacheKey = this.config.cacheKeySuffix ?
-				tileKey + this.config.cacheKeySuffix() : tileKey;
-			delete this.tileCache[cacheKey];
-
-			// Parse tile coordinates and trigger redraw
 			const [x, y, z] = tileKey.split(',').map(Number);
 			const coords = { x, y, z };
 
