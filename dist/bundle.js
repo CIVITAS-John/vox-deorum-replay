@@ -2422,6 +2422,8 @@
                     this.processCitiesTransferredEvent(event);
                 }
                 else if (event.type === EventType.TilesClaimed) {
+                    if (this.replay.getCivName(event.civId) === null)
+                        return;
                     this.processTilesClaimedEvent(event);
                 }
                 else if (event.type === EventType.Message) {
