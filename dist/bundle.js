@@ -2861,17 +2861,15 @@
             reader.readAsArrayBuffer(file);
         }
         /**
-         * Load replay from URL (e.g., Dropbox)
+         * Load replay from URL
          */
         loadFromUrl(fileUrl) {
             if (this.isLoading)
                 return;
             this.isLoading = true;
             const xhr = new XMLHttpRequest();
-            // Support Dropbox URLs
-            const url = fileUrl.startsWith('http')
-                ? fileUrl
-                : `https://dl.dropboxusercontent.com/1/view/${fileUrl}`;
+            // Use the URL directly
+            const url = fileUrl;
             xhr.open('GET', url, true);
             xhr.responseType = 'arraybuffer';
             xhr.onload = (e) => {

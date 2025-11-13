@@ -1,10 +1,32 @@
 # Civilization V Replay Viewer for Community Patch/Vox Populi
 
-** Compatible with Community Patch/Vox Populi - not tested on Civ5Replay files created by vanilla Civilization V.**
+This web-based replay viewer allows you to watch your Civilization V replays. Watch empires rise and fall, see borders shift over centuries, and relive your most epic games. The viewer is specifically designed for the [Community Patch / Vox Populi](https://github.com/LoneGazebo/Community-Patch-DLL) mod and may not work correctly with vanilla replay files.
 
-Drag a .Civ5Replay file onto the page to load a replay: https://civitas-john.github.io/vox-deorum-replay/.
+Designed to work with the [Vox Deorum project](https://github.com/CIVITAS-John/vox-deorum), a modmod that enables LLMs to play Vox Populi with you or with themselves.
 
-You can also [direct link](http://aiwebb.github.io/civ5replay/?file=hrbho1q4dtro8pa/Ramesses%20II_0267%20AD-1987_42%20(9).Civ5Replay&turn=177) a URL with a Dropbox file ID included to easily share replays with others.
+![Replay Viewer in Action](examples/replay-demo.gif)
+
+## How to Use
+
+Visit the viewer at: https://civitas-john.github.io/vox-deorum-replay/
+
+In those example saves, Player 0 is a LLM. You can see how they play and reason throughout the game.
+- [Example save 1](https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/1.Civ5Replay)
+- [Example save 2](https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/2.Civ5Replay)
+- [Example save 3](https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/3.Civ5Replay)
+
+### Option 1: Drag and Drop
+Simply drag your `.Civ5Replay` file from your computer and drop it onto the webpage. The replay will load automatically and you can use the playback controls or keyboard shortcuts to navigate through the game.
+
+### Option 2: Direct Link
+Share replays with others by linking directly to a hosted replay file. Add the `file` parameter with the full URL to your replay:
+```
+https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/1.Civ5Replay
+```
+You can also specify a starting turn with the `turn` parameter:
+```
+https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/1.Civ5Replay&turn=150
+```
 
 The project is built on Alex Webb's [civ5replayer](https://github.com/aiwebb/civ5replay).
 
@@ -20,19 +42,11 @@ Key            | Action
 `pgdn`, `end`  | Jump to last turn
 `+`, `-`       | Zoom in/out
 
-## Query Parameters
+## License
 
-#### turn
-
-Pass a `turn` parameter to automatically start on that turn.
-
-#### file
-
-Pass a `file` parameter to link directly to a .Civ5Replay file hosted on Dropbox. This should be the portion of the sharing URL that is unique to the file. For example, if the sharing URL is
-
-    https://dl.dropboxusercontent.com/1/view/hrbho1q4dtro8pa/Ramesses%20II_0267%20AD-1987_42%20(9).Civ5Replay
-
-then the `file` parameter would be `hrbho1q4dtro8pa/Ramesses%20II_0267%20AD-1987_42%20(9).Civ5Replay`.
+Author: John Chen (with assistance from Claude Code).
+Lecturer, University of Arizona, College of Information Science
+MIT License (as the project forked from [civ5replayer](https://github.com/aiwebb/civ5replay))
 
 ## Acknowledgement
 - Alex Webb - [civ5replayer](https://github.com/aiwebb/civ5replay)

@@ -8,7 +8,6 @@ import { ReplayMap } from '../map/replay-map';
 import { EventLog } from './event-log';
 import { ControlBar } from './control-bar';
 import { Replay } from '../core/replay';
-import { MapLayer, MapControl } from '../types/map.types';
 
 /**
  * ReplayViewer UI component
@@ -171,7 +170,7 @@ export class ReplayViewer {
   }
 
   /**
-   * Load replay from URL (e.g., Dropbox)
+   * Load replay from URL
    */
   public loadFromUrl(fileUrl: string): void {
     if (this.isLoading) return;
@@ -179,10 +178,8 @@ export class ReplayViewer {
     this.isLoading = true;
     const xhr = new XMLHttpRequest();
 
-    // Support Dropbox URLs
-    const url = fileUrl.startsWith('http')
-      ? fileUrl
-      : `https://dl.dropboxusercontent.com/1/view/${fileUrl}`;
+    // Use the URL directly
+    const url = fileUrl;
 
     xhr.open('GET', url, true);
     xhr.responseType = 'arraybuffer';
