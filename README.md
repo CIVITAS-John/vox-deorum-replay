@@ -65,10 +65,10 @@ Key            | Action
 
 
 ## Helping Us
-All pull requests are welcomed. In particular, we need your help to:
-- Visualize all VP5 features (e.g. Oasis) and Natural Wonders.
+All pull requests are welcome. In particular, we need your help to:
+- Visualize all VP5 features (e.g., Oasis) and Natural Wonders.
 - Create better/higher-quality textures.
-- Visualize replay DATA - e.g. gold output per turn for each player.
+- Visualize replay DATA - e.g., gold output per turn for each player.
 - Adding tooltips on the map and on individual events.
 
 I am planning to work on some of these, when I get some more time :)
