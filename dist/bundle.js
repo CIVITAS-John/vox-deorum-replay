@@ -2,39 +2,6 @@
     'use strict';
 
     /**
-     * hex-border-utils.ts
-     * Utility functions for calculating hex border properties
-     */
-    /**
-     * Calculate the appropriate line width for a hex border based on hex size
-     * Uses the hex width to determine a proportional line width that scales properly with zoom
-     *
-     * @param hexWidth - The width of the hex (typically x2 - x1)
-     * @param maxWidth - Maximum line width to use (default: 4)
-     * @param scaleFactor - Scale factor for the calculation (default: 0.5)
-     * @returns The calculated line width
-     */
-    function calculateHexBorderWidth(hexWidth, maxWidth = 4, scaleFactor = 0.5) {
-        // Calculate proportional width based on hex size
-        // Using square root provides better scaling across different zoom levels
-        const proportionalWidth = Math.sqrt(hexWidth) * scaleFactor;
-        // Cap at maximum width to prevent borders from becoming too thick
-        return Math.min(maxWidth, proportionalWidth);
-    }
-    /**
-     * Calculate text outline width for hex labels based on hex size
-     * Similar to border width but typically smaller for better readability
-     *
-     * @param hexWidth - The width of the hex
-     * @param maxWidth - Maximum outline width (default: 3)
-     * @param scaleFactor - Scale factor for the calculation (default: 0.5)
-     * @returns The calculated outline width
-     */
-    function calculateTextOutlineWidth(hexWidth, maxWidth = 3, scaleFactor = 0.5) {
-        return calculateHexBorderWidth(hexWidth, maxWidth, scaleFactor);
-    }
-
-    /**
      * hex-layer.ts
      * Custom Leaflet layer for rendering hexagonal tile maps
      * Extends Leaflet's GridLayer to draw hexagonal grids for Civilization V maps
@@ -58,8 +25,8 @@
                 height: config.height,
                 width: config.width,
                 drawHex: config.drawHex,
+                drawHexEdges: config.drawHexEdges,
                 overdraw: config.overdraw,
-                gridStyle: config.gridStyle,
                 clipHexes: config.clipHexes !== false // Default to true for backward compatibility
             };
             // Keep standard Leaflet options
@@ -178,100 +145,47 @@
                         continue;
                     }
                     // Our own drawing function sets up the ctx with a hex polygon
-                    this.preDrawHex(ctx, x, y, hexWidth, hexHeight + (this.config.overdraw || 0), this.config.gridStyle, gridX, flippedGridY);
+                    const hex = this.hexes[flippedGridY][gridX];
+                    const edgesToDraw = this.config.drawHexEdges ?
+                        this.config.drawHexEdges(ctx, hex, x, y) : null;
+                    const clipping = this.preDrawHex(ctx, x, y, hexWidth, hexHeight + (this.config.overdraw || 0), edgesToDraw);
                     // Custom drawing function does something with it
                     ctx.save();
-                    if (this.config.clipHexes) {
-                        ctx.clip();
-                    }
-                    this.config.drawHex(ctx, this.hexes[flippedGridY][gridX], x, y, x - hexWidth / 2, y - hexHeight / 2, x + hexWidth / 2, y + hexHeight / 2);
+                    if (this.config.clipHexes)
+                        ctx.clip(clipping);
+                    this.config.drawHex(ctx, hex, x, y, x - hexWidth / 2, y - hexHeight / 2, x + hexWidth / 2, y + hexHeight / 2);
                     ctx.restore();
                 }
             }
         },
-        preDrawHex: function (ctx, x, y, width, height, gridStyle, gridX, flippedGridY) {
-            var globalCompositeOperation = ctx.globalCompositeOperation;
-            ctx.globalCompositeOperation = 'destination-over';
+        preDrawHex: function (ctx, x, y, width, height, edgesToDraw) {
             var angle = 2 * Math.PI / 6 * (0 + 0.5);
             var startX = x + (height * 0.5) * Math.cos(angle);
             var startY = y + (height * 0.5) * Math.sin(angle);
+            var clipping = new Path2D();
             ctx.beginPath();
             ctx.moveTo(startX, startY);
-            var lastX = startX;
-            var lastY = startY;
+            clipping.moveTo(startX, startY);
+            if (edgesToDraw) {
+                ctx.lineCap = "square";
+            }
             for (var i = 1; i <= 6; i++) {
                 angle = 2 * Math.PI / 6 * (i + 0.5);
                 var endX = x + (height * 0.5) * Math.cos(angle);
                 var endY = y + (height * 0.5) * Math.sin(angle);
-                var selfEdgeName = [gridX, flippedGridY, i].join(',');
-                var otherEdgeName;
-                switch (i) {
-                    case 1:
-                        otherEdgeName = [gridX, flippedGridY + 1, 4].join(',');
-                        break;
-                    case 2:
-                        otherEdgeName = [gridX - 1, flippedGridY + 1, 5].join(',');
-                        break;
-                    case 3:
-                        otherEdgeName = [gridX - 1, flippedGridY, 6].join(',');
-                        break;
-                    case 4:
-                        otherEdgeName = [gridX, flippedGridY - 1, 1].join(',');
-                        break;
-                    case 5:
-                        otherEdgeName = [gridX + 1, flippedGridY - 1, 2].join(',');
-                        break;
-                    case 6:
-                        otherEdgeName = [gridX + 1, flippedGridY, 3].join(',');
-                        break;
+                // Determine if we should draw this edge
+                if (!edgesToDraw || edgesToDraw.has(i)) {
+                    // If we should draw this edge, use lineTo to create a continuous path
+                    ctx.lineTo(endX, endY);
                 }
-                var edgeName = selfEdgeName < otherEdgeName ? selfEdgeName : otherEdgeName;
-                ctx.lineTo(endX, endY);
-                ctx.canvas.edges = ctx.canvas.edges || {};
-                if (gridStyle) {
-                    ctx.closePath();
-                    if (!ctx.canvas.edges[edgeName]) {
-                        ctx.canvas.edges[edgeName] = true;
-                        if (prettyDamnClose(endX, lastX) || prettyDamnClose(endY, lastY)) {
-                            // Canvas is really dumb with straight lines that use transparency - we need
-                            // to just do it ourselves by setting individual pixels, becauses stroke()
-                            // will try to do pathetic anti-aliasing that completely changes the color.
-                            this.drawNonAntiAliasedLine(ctx, lastX, lastY, endX, endY, gridStyle);
-                        }
-                        else {
-                            // Calculate line width based on hex size for better scaling
-                            // Using height as proxy for hex size
-                            ctx.lineWidth = calculateHexBorderWidth(height, 1, 0.05);
-                            ctx.strokeStyle = gridStyle;
-                            ctx.stroke();
-                        }
-                    }
-                    ctx.beginPath();
+                else {
+                    // If we shouldn't draw this edge, use moveTo to skip drawing
                     ctx.moveTo(endX, endY);
                 }
-                lastX = endX;
-                lastY = endY;
+                clipping.lineTo(endX, endY);
             }
-            ctx.globalCompositeOperation = globalCompositeOperation;
-            function prettyDamnClose(a, b) {
-                return Math.abs((a - b) / a) < 0.01;
-            }
-        },
-        drawNonAntiAliasedLine: function (ctx, startX, startY, endX, endY, style) {
-            // This is NOT a general purpose line drawing function! It's purely for bypassing
-            // a bug in canvas that anti-aliases lines even when they're perfectly horizontal
-            // or vertical, which distorts the color. Note that this is NOT solvable by using
-            // ctx.imageSmoothingEnabled = false.
-            ctx.fillStyle = style;
-            for (var x = startX; x <= endX; x++) {
-                for (var y = startY; y <= endY; y++) {
-                    ctx.fillRect(x, y, 1, 1);
-                }
-            }
-            // Mark the line as being drawn by this function
-            // ctx.fillStyle = 'rgb(255, 0, 0)'
-            // ctx.fillRect(startX, startY, 1, 1)
-            // ctx.fillRect(endX,   endY,   1, 1)
+            clipping.closePath();
+            return clipping;
         },
         drawImage: function (ctx, id, sx, sy, sw, sh) {
             var img = document.getElementById(id);
@@ -395,6 +309,39 @@
     };
 
     /**
+     * hex-border-utils.ts
+     * Utility functions for calculating hex border properties
+     */
+    /**
+     * Calculate the appropriate line width for a hex border based on hex size
+     * Uses the hex width to determine a proportional line width that scales properly with zoom
+     *
+     * @param hexWidth - The width of the hex (typically x2 - x1)
+     * @param maxWidth - Maximum line width to use (default: 4)
+     * @param scaleFactor - Scale factor for the calculation (default: 0.5)
+     * @returns The calculated line width
+     */
+    function calculateHexBorderWidth(hexWidth, maxWidth = 4, scaleFactor = 0.5) {
+        // Calculate proportional width based on hex size
+        // Using square root provides better scaling across different zoom levels
+        const proportionalWidth = Math.sqrt(hexWidth) * scaleFactor;
+        // Cap at maximum width to prevent borders from becoming too thick
+        return Math.min(maxWidth, proportionalWidth);
+    }
+    /**
+     * Calculate text outline width for hex labels based on hex size
+     * Similar to border width but typically smaller for better readability
+     *
+     * @param hexWidth - The width of the hex
+     * @param maxWidth - Maximum outline width (default: 3)
+     * @param scaleFactor - Scale factor for the calculation (default: 0.5)
+     * @returns The calculated outline width
+     */
+    function calculateTextOutlineWidth(hexWidth, maxWidth = 3, scaleFactor = 0.5) {
+        return calculateHexBorderWidth(hexWidth, maxWidth, scaleFactor);
+    }
+
+    /**
      * city-layer.ts
      * Custom HexLayer for rendering cities on the map
      * Shows city locations with colored circles and name labels
@@ -463,19 +410,24 @@
                 // Use hex-relative font size to avoid flickering during zoom
                 // The font will naturally scale with the tile/hex size
                 const fontSize = Math.sqrt(hexWidth) * 2.5; // Font size relative to hex height
-                // Set up text style
-                ctx.font = `bold ${fontSize}px Arial`;
+                // Set up text style with improved clarity
+                ctx.font = `${fontSize}px EB Garamond, serif`;
                 ctx.textAlign = 'left';
                 ctx.textBaseline = 'middle';
+                // Enable better text rendering
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
                 // Position text to the right of the circle with padding
                 const textX = cx + radius + Math.sqrt(hexWidth);
                 const textY = cy;
-                // Draw text shadow/outline for readability
-                ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
-                ctx.lineWidth = calculateTextOutlineWidth(hexWidth);
+                // Draw stronger black outline for better contrast
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+                ctx.lineWidth = calculateTextOutlineWidth(hexWidth) * 1.5;
+                ctx.lineJoin = 'round';
+                ctx.miterLimit = 2;
                 ctx.strokeText(state.city, textX, textY);
-                // Draw white text
-                ctx.fillStyle = 'white';
+                // Draw white text with full opacity for maximum clarity
+                ctx.fillStyle = 'rgba(255, 255, 255, 1)';
                 ctx.fillText(state.city, textX, textY);
             }
             ctx.restore();
@@ -492,18 +444,13 @@
 
     /**
      * grid-layer.ts
-     * Custom HexLayer for rendering hex grid and civilization boundaries
-     * Shows grid lines with civilization territory colors at boundaries
-     * Supports highlighting specific civilizations with bright yellow
+     * Simple HexLayer for rendering hex grid lines only
      */
-    // Grid and boundary constants
-    const DEFAULT_GRID_COLOR = 'rgba(255, 255, 255, 0.1)'; // Default semi-transparent white
-    const HIGHLIGHT_COLOR = 'rgba(255, 255, 0, 0.8)'; // Bright yellow for highlighted civs
-    const BOUNDARY_WIDTH = 4;
-    const HIGHLIGHT_WIDTH = 4;
+    // Grid constants
+    const DEFAULT_GRID_COLOR = 'rgba(255, 255, 255, 0.2)';
     const GRID_WIDTH = 2;
     /**
-     * GridLayer - Specialized HexLayer for rendering hex grid with civilization boundaries
+     * GridLayer - Simple layer for rendering hex grid lines
      * @extends HexLayer
      */
     const GridLayer = HexLayer.extend({
@@ -514,18 +461,16 @@
         initialize: function (config) {
             // Set up grid-specific drawing configuration
             const gridConfig = _.extend({}, config, {
-                zIndex: 45, // Above territory and cities but below selection
-                drawHex: this.drawGridWithBoundaries.bind(this)
+                zIndex: 45, // Above territory but below cities
+                drawHex: this.drawGrid.bind(this)
             });
             // Call parent initialize
             HexLayer.prototype.initialize.call(this, gridConfig);
             // Store state
-            this.turnState = null;
-            this.highlightedCivs = new Set();
-            this.showGrid = config.showGrid !== false; // Default to true
+            this.showGrid = config.showGrid;
         },
         /**
-         * Draw grid with civilization boundaries
+         * Draw grid lines for a hex
          * @param {CanvasRenderingContext2D} ctx - Canvas context
          * @param {HexData} hex - Hex data
          * @param {number} cx - Center X coordinate
@@ -535,96 +480,183 @@
          * @param {number} x2 - Right boundary
          * @param {number} y2 - Bottom boundary
          */
-        drawGridWithBoundaries: function (ctx, hex, cx, cy, x1, y1, x2, y2) {
-            if (!this.showGrid && !this.turnState)
+        drawGrid: function (ctx, hex, cx, cy, x1, y1, x2, y2) {
+            if (!this.showGrid)
+                return;
+            // Set grid style
+            ctx.strokeStyle = DEFAULT_GRID_COLOR;
+            ctx.lineWidth = calculateHexBorderWidth(x2 - x1, GRID_WIDTH, GRID_WIDTH / 4);
+            ctx.stroke();
+            /*// Draw coordinate label
+            const hexSize = x2 - x1;
+            const fontSize = Math.max(10, Math.min(16, hexSize / 8));
+
+            ctx.save();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.font = `${fontSize}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            const coordText = `${hex.x},${hex.y}`;
+            ctx.fillText(coordText, cx, cy);
+            ctx.restore();*/
+            // Note: The actual edge drawing is handled by HexLayer's preDrawHex
+        },
+        /**
+         * Toggle grid visibility
+         * @param {boolean} show - Whether to show the grid
+         */
+        setGridVisible: function (show) {
+            if (this.showGrid !== show) {
+                this.showGrid = show;
+                this.redraw();
+            }
+        }
+    });
+
+    /**
+     * boundary-layer.ts
+     * Custom HexLayer for rendering civilization boundaries
+     * Shows territory borders with civilization colors
+     * Supports highlighting specific civilizations with bright yellow
+     */
+    // Boundary constants
+    const BOUNDARY_WIDTH = 12;
+    const HIGHLIGHT_COLOR = 'rgba(255, 255, 0, 1)'; // Bright yellow for highlighted civs
+    /**
+     * BoundaryLayer - Specialized HexLayer for rendering civilization boundaries
+     * @extends HexLayer
+     */
+    const BoundaryLayer = HexLayer.extend({
+        /**
+         * Initialize the boundary layer
+         * @param {Object} config - Configuration object
+         */
+        initialize: function (config) {
+            // Set up boundary-specific drawing configuration
+            const boundaryConfig = _.extend({}, config, {
+                zIndex: 47, // Above grid layer
+                drawHex: this.drawBoundaries.bind(this),
+                drawHexEdges: this.getOutwardFacingEdges.bind(this)
+            });
+            // Call parent initialize
+            HexLayer.prototype.initialize.call(this, boundaryConfig);
+            // Store state
+            this.highlightedCivs = new Set();
+        },
+        /**
+         * Setup boundary drawing style
+         * @param {CanvasRenderingContext2D} ctx - Canvas context
+         * @param {HexData} hex - Hex data
+         * @param {number} cx - Center X coordinate
+         * @param {number} cy - Center Y coordinate
+         * @param {number} x1 - Left boundary
+         * @param {number} y1 - Top boundary
+         * @param {number} x2 - Right boundary
+         * @param {number} y2 - Bottom boundary
+         */
+        drawBoundaries: function (ctx, hex, cx, cy, x1, y1, x2, y2) {
+            if (!this.turnState)
                 return;
             const hexKey = `${hex.x},${hex.y}`;
-            const state = this.turnState ? this.turnState[hexKey] : null;
+            const state = this.turnState[hexKey];
             const owner = state === null || state === void 0 ? void 0 : state.owner;
-            // Check if this hex is on a boundary
-            if (owner && this.turnState) {
-                const isBoundary = this.isOnBoundary(hex.x, hex.y, owner);
-                if (isBoundary) {
-                    // Hex is on a boundary - draw with civ color or highlight color
-                    if (this.highlightedCivs.has(owner)) {
-                        // Use bright yellow for highlighted civilizations
-                        ctx.strokeStyle = HIGHLIGHT_COLOR;
-                        ctx.lineWidth = calculateHexBorderWidth(x2 - x1, HIGHLIGHT_WIDTH);
-                    }
-                    else {
-                        // Use civilization's territory color
-                        const civColors = CivColors[owner];
-                        if (civColors) {
-                            const color = civColors.territory;
-                            ctx.strokeStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]})`;
-                        }
-                        else {
-                            ctx.strokeStyle = DEFAULT_GRID_COLOR;
-                        }
-                        ctx.lineWidth = calculateHexBorderWidth(x2 - x1, BOUNDARY_WIDTH);
-                    }
-                    ctx.stroke();
+            if (!owner)
+                return;
+            // Set boundary color and width
+            if (this.highlightedCivs.has(owner)) {
+                // Use bright yellow for highlighted civilizations
+                ctx.strokeStyle = HIGHLIGHT_COLOR;
+            }
+            else {
+                // Use civilization's territory color
+                const civColors = CivColors[owner];
+                if (civColors) {
+                    const color = civColors.territory;
+                    ctx.strokeStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]})`;
                 }
-                else if (this.showGrid) {
-                    // Not on boundary - draw regular grid if enabled
-                    ctx.strokeStyle = DEFAULT_GRID_COLOR;
-                    ctx.lineWidth = calculateHexBorderWidth(x2 - x1, GRID_WIDTH);
-                    ctx.stroke();
+                else {
+                    // Fallback to a default color if civ color not found
+                    ctx.strokeStyle = 'rgba(128, 128, 128)';
                 }
             }
-            else if (this.showGrid) {
-                // No owner or no turn state - draw regular grid if enabled
-                ctx.strokeStyle = DEFAULT_GRID_COLOR;
-                ctx.lineWidth = calculateHexBorderWidth(x2 - x1, GRID_WIDTH);
-                ctx.stroke();
-            }
+            ctx.lineWidth = calculateHexBorderWidth(x2 - x1, BOUNDARY_WIDTH, BOUNDARY_WIDTH / 12);
+            ctx.stroke();
         },
         /**
-         * Check if a hex is on a civilization boundary
-         * @param {number} x - X coordinate
-         * @param {number} y - Y coordinate
-         * @param {string} owner - Owner of the hex
-         * @returns {boolean} True if on a boundary
+         * Determine which edges of a hex should be drawn based on boundary conditions
+         * Returns only outward-facing edges at civilization boundaries
+         * @param {CanvasRenderingContext2D} ctx - Canvas context
+         * @param {HexData} hex - Hex data
+         * @param {number} cx - Center X coordinate
+         * @param {number} cy - Center Y coordinate
+         * @param {number} x1 - Left boundary
+         * @param {number} y1 - Top boundary
+         * @param {number} x2 - Right boundary
+         * @param {number} y2 - Bottom boundary
+         * @returns {Set<number> | null} Set of edge indices to draw (1-6), or null for no edges
          */
-        isOnBoundary: function (x, y, owner) {
-            const adjacentKeys = this.getAdjacentHexKeys(x, y);
-            // Check each adjacent hex
-            for (const adjKey of adjacentKeys) {
-                const adjState = this.turnState[adjKey];
-                if (!adjState || !adjState.owner || adjState.owner !== owner) {
-                    return true;
+        getOutwardFacingEdges: function (ctx, hex, cx, cy) {
+            if (!this.turnState)
+                return new Set();
+            const hexKey = `${hex.x},${hex.y}`;
+            const state = this.turnState[hexKey];
+            const owner = state === null || state === void 0 ? void 0 : state.owner;
+            // If no owner, don't draw any edges
+            if (!owner) {
+                return new Set();
+            }
+            const isEvenRow = hex.y % 2 === 0;
+            const edgesToDraw = new Set();
+            // Define neighbor positions by direction
+            const neighborsByDirection = isEvenRow ? {
+                'NE': [hex.x, hex.y + 1],
+                'E': [hex.x + 1, hex.y],
+                'SE': [hex.x, hex.y - 1],
+                'SW': [hex.x - 1, hex.y - 1],
+                'W': [hex.x - 1, hex.y],
+                'NW': [hex.x - 1, hex.y + 1]
+            } : {
+                'NE': [hex.x + 1, hex.y + 1],
+                'E': [hex.x + 1, hex.y],
+                'SE': [hex.x + 1, hex.y - 1],
+                'SW': [hex.x, hex.y - 1],
+                'W': [hex.x - 1, hex.y],
+                'NW': [hex.x, hex.y + 1]
+            };
+            // Map directions to edge numbers
+            const directionToEdge = {
+                'NE': 5,
+                'E': 6,
+                'SE': 1,
+                'SW': 2,
+                'W': 3,
+                'NW': 4
+            };
+            // Check each direction: if neighbor is not in same territory, draw the edge
+            for (const [direction, [nx, ny]] of Object.entries(neighborsByDirection)) {
+                const neighborKey = `${nx},${ny}`;
+                const neighborState = this.turnState[neighborKey];
+                // Draw edge if neighbor has different owner or no owner
+                if (!neighborState || !neighborState.owner || neighborState.owner !== owner) {
+                    edgesToDraw.add(directionToEdge[direction]);
                 }
             }
-            return false;
-        },
-        /**
-         * Get adjacent hex keys for a given hex coordinate
-         * @param {number} x - X coordinate
-         * @param {number} y - Y coordinate
-         * @returns {string[]} Array of adjacent hex keys
-         */
-        getAdjacentHexKeys: function (x, y) {
-            const adjacentKeys = [];
-            const isEvenRow = y % 2 === 0;
-            const neighbors = isEvenRow ? [
-                [x - 1, y], // West
-                [x + 1, y], // East
-                [x - 1, y - 1], // Northwest
-                [x, y - 1], // Northeast
-                [x - 1, y + 1], // Southwest
-                [x, y + 1] // Southeast
-            ] : [
-                [x - 1, y], // West
-                [x + 1, y], // East
-                [x, y - 1], // Northwest
-                [x + 1, y - 1], // Northeast
-                [x, y + 1], // Southwest
-                [x + 1, y + 1] // Southeast
-            ];
-            for (const [nx, ny] of neighbors) {
-                adjacentKeys.push(`${nx},${ny}`);
+            // Set the boundary color for this hex
+            if (this.highlightedCivs.has(owner)) {
+                this.config.gridStyle = HIGHLIGHT_COLOR;
             }
-            return adjacentKeys;
+            else {
+                const civColors = CivColors[owner];
+                if (civColors) {
+                    const color = civColors.territory;
+                    this.config.gridStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]})`;
+                }
+                else {
+                    this.config.gridStyle = 'rgba(128, 128, 128, 0.5)';
+                }
+            }
+            return edgesToDraw;
         },
         /**
          * Highlight specific civilizations with bright yellow
@@ -674,16 +706,6 @@
         clearCivHighlights: function () {
             if (this.highlightedCivs.size > 0) {
                 this.highlightedCivs.clear();
-                this.redraw();
-            }
-        },
-        /**
-         * Toggle grid visibility
-         * @param {boolean} show - Whether to show the grid
-         */
-        setGridVisible: function (show) {
-            if (this.showGrid !== show) {
-                this.showGrid = show;
                 this.redraw();
             }
         },
@@ -817,7 +839,7 @@
             if (eventType !== undefined) {
                 // Draw dashed light yellow border for event
                 ctx.strokeStyle = EVENT_COLOR;
-                ctx.lineWidth = calculateHexBorderWidth(x2 - x1, EVENT_WIDTH);
+                ctx.lineWidth = calculateHexBorderWidth(x2 - x1, EVENT_WIDTH, EVENT_WIDTH / 4);
                 ctx.setLineDash(DASH_PATTERN);
                 ctx.stroke();
                 ctx.setLineDash([]); // Reset to solid
@@ -1361,7 +1383,7 @@
                         if (state.owner) {
                             var civColors = CivColors[state.owner];
                             var color = civColors ? civColors.territory : [0, 0, 0];
-                            ctx.fillStyle = `rgba(${color.join(',')}, ${(land ? 0.7 : 0.2)})`;
+                            ctx.fillStyle = `rgba(${color.join(',')}, ${(land ? 0.6 : 0.2)})`;
                             ctx.fill();
                         }
                     }
@@ -1373,8 +1395,12 @@
                 }),
                 grid: new GridLayer({
                     hexes: tiles,
-                    zIndex: 50,
+                    zIndex: 45,
                     showGrid: true
+                }),
+                boundary: new BoundaryLayer({
+                    hexes: tiles,
+                    zIndex: 46
                 })
             };
             _.each(this.layers, (layer) => layer.addTo(this.map));
@@ -1392,6 +1418,7 @@
                 Territory: this.layers.territory,
                 Cities: this.layers.city,
                 Grid: this.layers.grid,
+                Boundaries: this.layers.boundary,
                 Selection: highlightLayers.selection,
                 Events: highlightLayers.events
             };
@@ -1423,13 +1450,6 @@
             // Turn is now directly the array index (0-based)
             const turnIndex = turn;
             this.turnState = this.turnStates[turnIndex];
-            // Batch update turn state for all layers that support it
-            const layersWithTurnState = ['territory', 'city', 'grid'];
-            for (const layerName of layersWithTurnState) {
-                if (this.layers[layerName]) {
-                    this.layers[layerName].turnState = this.turnState;
-                }
-            }
             // Also update turn state for highlighting module (which will update grid layer's boundary highlighting)
             this.highlighting.updateTurnState(this.turnState);
             // Skip if turn hasn't changed
@@ -1444,10 +1464,14 @@
             }
             console.log(`Rendering turn ${turn}, previous turn was ${this.turn}`);
             this.turn = turn;
-            // Always redraw all layers to ensure they are updated
-            this.layers.grid.redraw();
-            this.layers.territory.redraw();
-            this.layers.city.redraw();
+            // Batch update turn state for all layers that support it
+            const layersWithTurnState = ['territory', 'city', 'grid', 'boundary'];
+            for (const layerName of layersWithTurnState) {
+                if (this.layers[layerName]) {
+                    this.layers[layerName].turnState = this.turnState;
+                    this.layers[layerName].redraw();
+                }
+            }
         }
         // Reset turn tracking state
         resetTurnState() {

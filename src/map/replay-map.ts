@@ -8,6 +8,7 @@
 import { HexLayer } from './hex-layer';
 import { CityLayer } from './city-layer';
 import { GridLayer } from './grid-layer';
+import { BoundaryLayer } from './boundary-layer';
 import { MapHighlighting } from './map-highlighting';
 import { CivColors } from '../utils/civ-colors';
 import { TurnState, MapLayer, MapControl, HexData } from '../types/map.types';
@@ -213,7 +214,7 @@ export class ReplayMap {
 					if (state.owner) {
 						var civColors = CivColors[state.owner];
 						var color = civColors ? civColors.territory : [0, 0, 0];
-						ctx.fillStyle = `rgba(${color.join(',')}, ${(land ? 0.7 : 0.2)})`;
+						ctx.fillStyle = `rgba(${color.join(',')}, ${(land ? 0.6 : 0.2)})`;
 						ctx.fill();
 					}
 				}
@@ -227,8 +228,13 @@ export class ReplayMap {
 
 			grid: new GridLayer({
 				hexes: tiles,
-				zIndex: 50,
+				zIndex: 45,
 				showGrid: true
+			}),
+
+			boundary: new BoundaryLayer({
+				hexes: tiles,
+				zIndex: 46
 			})
 		};
 
@@ -251,6 +257,7 @@ export class ReplayMap {
 			Territory: this.layers.territory,
 			Cities: this.layers.city,
 			Grid: this.layers.grid,
+			Boundaries: this.layers.boundary,
 			Selection: highlightLayers.selection,
 			Events: highlightLayers.events
 		};
@@ -294,14 +301,6 @@ export class ReplayMap {
 		const turnIndex = turn;
 		this.turnState = this.turnStates[turnIndex];
 
-		// Batch update turn state for all layers that support it
-		const layersWithTurnState = ['territory', 'city', 'grid'];
-		for (const layerName of layersWithTurnState) {
-			if (this.layers[layerName]) {
-				this.layers[layerName].turnState = this.turnState;
-			}
-		}
-
 		// Also update turn state for highlighting module (which will update grid layer's boundary highlighting)
 		this.highlighting.updateTurnState(this.turnState);
 
@@ -320,10 +319,14 @@ export class ReplayMap {
 		console.log(`Rendering turn ${turn}, previous turn was ${this.turn}`);
 		this.turn = turn;
 
-		// Always redraw all layers to ensure they are updated
-		this.layers.grid.redraw();
-		this.layers.territory.redraw();
-		this.layers.city.redraw();
+		// Batch update turn state for all layers that support it
+		const layersWithTurnState = ['territory', 'city', 'grid', 'boundary'];
+		for (const layerName of layersWithTurnState) {
+			if (this.layers[layerName]) {
+				this.layers[layerName].turnState = this.turnState;
+				this.layers[layerName].redraw();
+			}
+		}
 	}
 
 	// Reset turn tracking state

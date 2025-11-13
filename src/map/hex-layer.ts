@@ -5,7 +5,6 @@
  * Migrated from L.TileLayer.Canvas (Leaflet 0.7.x) to L.GridLayer (Leaflet 1.x+)
  */
 
-import { calculateHexBorderWidth } from '../utils/hex-border-utils';
 
 declare const L: any;
 declare const _: any;
@@ -18,8 +17,8 @@ interface HexLayerInitConfig {
 	height?: number;  // Grid height (number of rows)
 	width?: number;   // Grid width (number of columns)
 	drawHex?: (ctx: CanvasRenderingContext2D, hex: any, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) => void;  // Custom drawing function
+	drawHexEdges?: (ctx: CanvasRenderingContext2D, hex: any, cx: number, cy: number) => Set<number> | null;  // Custom function to determine which edges to draw
 	overdraw?: number;  // Extra height for hex drawing
-	gridStyle?: string;  // Style for grid lines
 	clipHexes?: boolean;  // Whether to clip hex drawing (default: true)
 	// Standard Leaflet GridLayer options
 	opacity?: number;
@@ -47,8 +46,8 @@ export const HexLayer = L.GridLayer.extend({
 			height: config.height,
 			width: config.width,
 			drawHex: config.drawHex,
+			drawHexEdges: config.drawHexEdges,
 			overdraw: config.overdraw,
-			gridStyle: config.gridStyle,
 			clipHexes: config.clipHexes !== false // Default to true for backward compatibility
 		};
 
@@ -190,17 +189,19 @@ export const HexLayer = L.GridLayer.extend({
 				if (!this.hexes[flippedGridY] || !this.hexes[flippedGridY][gridX]) { continue; }
 
 				// Our own drawing function sets up the ctx with a hex polygon
-				this.preDrawHex(ctx, x, y, hexWidth, hexHeight + (this.config.overdraw || 0), this.config.gridStyle, gridX, flippedGridY);
+				const hex = this.hexes[flippedGridY][gridX];
+				const edgesToDraw = this.config.drawHexEdges ?
+					this.config.drawHexEdges(ctx, hex, x, y) : null;
+
+				const clipping = this.preDrawHex(ctx, x, y, hexWidth, hexHeight + (this.config.overdraw || 0), edgesToDraw);
 
 				// Custom drawing function does something with it
 				ctx.save();
-				if (this.config.clipHexes) {
-					ctx.clip();
-				}
+				if (this.config.clipHexes) ctx.clip(clipping);
 
 				this.config.drawHex(
 					ctx,
-					this.hexes[flippedGridY][gridX],
+					hex,
 					x, y,
 					x - hexWidth / 2, y - hexHeight / 2,
 					x + hexWidth / 2, y + hexHeight / 2
@@ -211,98 +212,40 @@ export const HexLayer = L.GridLayer.extend({
 		}
 	},
 
-	preDrawHex: function (ctx: any, x: number, y: number, width: number, height: number, gridStyle: string, gridX: number, flippedGridY: number) {
-		var globalCompositeOperation = ctx.globalCompositeOperation;
-		ctx.globalCompositeOperation = 'destination-over';
-
+	preDrawHex: function (ctx: any, x: number, y: number, width: number, height: number, edgesToDraw?: Set<number> | null) {
 		var angle = 2 * Math.PI / 6 * (0 + 0.5);
 		var startX = x + (height * 0.5) * Math.cos(angle);
 		var startY = y + (height * 0.5) * Math.sin(angle);
+		var clipping = new Path2D();
 
 		ctx.beginPath();
 		ctx.moveTo(startX, startY);
+		clipping.moveTo(startX, startY);
 
-		var lastX = startX;
-		var lastY = startY;
+		if (edgesToDraw) {
+			ctx.lineCap = "square";
+		}
 
 		for (var i = 1; i <= 6; i++) {
 			angle = 2 * Math.PI / 6 * (i + 0.5);
 			var endX = x + (height * 0.5) * Math.cos(angle);
 			var endY = y + (height * 0.5) * Math.sin(angle);
 
-			var selfEdgeName = [gridX, flippedGridY, i].join(',');
-			var otherEdgeName;
-
-			switch (i) {
-				case 1: otherEdgeName = [gridX, flippedGridY + 1, 4].join(','); break;
-				case 2: otherEdgeName = [gridX - 1, flippedGridY + 1, 5].join(','); break;
-				case 3: otherEdgeName = [gridX - 1, flippedGridY, 6].join(','); break;
-				case 4: otherEdgeName = [gridX, flippedGridY - 1, 1].join(','); break;
-				case 5: otherEdgeName = [gridX + 1, flippedGridY - 1, 2].join(','); break;
-				case 6: otherEdgeName = [gridX + 1, flippedGridY, 3].join(','); break;
-			}
-
-			var edgeName = selfEdgeName < otherEdgeName ? selfEdgeName : otherEdgeName;
-
-			ctx.lineTo(endX, endY);
-
-			ctx.canvas.edges = ctx.canvas.edges || {};
-
-			if (gridStyle) {
-				ctx.closePath();
-
-				if (!ctx.canvas.edges[edgeName]) {
-					ctx.canvas.edges[edgeName] = true;
-
-					if (prettyDamnClose(endX, lastX) || prettyDamnClose(endY, lastY)) {
-						// Canvas is really dumb with straight lines that use transparency - we need
-						// to just do it ourselves by setting individual pixels, becauses stroke()
-						// will try to do pathetic anti-aliasing that completely changes the color.
-						this.drawNonAntiAliasedLine(ctx, lastX, lastY, endX, endY, gridStyle);
-					}
-					else {
-						// Calculate line width based on hex size for better scaling
-						// Using height as proxy for hex size
-						ctx.lineWidth = calculateHexBorderWidth(height, 1, 0.05);
-						ctx.strokeStyle = gridStyle;
-						ctx.stroke();
-					}
-				}
-
-				ctx.beginPath();
+			// Determine if we should draw this edge
+			if (!edgesToDraw || edgesToDraw.has(i)) {
+				// If we should draw this edge, use lineTo to create a continuous path
+				ctx.lineTo(endX, endY);
+			} else {
+				// If we shouldn't draw this edge, use moveTo to skip drawing
 				ctx.moveTo(endX, endY);
 			}
-
-			lastX = endX;
-			lastY = endY;
+			clipping.lineTo(endX, endY);
 		}
 
-		ctx.globalCompositeOperation = globalCompositeOperation;
-
-		function prettyDamnClose(a: number, b: number) {
-			return Math.abs((a - b) / a) < 0.01;
-		}
+		clipping.closePath();
+		return clipping;
 	},
 
-	drawNonAntiAliasedLine: function (ctx: any, startX: number, startY: number, endX: number, endY: number, style: string) {
-		// This is NOT a general purpose line drawing function! It's purely for bypassing
-		// a bug in canvas that anti-aliases lines even when they're perfectly horizontal
-		// or vertical, which distorts the color. Note that this is NOT solvable by using
-		// ctx.imageSmoothingEnabled = false.
-
-		ctx.fillStyle = style;
-
-		for (var x = startX; x <= endX; x++) {
-			for (var y = startY; y <= endY; y++) {
-				ctx.fillRect(x, y, 1, 1);
-			}
-		}
-
-		// Mark the line as being drawn by this function
-		// ctx.fillStyle = 'rgb(255, 0, 0)'
-		// ctx.fillRect(startX, startY, 1, 1)
-		// ctx.fillRect(endX,   endY,   1, 1)
-	},
 
 	drawImage: function (ctx: any, id: string, sx: number, sy: number, sw: number, sh: number) {
 		var img = document.getElementById(id) as HTMLImageElement;

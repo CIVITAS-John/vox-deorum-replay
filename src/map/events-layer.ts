@@ -57,7 +57,7 @@ export const EventsLayer = HexLayer.extend({
 		if (eventType !== undefined) {
 			// Draw dashed light yellow border for event
 			ctx.strokeStyle = EVENT_COLOR;
-			ctx.lineWidth = calculateHexBorderWidth(x2 - x1, EVENT_WIDTH);
+			ctx.lineWidth = calculateHexBorderWidth(x2 - x1, EVENT_WIDTH, EVENT_WIDTH / 4);
 			ctx.setLineDash(DASH_PATTERN);
 			ctx.stroke();
 			ctx.setLineDash([]); // Reset to solid

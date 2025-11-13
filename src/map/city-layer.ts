@@ -86,22 +86,28 @@ export const CityLayer = HexLayer.extend({
 			// The font will naturally scale with the tile/hex size
 			const fontSize = Math.sqrt(hexWidth) * 2.5; // Font size relative to hex height
 
-			// Set up text style
-			ctx.font = `bold ${fontSize}px Arial`;
+			// Set up text style with improved clarity
+			ctx.font = `${fontSize}px EB Garamond, serif`;
 			ctx.textAlign = 'left';
 			ctx.textBaseline = 'middle';
+
+			// Enable better text rendering
+			ctx.imageSmoothingEnabled = true;
+			ctx.imageSmoothingQuality = 'high';
 
 			// Position text to the right of the circle with padding
 			const textX = cx + radius + Math.sqrt(hexWidth);
 			const textY = cy;
 
-			// Draw text shadow/outline for readability
-			ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
-			ctx.lineWidth = calculateTextOutlineWidth(hexWidth);
+			// Draw stronger black outline for better contrast
+			ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+			ctx.lineWidth = calculateTextOutlineWidth(hexWidth) * 1.5;
+			ctx.lineJoin = 'round';
+			ctx.miterLimit = 2;
 			ctx.strokeText(state.city, textX, textY);
 
-			// Draw white text
-			ctx.fillStyle = 'white';
+			// Draw white text with full opacity for maximum clarity
+			ctx.fillStyle = 'rgba(255, 255, 255, 1)';
 			ctx.fillText(state.city, textX, textY);
 		}
 
