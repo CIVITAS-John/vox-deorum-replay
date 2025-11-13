@@ -187,7 +187,7 @@ export class ReplayViewer {
     xhr.onload = (e: ProgressEvent<XMLHttpRequest>) => {
       const target = e.target as XMLHttpRequest;
       if (target.status === 200) {
-        this.processReplayData(target.response, e.total);
+        this.processReplayData(target.response, target.response.byteLength);
       } else {
         this.showError(`Failed to load file: HTTP ${target.status}`);
       }

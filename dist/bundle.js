@@ -2875,7 +2875,7 @@
             xhr.onload = (e) => {
                 const target = e.target;
                 if (target.status === 200) {
-                    this.processReplayData(target.response, e.total);
+                    this.processReplayData(target.response, target.response.byteLength);
                 }
                 else {
                     this.showError(`Failed to load file: HTTP ${target.status}`);
