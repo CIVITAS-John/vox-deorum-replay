@@ -291,6 +291,11 @@
                 const key = this._tileCoordsToKey(coords);
                 const tile = this._tiles[key];
                 if (tile && tile.el) {
+                    // Clear the canvas before redrawing to avoid glitches
+                    const ctx = tile.el.getContext('2d');
+                    if (ctx) {
+                        ctx.clearRect(0, 0, tile.el.width, tile.el.height);
+                    }
                     // Redraw the specific tile
                     this._drawTile(tile.el, coords);
                 }
