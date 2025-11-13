@@ -10,7 +10,7 @@ Designed to work with the [Vox Deorum project](https://github.com/CIVITAS-John/v
 
 Visit the viewer at: https://civitas-john.github.io/vox-deorum-replay/
 
-In those example saves, Player 0 is a LLM. You can see how they play and reason throughout the game.
+In those examples, Player 0 is an LLM. You can see how they play and reason throughout the game.
 - [Example save 1](https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/1.Civ5Replay)
 - [Example save 2](https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/2.Civ5Replay)
 - [Example save 3](https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/3.Civ5Replay)
@@ -30,7 +30,28 @@ https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.gith
 
 The project is built on Alex Webb's [civ5replayer](https://github.com/aiwebb/civ5replay).
 
-## Keyboard Shortcuts
+### Where to Find Replay Files?
+
+Civilization V (Vox Populi) replay files are saved with the `.Civ5Replay` extension. You can find them in:
+
+**Windows:**
+```
+Documents\My Games\Sid Meier's Civilization 5\Replays\
+```
+
+**Mac:**
+```
+~/Documents/Aspyr/Sid Meier's Civilization 5/Replays/
+```
+
+**Linux:**
+```
+~/.local/share/Aspyr-Media/Sid Meier's Civilization 5/Replays/
+```
+
+Note: Replay files are only generated if you have "Save Replays" enabled in the game options.
+
+### Keyboard Shortcuts
 
 Key            | Action
 -------------- | ------------
@@ -41,6 +62,16 @@ Key            | Action
 `pgup`, `home` | Jump to first turn
 `pgdn`, `end`  | Jump to last turn
 `+`, `-`       | Zoom in/out
+
+
+## Helping Us
+All pull requests are welcomed. In particular, we need your help to:
+- Visualize all VP5 features (e.g. Oasis) and Natural Wonders.
+- Create better/higher-quality textures.
+- Visualize replay DATA - e.g. gold output per turn for each player.
+- Adding tooltips on the map and on individual events.
+
+I am planning to work on some of these, when I get some more time :)
 
 ## License
 
