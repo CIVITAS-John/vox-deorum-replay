@@ -22,13 +22,14 @@ export interface HexData {
   [key: string]: number | number[] | string | undefined;   // Allow additional properties
 }
 
-// Turn state
-export interface TurnState {
-  turn: number;                            // Current turn number
-  tiles: HexData[][];                      // 2D array of tile data for this turn
-  events?: GameEvent[];                    // Events that occurred this turn
-  [key: string]: unknown;                  // Allow additional properties
+// Tile state information for a single hex
+export interface TileStateInfo {
+  owner?: string;                          // Civilization that owns this tile
+  city?: string;                           // City name if this tile has a city
 }
+
+// Turn state - maps hex coordinates to tile state
+export type TurnState = Record<string, TileStateInfo>;
 
 // Map layer interface - using any for Leaflet map to avoid namespace issues
 export interface MapLayer {
@@ -38,7 +39,7 @@ export interface MapLayer {
   redrawHexes(changedHexKeys: string[]): void; // Selectively redraw specific hexes
   clearCache?(): void;                     // Clear tile cache (optional, for HexLayer)
   options?: HexLayerConfig;                // Layer configuration options
-  turnState?: any;                         // Current turn state
+  turnState?: TurnState;                   // Current turn state
   _map?: any;                              // Reference to Leaflet map instance
 }
 

@@ -5,8 +5,28 @@
  * Migrated from L.TileLayer.Canvas (Leaflet 0.7.x) to L.GridLayer (Leaflet 1.x+)
  */
 
+import { calculateHexBorderWidth } from '../utils/hex-border-utils';
+
 declare const L: any;
 declare const _: any;
+
+/**
+ * Configuration interface for HexLayer initialization
+ */
+interface HexLayerInitConfig {
+	hexes?: any[][];  // Array of hex data rows
+	height?: number;  // Grid height (number of rows)
+	width?: number;   // Grid width (number of columns)
+	drawHex?: (ctx: CanvasRenderingContext2D, hex: any, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) => void;  // Custom drawing function
+	overdraw?: number;  // Extra height for hex drawing
+	gridStyle?: string;  // Style for grid lines
+	clipHexes?: boolean;  // Whether to clip hex drawing (default: true)
+	// Standard Leaflet GridLayer options
+	opacity?: number;
+	zIndex?: number;
+	minZoom?: number;
+	maxZoom?: number;
+}
 
 /**
  * HexLayer - Custom layer for rendering hexagonal tiles
@@ -17,7 +37,7 @@ export const HexLayer = L.GridLayer.extend({
 	 * Initialize the hex layer with configuration
 	 * @param {Object} config - Configuration object containing hexes, dimensions, and drawing options
 	 */
-	initialize: function (config: any) {
+	initialize: function (config: HexLayerInitConfig) {
 		// Call parent constructor with options
 		const options = _.extend({}, config);
 
@@ -28,7 +48,8 @@ export const HexLayer = L.GridLayer.extend({
 			width: config.width,
 			drawHex: config.drawHex,
 			overdraw: config.overdraw,
-			gridStyle: config.gridStyle
+			gridStyle: config.gridStyle,
+			clipHexes: config.clipHexes !== false // Default to true for backward compatibility
 		};
 
 		// Keep standard Leaflet options
@@ -173,7 +194,9 @@ export const HexLayer = L.GridLayer.extend({
 
 				// Custom drawing function does something with it
 				ctx.save();
-				ctx.clip();
+				if (this.config.clipHexes) {
+					ctx.clip();
+				}
 
 				this.config.drawHex(
 					ctx,
@@ -238,7 +261,9 @@ export const HexLayer = L.GridLayer.extend({
 						this.drawNonAntiAliasedLine(ctx, lastX, lastY, endX, endY, gridStyle);
 					}
 					else {
-						ctx.lineWidth = 1;
+						// Calculate line width based on hex size for better scaling
+						// Using height as proxy for hex size
+						ctx.lineWidth = calculateHexBorderWidth(height, 1, 0.05);
 						ctx.strokeStyle = gridStyle;
 						ctx.stroke();
 					}

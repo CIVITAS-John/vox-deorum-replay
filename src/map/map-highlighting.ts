@@ -4,15 +4,10 @@
  * Handles selection highlighting and event border highlighting
  */
 
-import { HexLayer } from './hex-layer';
+import { SelectionLayer } from './selection-layer';
+import { EventsLayer } from './events-layer';
 import { MapLayer } from '../types/map.types';
-import { GameEvent, EventType } from '../types/replay.types';
-
-/**
- * Shared highlighting constants
- */
-const HIGHLIGHT_COLOR = '#FFEB3B'; // Light yellow
-const HIGHLIGHT_WIDTH = 4;
+import { GameEvent, EventType, Tile } from '../types/replay.types';
 
 /**
  * MapHighlighting class
@@ -20,16 +15,16 @@ const HIGHLIGHT_WIDTH = 4;
  */
 export class MapHighlighting {
 	private map: any;                              // Reference to Leaflet map instance
-	private tiles: any[][];                        // Reference to tile data
+	private tiles: Tile[][];                        // Reference to tile data
 	private selectedHex: string | null;            // Currently selected/hovered hex
 	private eventHexes: Map<string, EventType>;    // First event type per hex
 	private selectionLayer: MapLayer | null;       // Selection/hover highlighting layer
 	private eventsLayer: MapLayer | null;          // Events border layer
 	private parentMap: any;                        // Reference to parent ReplayMap instance
+	private gridLayer: any;                        // Reference to grid layer for boundary highlighting
 
 	// Kept for backward compatibility
 	private highlightedCivs: Set<string>;
-	private boundaryLayer: MapLayer | null;
 
 	constructor(parentMap: any) {
 		this.parentMap = parentMap;
@@ -37,7 +32,7 @@ export class MapHighlighting {
 		this.eventHexes = new Map();
 		this.selectionLayer = null;
 		this.eventsLayer = null;
-		this.boundaryLayer = null;
+		this.gridLayer = null;
 
 		// Keep for backward compatibility
 		this.highlightedCivs = new Set<string>();
@@ -46,81 +41,32 @@ export class MapHighlighting {
 	/**
 	 * Initialize highlighting layers
 	 */
-	initLayers(map: any, tiles: any[][]) {
+	initLayers(map: any, tiles: Tile[][]) {
 		this.map = map;
 		this.tiles = tiles;
-		const self = this;
 
 		// Create selection layer for mouse hover
-		this.selectionLayer = new HexLayer({
-			hexes: tiles,
-			zIndex: 60,
-			drawHex: function (ctx: CanvasRenderingContext2D, hex: any, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) {
-				const hexKey = `${hex.x},${hex.y}`;
-				if (self.selectedHex === hexKey) {
-					// Draw solid light yellow border for selection
-					ctx.strokeStyle = HIGHLIGHT_COLOR;
-					ctx.lineWidth = HIGHLIGHT_WIDTH;
-					ctx.stroke();
-				}
-			}
+		this.selectionLayer = new SelectionLayer({
+			hexes: tiles
 		});
 
 		// Create events layer for border highlighting
-		this.eventsLayer = new HexLayer({
-			hexes: tiles,
-			zIndex: 70,
-			drawHex: function (ctx: CanvasRenderingContext2D, hex: any, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) {
-				const hexKey = `${hex.x},${hex.y}`;
-				const eventType = self.eventHexes.get(hexKey);
-
-				if (eventType !== undefined) {
-					// Draw dashed light yellow border for event
-					ctx.strokeStyle = HIGHLIGHT_COLOR;
-					ctx.lineWidth = HIGHLIGHT_WIDTH;
-					ctx.setLineDash([4, 4]); // Dashed pattern
-					ctx.stroke();
-					ctx.setLineDash([]); // Reset to solid
-				}
-			}
-		});
-
-		// Create boundary layer for civilization boundaries (kept for backward compatibility)
-		this.boundaryLayer = new HexLayer({
-			hexes: tiles,
-			zIndex: 65,
-			overdraw: 2,
-			drawHex: function (ctx: CanvasRenderingContext2D, hex: any, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) {
-				if (!self.parentMap.turnState || self.highlightedCivs.size === 0) return;
-
-				const hexKey = `${hex.x},${hex.y}`;
-				const state = self.parentMap.turnState[hexKey];
-
-				if (state && state.owner && self.highlightedCivs.has(state.owner)) {
-					const adjacentKeys = self.getAdjacentHexKeys(hex.x, hex.y);
-					let isBoundary = false;
-
-					for (const adjKey of adjacentKeys) {
-						const adjState = self.parentMap.turnState[adjKey];
-						if (!adjState || !adjState.owner || adjState.owner !== state.owner) {
-							isBoundary = true;
-							break;
-						}
-					}
-
-					if (isBoundary) {
-						ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
-						ctx.lineWidth = 3;
-						ctx.stroke();
-					}
-				}
-			}
+		this.eventsLayer = new EventsLayer({
+			hexes: tiles
 		});
 
 		// Add layers to map
 		this.selectionLayer.addTo(map);
 		this.eventsLayer.addTo(map);
-		this.boundaryLayer.addTo(map);
+
+		// Note: Grid layer with boundary functionality is now created and managed by ReplayMap
+	}
+
+	/**
+	 * Set reference to grid layer for boundary highlighting
+	 */
+	setGridLayer(gridLayer: any) {
+		this.gridLayer = gridLayer;
 	}
 
 	/**
@@ -129,40 +75,11 @@ export class MapHighlighting {
 	getLayers() {
 		return {
 			selection: this.selectionLayer,
-			events: this.eventsLayer,
-			boundaries: this.boundaryLayer
+			events: this.eventsLayer
+			// Note: boundaries are now handled by the grid layer
 		};
 	}
 
-	/**
-	 * Get adjacent hex keys for a given hex coordinate
-	 */
-	private getAdjacentHexKeys(x: number, y: number): string[] {
-		const adjacentKeys: string[] = [];
-		const isEvenRow = y % 2 === 0;
-
-		const neighbors = isEvenRow ? [
-			[x - 1, y],      // West
-			[x + 1, y],      // East
-			[x - 1, y - 1],  // Northwest
-			[x, y - 1],      // Northeast
-			[x - 1, y + 1],  // Southwest
-			[x, y + 1]       // Southeast
-		] : [
-			[x - 1, y],      // West
-			[x + 1, y],      // East
-			[x, y - 1],      // Northwest
-			[x + 1, y - 1],  // Northeast
-			[x, y + 1],      // Southwest
-			[x + 1, y + 1]   // Southeast
-		];
-
-		for (const [nx, ny] of neighbors) {
-			adjacentKeys.push(`${nx},${ny}`);
-		}
-
-		return adjacentKeys;
-	}
 
 	/**
 	 * Clear all highlights
@@ -171,24 +88,25 @@ export class MapHighlighting {
 		this.selectedHex = null;
 		this.eventHexes.clear();
 		this.highlightedCivs.clear();
-		this.redrawLayers();
+
+		if (this.selectionLayer) {
+			(this.selectionLayer as any).clearSelection();
+		}
+		if (this.eventsLayer) {
+			(this.eventsLayer as any).clearEventHighlights();
+		}
+		if (this.gridLayer) {
+			this.gridLayer.clearCivHighlights();
+		}
 	}
 
 	/**
-	 * Redraw highlighting layers
+	 * Update turn state for boundary highlighting in grid layer
+	 * Note: Grid layer's turnState is set directly by ReplayMap, this just triggers redraw
 	 */
-	private redrawLayers() {
-		if (this.selectionLayer) {
-			(this.selectionLayer as any).tileCache = {};
-			this.selectionLayer.redraw();
-		}
-		if (this.eventsLayer) {
-			(this.eventsLayer as any).tileCache = {};
-			this.eventsLayer.redraw();
-		}
-		if (this.boundaryLayer) {
-			(this.boundaryLayer as any).tileCache = {};
-			this.boundaryLayer.redraw();
+	updateTurnState(turnState: any) {
+		if (this.gridLayer && this.gridLayer.turnState !== turnState) {
+			this.gridLayer.redraw();
 		}
 	}
 
@@ -201,8 +119,7 @@ export class MapHighlighting {
 		if (this.selectedHex !== hexKey) {
 			this.selectedHex = hexKey;
 			if (this.selectionLayer) {
-				(this.selectionLayer as any).tileCache = {};
-				this.selectionLayer.redraw();
+				(this.selectionLayer as any).setSelectedHex(hexKey);
 			}
 		}
 	}
@@ -220,24 +137,21 @@ export class MapHighlighting {
 	 * Highlight hexes where events occurred with colored borders
 	 */
 	highlightEventHexes(events: GameEvent[]) {
-		// Clear previous event hexes
+		// Clear and update internal tracking
 		this.eventHexes.clear();
-
-		// Add new event hexes (only first event per hex)
 		for (const event of events) {
 			const hexKeys = event.tiles?.map(t => `${t.x},${t.y}`);
 			if (!hexKeys) continue;
 			for (const hexKey of hexKeys) {
-				// Only store if hex doesn't already have an event
 				if (!this.eventHexes.has(hexKey)) {
 					this.eventHexes.set(hexKey, event.type);
 				}
 			}
 		}
 
+		// Delegate to events layer
 		if (this.eventsLayer) {
-			(this.eventsLayer as any).tileCache = {};
-			this.eventsLayer.redraw();
+			(this.eventsLayer as any).highlightEventHexes(events);
 		}
 	}
 
@@ -247,8 +161,7 @@ export class MapHighlighting {
 	clearEventHighlights() {
 		this.eventHexes.clear();
 		if (this.eventsLayer) {
-			(this.eventsLayer as any).tileCache = {};
-			this.eventsLayer.redraw();
+			(this.eventsLayer as any).clearEventHighlights();
 		}
 	}
 
@@ -277,38 +190,45 @@ export class MapHighlighting {
 		this.setSelectedHex(null);
 	}
 
-	// Civilization boundary methods (kept for backward compatibility)
+	// Civilization boundary methods (delegated to grid layer)
 
 	highlightCivBoundaries(civNames: string[]) {
 		this.highlightedCivs.clear();
 		for (const name of civNames) {
 			this.highlightedCivs.add(name);
 		}
-		this.redrawLayers();
+		if (this.gridLayer) {
+			this.gridLayer.highlightCivBoundaries(civNames);
+		}
 	}
 
 	addHighlightedCivs(civNames: string[]) {
 		for (const name of civNames) {
 			this.highlightedCivs.add(name);
 		}
-		this.redrawLayers();
+		if (this.gridLayer) {
+			this.gridLayer.addHighlightedCivs(civNames);
+		}
 	}
 
 	removeHighlightedCivs(civNames: string[]) {
 		for (const name of civNames) {
 			this.highlightedCivs.delete(name);
 		}
-		this.redrawLayers();
+		if (this.gridLayer) {
+			this.gridLayer.removeHighlightedCivs(civNames);
+		}
 	}
 
 	clearCivHighlights() {
 		this.highlightedCivs.clear();
-		this.redrawLayers();
+		if (this.gridLayer) {
+			this.gridLayer.clearCivHighlights();
+		}
 	}
 
 	setHighlightColors(hexColor?: string, boundaryColor?: string, eventColor?: string) {
 		// For backward compatibility - colors are now fixed for consistency
-		// Colors are no longer configurable, using shared constants instead
-		this.redrawLayers();
+		// Colors are no longer configurable in the individual layer modules
 	}
 }

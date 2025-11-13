@@ -2,6 +2,39 @@
     'use strict';
 
     /**
+     * hex-border-utils.ts
+     * Utility functions for calculating hex border properties
+     */
+    /**
+     * Calculate the appropriate line width for a hex border based on hex size
+     * Uses the hex width to determine a proportional line width that scales properly with zoom
+     *
+     * @param hexWidth - The width of the hex (typically x2 - x1)
+     * @param maxWidth - Maximum line width to use (default: 4)
+     * @param scaleFactor - Scale factor for the calculation (default: 0.5)
+     * @returns The calculated line width
+     */
+    function calculateHexBorderWidth(hexWidth, maxWidth = 4, scaleFactor = 0.5) {
+        // Calculate proportional width based on hex size
+        // Using square root provides better scaling across different zoom levels
+        const proportionalWidth = Math.sqrt(hexWidth) * scaleFactor;
+        // Cap at maximum width to prevent borders from becoming too thick
+        return Math.min(maxWidth, proportionalWidth);
+    }
+    /**
+     * Calculate text outline width for hex labels based on hex size
+     * Similar to border width but typically smaller for better readability
+     *
+     * @param hexWidth - The width of the hex
+     * @param maxWidth - Maximum outline width (default: 3)
+     * @param scaleFactor - Scale factor for the calculation (default: 0.5)
+     * @returns The calculated outline width
+     */
+    function calculateTextOutlineWidth(hexWidth, maxWidth = 3, scaleFactor = 0.5) {
+        return calculateHexBorderWidth(hexWidth, maxWidth, scaleFactor);
+    }
+
+    /**
      * hex-layer.ts
      * Custom Leaflet layer for rendering hexagonal tile maps
      * Extends Leaflet's GridLayer to draw hexagonal grids for Civilization V maps
@@ -26,7 +59,8 @@
                 width: config.width,
                 drawHex: config.drawHex,
                 overdraw: config.overdraw,
-                gridStyle: config.gridStyle
+                gridStyle: config.gridStyle,
+                clipHexes: config.clipHexes !== false // Default to true for backward compatibility
             };
             // Keep standard Leaflet options
             const leafletOptions = {};
@@ -147,7 +181,9 @@
                     this.preDrawHex(ctx, x, y, hexWidth, hexHeight + (this.config.overdraw || 0), this.config.gridStyle, gridX, flippedGridY);
                     // Custom drawing function does something with it
                     ctx.save();
-                    ctx.clip();
+                    if (this.config.clipHexes) {
+                        ctx.clip();
+                    }
                     this.config.drawHex(ctx, this.hexes[flippedGridY][gridX], x, y, x - hexWidth / 2, y - hexHeight / 2, x + hexWidth / 2, y + hexHeight / 2);
                     ctx.restore();
                 }
@@ -203,7 +239,9 @@
                             this.drawNonAntiAliasedLine(ctx, lastX, lastY, endX, endY, gridStyle);
                         }
                         else {
-                            ctx.lineWidth = 1;
+                            // Calculate line width based on hex size for better scaling
+                            // Using height as proxy for hex size
+                            ctx.lineWidth = calculateHexBorderWidth(height, 1, 0.05);
                             ctx.strokeStyle = gridStyle;
                             ctx.stroke();
                         }
@@ -304,269 +342,6 @@
     });
 
     /**
-     * map-highlighting.ts
-     * Module for managing map highlighting features
-     * Handles selection highlighting and event border highlighting
-     */
-    /**
-     * Shared highlighting constants
-     */
-    const HIGHLIGHT_COLOR = '#FFEB3B'; // Light yellow
-    const HIGHLIGHT_WIDTH = 4;
-    /**
-     * MapHighlighting class
-     * Manages different types of highlighting on the map
-     */
-    class MapHighlighting {
-        constructor(parentMap) {
-            this.parentMap = parentMap;
-            this.selectedHex = null;
-            this.eventHexes = new Map();
-            this.selectionLayer = null;
-            this.eventsLayer = null;
-            this.boundaryLayer = null;
-            // Keep for backward compatibility
-            this.highlightedCivs = new Set();
-        }
-        /**
-         * Initialize highlighting layers
-         */
-        initLayers(map, tiles) {
-            this.map = map;
-            this.tiles = tiles;
-            const self = this;
-            // Create selection layer for mouse hover
-            this.selectionLayer = new HexLayer({
-                hexes: tiles,
-                zIndex: 60,
-                drawHex: function (ctx, hex, cx, cy, x1, y1, x2, y2) {
-                    const hexKey = `${hex.x},${hex.y}`;
-                    if (self.selectedHex === hexKey) {
-                        // Draw solid light yellow border for selection
-                        ctx.strokeStyle = HIGHLIGHT_COLOR;
-                        ctx.lineWidth = HIGHLIGHT_WIDTH;
-                        ctx.stroke();
-                    }
-                }
-            });
-            // Create events layer for border highlighting
-            this.eventsLayer = new HexLayer({
-                hexes: tiles,
-                zIndex: 70,
-                drawHex: function (ctx, hex, cx, cy, x1, y1, x2, y2) {
-                    const hexKey = `${hex.x},${hex.y}`;
-                    const eventType = self.eventHexes.get(hexKey);
-                    if (eventType !== undefined) {
-                        // Draw dashed light yellow border for event
-                        ctx.strokeStyle = HIGHLIGHT_COLOR;
-                        ctx.lineWidth = HIGHLIGHT_WIDTH;
-                        ctx.setLineDash([4, 4]); // Dashed pattern
-                        ctx.stroke();
-                        ctx.setLineDash([]); // Reset to solid
-                    }
-                }
-            });
-            // Create boundary layer for civilization boundaries (kept for backward compatibility)
-            this.boundaryLayer = new HexLayer({
-                hexes: tiles,
-                zIndex: 65,
-                overdraw: 2,
-                drawHex: function (ctx, hex, cx, cy, x1, y1, x2, y2) {
-                    if (!self.parentMap.turnState || self.highlightedCivs.size === 0)
-                        return;
-                    const hexKey = `${hex.x},${hex.y}`;
-                    const state = self.parentMap.turnState[hexKey];
-                    if (state && state.owner && self.highlightedCivs.has(state.owner)) {
-                        const adjacentKeys = self.getAdjacentHexKeys(hex.x, hex.y);
-                        let isBoundary = false;
-                        for (const adjKey of adjacentKeys) {
-                            const adjState = self.parentMap.turnState[adjKey];
-                            if (!adjState || !adjState.owner || adjState.owner !== state.owner) {
-                                isBoundary = true;
-                                break;
-                            }
-                        }
-                        if (isBoundary) {
-                            ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
-                            ctx.lineWidth = 3;
-                            ctx.stroke();
-                        }
-                    }
-                }
-            });
-            // Add layers to map
-            this.selectionLayer.addTo(map);
-            this.eventsLayer.addTo(map);
-            this.boundaryLayer.addTo(map);
-        }
-        /**
-         * Get layers for layer control
-         */
-        getLayers() {
-            return {
-                selection: this.selectionLayer,
-                events: this.eventsLayer,
-                boundaries: this.boundaryLayer
-            };
-        }
-        /**
-         * Get adjacent hex keys for a given hex coordinate
-         */
-        getAdjacentHexKeys(x, y) {
-            const adjacentKeys = [];
-            const isEvenRow = y % 2 === 0;
-            const neighbors = isEvenRow ? [
-                [x - 1, y], // West
-                [x + 1, y], // East
-                [x - 1, y - 1], // Northwest
-                [x, y - 1], // Northeast
-                [x - 1, y + 1], // Southwest
-                [x, y + 1] // Southeast
-            ] : [
-                [x - 1, y], // West
-                [x + 1, y], // East
-                [x, y - 1], // Northwest
-                [x + 1, y - 1], // Northeast
-                [x, y + 1], // Southwest
-                [x + 1, y + 1] // Southeast
-            ];
-            for (const [nx, ny] of neighbors) {
-                adjacentKeys.push(`${nx},${ny}`);
-            }
-            return adjacentKeys;
-        }
-        /**
-         * Clear all highlights
-         */
-        clearAll() {
-            this.selectedHex = null;
-            this.eventHexes.clear();
-            this.highlightedCivs.clear();
-            this.redrawLayers();
-        }
-        /**
-         * Redraw highlighting layers
-         */
-        redrawLayers() {
-            if (this.selectionLayer) {
-                this.selectionLayer.tileCache = {};
-                this.selectionLayer.redraw();
-            }
-            if (this.eventsLayer) {
-                this.eventsLayer.tileCache = {};
-                this.eventsLayer.redraw();
-            }
-            if (this.boundaryLayer) {
-                this.boundaryLayer.tileCache = {};
-                this.boundaryLayer.redraw();
-            }
-        }
-        // Selection methods
-        /**
-         * Set the selected hex (for hover highlight)
-         */
-        setSelectedHex(hexKey) {
-            if (this.selectedHex !== hexKey) {
-                this.selectedHex = hexKey;
-                if (this.selectionLayer) {
-                    this.selectionLayer.tileCache = {};
-                    this.selectionLayer.redraw();
-                }
-            }
-        }
-        /**
-         * Get the currently selected hex
-         */
-        getSelectedHex() {
-            return this.selectedHex;
-        }
-        // Event highlighting methods
-        /**
-         * Highlight hexes where events occurred with colored borders
-         */
-        highlightEventHexes(events) {
-            var _a;
-            // Clear previous event hexes
-            this.eventHexes.clear();
-            // Add new event hexes (only first event per hex)
-            for (const event of events) {
-                const hexKeys = (_a = event.tiles) === null || _a === void 0 ? void 0 : _a.map(t => `${t.x},${t.y}`);
-                if (!hexKeys)
-                    continue;
-                for (const hexKey of hexKeys) {
-                    // Only store if hex doesn't already have an event
-                    if (!this.eventHexes.has(hexKey)) {
-                        this.eventHexes.set(hexKey, event.type);
-                    }
-                }
-            }
-            if (this.eventsLayer) {
-                this.eventsLayer.tileCache = {};
-                this.eventsLayer.redraw();
-            }
-        }
-        /**
-         * Clear event highlights
-         */
-        clearEventHighlights() {
-            this.eventHexes.clear();
-            if (this.eventsLayer) {
-                this.eventsLayer.tileCache = {};
-                this.eventsLayer.redraw();
-            }
-        }
-        // Backward compatibility methods - delegate to appropriate layer
-        highlightHexes(hexKeys) {
-            // For backward compatibility - treat as selection
-            if (hexKeys.length > 0) {
-                this.setSelectedHex(hexKeys[0]);
-            }
-        }
-        addHighlightedHexes(hexKeys) {
-            if (hexKeys.length > 0 && !this.selectedHex) {
-                this.setSelectedHex(hexKeys[0]);
-            }
-        }
-        removeHighlightedHexes(hexKeys) {
-            if (hexKeys.includes(this.selectedHex || '')) {
-                this.setSelectedHex(null);
-            }
-        }
-        clearHexHighlights() {
-            this.setSelectedHex(null);
-        }
-        // Civilization boundary methods (kept for backward compatibility)
-        highlightCivBoundaries(civNames) {
-            this.highlightedCivs.clear();
-            for (const name of civNames) {
-                this.highlightedCivs.add(name);
-            }
-            this.redrawLayers();
-        }
-        addHighlightedCivs(civNames) {
-            for (const name of civNames) {
-                this.highlightedCivs.add(name);
-            }
-            this.redrawLayers();
-        }
-        removeHighlightedCivs(civNames) {
-            for (const name of civNames) {
-                this.highlightedCivs.delete(name);
-            }
-            this.redrawLayers();
-        }
-        clearCivHighlights() {
-            this.highlightedCivs.clear();
-            this.redrawLayers();
-        }
-        setHighlightColors(hexColor, boundaryColor, eventColor) {
-            // For backward compatibility - colors are now fixed for consistency
-            // Colors are no longer configurable, using shared constants instead
-            this.redrawLayers();
-        }
-    }
-
-    /**
      * civ-colors.ts
      * Defines color mappings for each civilization in Civilization V
      * Each civilization has two color sets: city (for city markers) and territory (for borders)
@@ -618,6 +393,664 @@
         'The Shoshone': { city: [24, 239, 206], territory: [73, 58, 45] },
         'The Zulus': { city: [106, 49, 24], territory: [255, 231, 213] }
     };
+
+    /**
+     * city-layer.ts
+     * Custom HexLayer for rendering cities on the map
+     * Shows city locations with colored circles and name labels
+     */
+    /**
+     * CityLayer - Specialized HexLayer for rendering cities
+     * @extends HexLayer
+     */
+    const CityLayer = HexLayer.extend({
+        /**
+         * Initialize the city layer
+         * @param {Object} config - Configuration object
+         */
+        initialize: function (config) {
+            // Set up city-specific drawing configuration
+            const cityConfig = _.extend({}, config, {
+                zIndex: 40, // Above territory but below grid
+                clipHexes: false, // Don't clip city rendering
+                drawHex: this.drawCity.bind(this)
+            });
+            // Call parent initialize
+            HexLayer.prototype.initialize.call(this, cityConfig);
+            // Store config for city rendering options
+            this.showNames = config.showNames !== false; // Default to true
+            this.cityRadius = config.cityRadius || 0.1; // Radius as fraction of hex size
+        },
+        /**
+         * Draw a city on the hex
+         * @param {CanvasRenderingContext2D} ctx - Canvas context
+         * @param {HexData} hex - Hex data
+         * @param {number} cx - Center X coordinate
+         * @param {number} cy - Center Y coordinate
+         * @param {number} x1 - Left boundary
+         * @param {number} y1 - Top boundary
+         * @param {number} x2 - Right boundary
+         * @param {number} y2 - Bottom boundary
+         */
+        drawCity: function (ctx, hex, cx, cy, x1, y1, x2, y2) {
+            // Check if this hex has a city
+            if (!this.turnState)
+                return;
+            const hexKey = `${hex.x},${hex.y}`;
+            const state = this.turnState[hexKey];
+            if (!state || !state.city)
+                return;
+            // Get civilization color
+            const civColors = state.owner ? CivColors[state.owner] : null;
+            const cityColor = civColors ? civColors.city : [200, 200, 200]; // Default gray if no civ
+            // Calculate city circle dimensions
+            const hexWidth = x2 - x1;
+            const radius = hexWidth * this.cityRadius;
+            // Draw city circle with border
+            ctx.save();
+            // Draw white border/outline
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius + 1, 0, 2 * Math.PI);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.fill();
+            // Draw colored city circle
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+            ctx.fillStyle = `rgb(${cityColor[0]}, ${cityColor[1]}, ${cityColor[2]})`;
+            ctx.fill();
+            // Draw city name if enabled
+            if (this.showNames && state.city && hexWidth >= 16) {
+                // Use hex-relative font size to avoid flickering during zoom
+                // The font will naturally scale with the tile/hex size
+                const fontSize = Math.sqrt(hexWidth) * 2.5; // Font size relative to hex height
+                // Set up text style
+                ctx.font = `bold ${fontSize}px Arial`;
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                // Position text to the right of the circle with padding
+                const textX = cx + radius + Math.sqrt(hexWidth);
+                const textY = cy;
+                // Draw text shadow/outline for readability
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.lineWidth = calculateTextOutlineWidth(hexWidth);
+                ctx.strokeText(state.city, textX, textY);
+                // Draw white text
+                ctx.fillStyle = 'white';
+                ctx.fillText(state.city, textX, textY);
+            }
+            ctx.restore();
+        },
+        /**
+         * Update turn state and redraw
+         * @param {TurnState} turnState - New turn state
+         */
+        setTurnState: function (turnState) {
+            this.turnState = turnState;
+            this.redraw();
+        }
+    });
+
+    /**
+     * grid-layer.ts
+     * Custom HexLayer for rendering hex grid and civilization boundaries
+     * Shows grid lines with civilization territory colors at boundaries
+     * Supports highlighting specific civilizations with bright yellow
+     */
+    // Grid and boundary constants
+    const DEFAULT_GRID_COLOR = 'rgba(255, 255, 255, 0.1)'; // Default semi-transparent white
+    const HIGHLIGHT_COLOR = 'rgba(255, 255, 0, 0.8)'; // Bright yellow for highlighted civs
+    const BOUNDARY_WIDTH = 4;
+    const HIGHLIGHT_WIDTH = 4;
+    const GRID_WIDTH = 2;
+    /**
+     * GridLayer - Specialized HexLayer for rendering hex grid with civilization boundaries
+     * @extends HexLayer
+     */
+    const GridLayer = HexLayer.extend({
+        /**
+         * Initialize the grid layer
+         * @param {Object} config - Configuration object
+         */
+        initialize: function (config) {
+            // Set up grid-specific drawing configuration
+            const gridConfig = _.extend({}, config, {
+                zIndex: 60, // Above territory and cities but below selection
+                drawHex: this.drawGridWithBoundaries.bind(this)
+            });
+            // Call parent initialize
+            HexLayer.prototype.initialize.call(this, gridConfig);
+            // Store state
+            this.turnState = null;
+            this.highlightedCivs = new Set();
+            this.showGrid = config.showGrid !== false; // Default to true
+        },
+        /**
+         * Draw grid with civilization boundaries
+         * @param {CanvasRenderingContext2D} ctx - Canvas context
+         * @param {HexData} hex - Hex data
+         * @param {number} cx - Center X coordinate
+         * @param {number} cy - Center Y coordinate
+         * @param {number} x1 - Left boundary
+         * @param {number} y1 - Top boundary
+         * @param {number} x2 - Right boundary
+         * @param {number} y2 - Bottom boundary
+         */
+        drawGridWithBoundaries: function (ctx, hex, cx, cy, x1, y1, x2, y2) {
+            if (!this.showGrid && !this.turnState)
+                return;
+            const hexKey = `${hex.x},${hex.y}`;
+            const state = this.turnState ? this.turnState[hexKey] : null;
+            const owner = state === null || state === void 0 ? void 0 : state.owner;
+            // Check if this hex is on a boundary
+            if (owner && this.turnState) {
+                const isBoundary = this.isOnBoundary(hex.x, hex.y, owner);
+                if (isBoundary) {
+                    // Hex is on a boundary - draw with civ color or highlight color
+                    if (this.highlightedCivs.has(owner)) {
+                        // Use bright yellow for highlighted civilizations
+                        ctx.strokeStyle = HIGHLIGHT_COLOR;
+                        ctx.lineWidth = calculateHexBorderWidth(x2 - x1, HIGHLIGHT_WIDTH);
+                    }
+                    else {
+                        // Use civilization's territory color
+                        const civColors = CivColors[owner];
+                        if (civColors) {
+                            const color = civColors.territory;
+                            ctx.strokeStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]})`;
+                        }
+                        else {
+                            ctx.strokeStyle = DEFAULT_GRID_COLOR;
+                        }
+                        ctx.lineWidth = calculateHexBorderWidth(x2 - x1, BOUNDARY_WIDTH);
+                    }
+                    ctx.stroke();
+                }
+                else if (this.showGrid) {
+                    // Not on boundary - draw regular grid if enabled
+                    ctx.strokeStyle = DEFAULT_GRID_COLOR;
+                    ctx.lineWidth = calculateHexBorderWidth(x2 - x1, GRID_WIDTH);
+                    ctx.stroke();
+                }
+            }
+            else if (this.showGrid) {
+                // No owner or no turn state - draw regular grid if enabled
+                ctx.strokeStyle = DEFAULT_GRID_COLOR;
+                ctx.lineWidth = calculateHexBorderWidth(x2 - x1, GRID_WIDTH);
+                ctx.stroke();
+            }
+        },
+        /**
+         * Check if a hex is on a civilization boundary
+         * @param {number} x - X coordinate
+         * @param {number} y - Y coordinate
+         * @param {string} owner - Owner of the hex
+         * @returns {boolean} True if on a boundary
+         */
+        isOnBoundary: function (x, y, owner) {
+            const adjacentKeys = this.getAdjacentHexKeys(x, y);
+            // Check each adjacent hex
+            for (const adjKey of adjacentKeys) {
+                const adjState = this.turnState[adjKey];
+                if (!adjState || !adjState.owner || adjState.owner !== owner) {
+                    return true;
+                }
+            }
+            return false;
+        },
+        /**
+         * Get adjacent hex keys for a given hex coordinate
+         * @param {number} x - X coordinate
+         * @param {number} y - Y coordinate
+         * @returns {string[]} Array of adjacent hex keys
+         */
+        getAdjacentHexKeys: function (x, y) {
+            const adjacentKeys = [];
+            const isEvenRow = y % 2 === 0;
+            const neighbors = isEvenRow ? [
+                [x - 1, y], // West
+                [x + 1, y], // East
+                [x - 1, y - 1], // Northwest
+                [x, y - 1], // Northeast
+                [x - 1, y + 1], // Southwest
+                [x, y + 1] // Southeast
+            ] : [
+                [x - 1, y], // West
+                [x + 1, y], // East
+                [x, y - 1], // Northwest
+                [x + 1, y - 1], // Northeast
+                [x, y + 1], // Southwest
+                [x + 1, y + 1] // Southeast
+            ];
+            for (const [nx, ny] of neighbors) {
+                adjacentKeys.push(`${nx},${ny}`);
+            }
+            return adjacentKeys;
+        },
+        /**
+         * Highlight specific civilizations with bright yellow
+         * @param {string[]} civNames - Array of civilization names to highlight
+         */
+        highlightCivBoundaries: function (civNames) {
+            this.highlightedCivs.clear();
+            for (const name of civNames) {
+                this.highlightedCivs.add(name);
+            }
+            this.redraw();
+        },
+        /**
+         * Add civilizations to highlight
+         * @param {string[]} civNames - Array of civilization names
+         */
+        addHighlightedCivs: function (civNames) {
+            let changed = false;
+            for (const name of civNames) {
+                if (!this.highlightedCivs.has(name)) {
+                    this.highlightedCivs.add(name);
+                    changed = true;
+                }
+            }
+            if (changed) {
+                this.redraw();
+            }
+        },
+        /**
+         * Remove civilizations from highlight
+         * @param {string[]} civNames - Array of civilization names
+         */
+        removeHighlightedCivs: function (civNames) {
+            let changed = false;
+            for (const name of civNames) {
+                if (this.highlightedCivs.delete(name)) {
+                    changed = true;
+                }
+            }
+            if (changed) {
+                this.redraw();
+            }
+        },
+        /**
+         * Clear all civilization highlights
+         */
+        clearCivHighlights: function () {
+            if (this.highlightedCivs.size > 0) {
+                this.highlightedCivs.clear();
+                this.redraw();
+            }
+        },
+        /**
+         * Toggle grid visibility
+         * @param {boolean} show - Whether to show the grid
+         */
+        setGridVisible: function (show) {
+            if (this.showGrid !== show) {
+                this.showGrid = show;
+                this.redraw();
+            }
+        },
+        /**
+         * Get the owner of a specific hex
+         * @param {string} hexKey - The hex key
+         * @returns {string | undefined} The owner or undefined
+         */
+        getHexOwner: function (hexKey) {
+            const state = this.turnState ? this.turnState[hexKey] : null;
+            return state === null || state === void 0 ? void 0 : state.owner;
+        }
+    });
+
+    /**
+     * selection-layer.ts
+     * Custom HexLayer for rendering selection/hover highlighting on the map
+     * Shows a solid yellow border around the selected/hovered hex
+     */
+    // Selection highlighting constants
+    const SELECTION_COLOR = '#FFEB3B'; // Light yellow
+    const SELECTION_WIDTH = 4;
+    /**
+     * SelectionLayer - Specialized HexLayer for rendering hex selection/hover
+     * @extends HexLayer
+     */
+    const SelectionLayer = HexLayer.extend({
+        /**
+         * Initialize the selection layer
+         * @param {Object} config - Configuration object
+         */
+        initialize: function (config) {
+            // Set up selection-specific drawing configuration
+            const selectionConfig = _.extend({}, config, {
+                zIndex: 65, // Above cities but below events
+                drawHex: this.drawSelection.bind(this)
+            });
+            // Call parent initialize
+            HexLayer.prototype.initialize.call(this, selectionConfig);
+            // Store selection state
+            this.selectedHex = null;
+        },
+        /**
+         * Draw selection highlight on the hex
+         * @param {CanvasRenderingContext2D} ctx - Canvas context
+         * @param {HexData} hex - Hex data
+         * @param {number} cx - Center X coordinate
+         * @param {number} cy - Center Y coordinate
+         * @param {number} x1 - Left boundary
+         * @param {number} y1 - Top boundary
+         * @param {number} x2 - Right boundary
+         * @param {number} y2 - Bottom boundary
+         */
+        drawSelection: function (ctx, hex, cx, cy, x1, y1, x2, y2) {
+            const hexKey = `${hex.x},${hex.y}`;
+            if (this.selectedHex === hexKey) {
+                // Draw solid light yellow border for selection
+                ctx.strokeStyle = SELECTION_COLOR;
+                ctx.lineWidth = calculateHexBorderWidth(x2 - x1, SELECTION_WIDTH);
+                ctx.stroke();
+            }
+        },
+        /**
+         * Set the selected hex
+         * @param {string | null} hexKey - The hex key to select, or null to clear
+         */
+        setSelectedHex: function (hexKey) {
+            if (this.selectedHex !== hexKey) {
+                this.selectedHex = hexKey;
+                this.redraw();
+            }
+        },
+        /**
+         * Get the currently selected hex
+         * @returns {string | null} The selected hex key or null
+         */
+        getSelectedHex: function () {
+            return this.selectedHex;
+        },
+        /**
+         * Clear the selection
+         */
+        clearSelection: function () {
+            this.setSelectedHex(null);
+        }
+    });
+
+    /**
+     * events-layer.ts
+     * Custom HexLayer for rendering event highlighting on the map
+     * Shows dashed yellow borders around hexes where events occurred
+     */
+    // Event highlighting constants
+    const EVENT_COLOR = '#FFEB3B'; // Light yellow
+    const EVENT_WIDTH = 4;
+    const DASH_PATTERN = [4, 4]; // Dashed line pattern
+    /**
+     * EventsLayer - Specialized HexLayer for rendering event highlights
+     * @extends HexLayer
+     */
+    const EventsLayer = HexLayer.extend({
+        /**
+         * Initialize the events layer
+         * @param {Object} config - Configuration object
+         */
+        initialize: function (config) {
+            // Set up events-specific drawing configuration
+            const eventsConfig = _.extend({}, config, {
+                zIndex: 70, // Above selection
+                drawHex: this.drawEventHighlight.bind(this)
+            });
+            // Call parent initialize
+            HexLayer.prototype.initialize.call(this, eventsConfig);
+            // Store event hexes map (hex key -> event type)
+            this.eventHexes = new Map();
+        },
+        /**
+         * Draw event highlight on the hex
+         * @param {CanvasRenderingContext2D} ctx - Canvas context
+         * @param {HexData} hex - Hex data
+         * @param {number} cx - Center X coordinate
+         * @param {number} cy - Center Y coordinate
+         * @param {number} x1 - Left boundary
+         * @param {number} y1 - Top boundary
+         * @param {number} x2 - Right boundary
+         * @param {number} y2 - Bottom boundary
+         */
+        drawEventHighlight: function (ctx, hex, cx, cy, x1, y1, x2, y2) {
+            const hexKey = `${hex.x},${hex.y}`;
+            const eventType = this.eventHexes.get(hexKey);
+            if (eventType !== undefined) {
+                // Draw dashed light yellow border for event
+                ctx.strokeStyle = EVENT_COLOR;
+                ctx.lineWidth = calculateHexBorderWidth(x2 - x1, EVENT_WIDTH);
+                ctx.setLineDash(DASH_PATTERN);
+                ctx.stroke();
+                ctx.setLineDash([]); // Reset to solid
+            }
+        },
+        /**
+         * Highlight hexes where events occurred
+         * @param {GameEvent[]} events - Array of game events
+         */
+        highlightEventHexes: function (events) {
+            var _a;
+            // Clear previous event hexes
+            this.eventHexes.clear();
+            // Add new event hexes (only first event per hex)
+            for (const event of events) {
+                const hexKeys = (_a = event.tiles) === null || _a === void 0 ? void 0 : _a.map(t => `${t.x},${t.y}`);
+                if (!hexKeys)
+                    continue;
+                for (const hexKey of hexKeys) {
+                    // Only store if hex doesn't already have an event
+                    if (!this.eventHexes.has(hexKey)) {
+                        this.eventHexes.set(hexKey, event.type);
+                    }
+                }
+            }
+            // Force redraw
+            this.redraw();
+        },
+        /**
+         * Clear all event highlights
+         */
+        clearEventHighlights: function () {
+            this.eventHexes.clear();
+            this.redraw();
+        },
+        /**
+         * Get the event type for a specific hex
+         * @param {string} hexKey - The hex key
+         * @returns {EventType | undefined} The event type or undefined
+         */
+        getEventType: function (hexKey) {
+            return this.eventHexes.get(hexKey);
+        }
+    });
+
+    /**
+     * map-highlighting.ts
+     * Module for managing map highlighting features
+     * Handles selection highlighting and event border highlighting
+     */
+    /**
+     * MapHighlighting class
+     * Manages different types of highlighting on the map
+     */
+    class MapHighlighting {
+        constructor(parentMap) {
+            this.parentMap = parentMap;
+            this.selectedHex = null;
+            this.eventHexes = new Map();
+            this.selectionLayer = null;
+            this.eventsLayer = null;
+            this.gridLayer = null;
+            // Keep for backward compatibility
+            this.highlightedCivs = new Set();
+        }
+        /**
+         * Initialize highlighting layers
+         */
+        initLayers(map, tiles) {
+            this.map = map;
+            this.tiles = tiles;
+            // Create selection layer for mouse hover
+            this.selectionLayer = new SelectionLayer({
+                hexes: tiles
+            });
+            // Create events layer for border highlighting
+            this.eventsLayer = new EventsLayer({
+                hexes: tiles
+            });
+            // Add layers to map
+            this.selectionLayer.addTo(map);
+            this.eventsLayer.addTo(map);
+            // Note: Grid layer with boundary functionality is now created and managed by ReplayMap
+        }
+        /**
+         * Set reference to grid layer for boundary highlighting
+         */
+        setGridLayer(gridLayer) {
+            this.gridLayer = gridLayer;
+        }
+        /**
+         * Get layers for layer control
+         */
+        getLayers() {
+            return {
+                selection: this.selectionLayer,
+                events: this.eventsLayer
+                // Note: boundaries are now handled by the grid layer
+            };
+        }
+        /**
+         * Clear all highlights
+         */
+        clearAll() {
+            this.selectedHex = null;
+            this.eventHexes.clear();
+            this.highlightedCivs.clear();
+            if (this.selectionLayer) {
+                this.selectionLayer.clearSelection();
+            }
+            if (this.eventsLayer) {
+                this.eventsLayer.clearEventHighlights();
+            }
+            if (this.gridLayer) {
+                this.gridLayer.clearCivHighlights();
+            }
+        }
+        /**
+         * Update turn state for boundary highlighting in grid layer
+         * Note: Grid layer's turnState is set directly by ReplayMap, this just triggers redraw
+         */
+        updateTurnState(turnState) {
+            if (this.gridLayer && this.gridLayer.turnState !== turnState) {
+                this.gridLayer.redraw();
+            }
+        }
+        // Selection methods
+        /**
+         * Set the selected hex (for hover highlight)
+         */
+        setSelectedHex(hexKey) {
+            if (this.selectedHex !== hexKey) {
+                this.selectedHex = hexKey;
+                if (this.selectionLayer) {
+                    this.selectionLayer.setSelectedHex(hexKey);
+                }
+            }
+        }
+        /**
+         * Get the currently selected hex
+         */
+        getSelectedHex() {
+            return this.selectedHex;
+        }
+        // Event highlighting methods
+        /**
+         * Highlight hexes where events occurred with colored borders
+         */
+        highlightEventHexes(events) {
+            var _a;
+            // Clear and update internal tracking
+            this.eventHexes.clear();
+            for (const event of events) {
+                const hexKeys = (_a = event.tiles) === null || _a === void 0 ? void 0 : _a.map(t => `${t.x},${t.y}`);
+                if (!hexKeys)
+                    continue;
+                for (const hexKey of hexKeys) {
+                    if (!this.eventHexes.has(hexKey)) {
+                        this.eventHexes.set(hexKey, event.type);
+                    }
+                }
+            }
+            // Delegate to events layer
+            if (this.eventsLayer) {
+                this.eventsLayer.highlightEventHexes(events);
+            }
+        }
+        /**
+         * Clear event highlights
+         */
+        clearEventHighlights() {
+            this.eventHexes.clear();
+            if (this.eventsLayer) {
+                this.eventsLayer.clearEventHighlights();
+            }
+        }
+        // Backward compatibility methods - delegate to appropriate layer
+        highlightHexes(hexKeys) {
+            // For backward compatibility - treat as selection
+            if (hexKeys.length > 0) {
+                this.setSelectedHex(hexKeys[0]);
+            }
+        }
+        addHighlightedHexes(hexKeys) {
+            if (hexKeys.length > 0 && !this.selectedHex) {
+                this.setSelectedHex(hexKeys[0]);
+            }
+        }
+        removeHighlightedHexes(hexKeys) {
+            if (hexKeys.includes(this.selectedHex || '')) {
+                this.setSelectedHex(null);
+            }
+        }
+        clearHexHighlights() {
+            this.setSelectedHex(null);
+        }
+        // Civilization boundary methods (delegated to grid layer)
+        highlightCivBoundaries(civNames) {
+            this.highlightedCivs.clear();
+            for (const name of civNames) {
+                this.highlightedCivs.add(name);
+            }
+            if (this.gridLayer) {
+                this.gridLayer.highlightCivBoundaries(civNames);
+            }
+        }
+        addHighlightedCivs(civNames) {
+            for (const name of civNames) {
+                this.highlightedCivs.add(name);
+            }
+            if (this.gridLayer) {
+                this.gridLayer.addHighlightedCivs(civNames);
+            }
+        }
+        removeHighlightedCivs(civNames) {
+            for (const name of civNames) {
+                this.highlightedCivs.delete(name);
+            }
+            if (this.gridLayer) {
+                this.gridLayer.removeHighlightedCivs(civNames);
+            }
+        }
+        clearCivHighlights() {
+            this.highlightedCivs.clear();
+            if (this.gridLayer) {
+                this.gridLayer.clearCivHighlights();
+            }
+        }
+        setHighlightColors(hexColor, boundaryColor, eventColor) {
+            // For backward compatibility - colors are now fixed for consistency
+            // Colors are no longer configurable in the individual layer modules
+        }
+    }
 
     /**
      * replay.types.ts
@@ -821,7 +1254,7 @@
                         case EventType.CityFounded:
                             var index = [event.x, event.y].join(',');
                             var civName = self.replay ? self.replay.getCivName(event.civId) : null;
-                            state[index] = { owner: civName, city: event.city.name };
+                            state[index] = { owner: civName || undefined, city: event.city.name };
                             break;
                         case EventType.TilesClaimed:
                             for (var i = 0; i < event.tiles.length; i++) {
@@ -843,7 +1276,9 @@
                                 var index = [tile.x, tile.y].join(',');
                                 state[index] = state[index] || {};
                                 var civName = self.replay ? self.replay.getCivName(event.civId) : null;
-                                state[index].owner = civName;
+                                if (civName) {
+                                    state[index].owner = civName;
+                                }
                             }
                             break;
                         case EventType.CityRazed:
@@ -930,36 +1365,22 @@
                         }
                     }
                 }),
-                city: new HexLayer({
+                city: new CityLayer({
                     hexes: tiles,
-                    zIndex: 40,
-                    drawHex: function (ctx, hex, cx, cy, x1, y1, x2, y2) {
-                        if (!this.turnState) {
-                            return;
-                        }
-                        var state = this.turnState[hex.x + ',' + hex.y];
-                        if (!state) {
-                            return;
-                        }
-                        if (state.city) {
-                            var civColors = CivColors[state.owner];
-                            var color = civColors ? civColors.city : [255, 255, 255];
-                            ctx.fillStyle = `rgba(${color.join(',')}, 0.9)`;
-                            ctx.fill();
-                        }
-                    }
+                    zIndex: 40, // Above territory but below grid
+                    showNames: true
                 }),
-                grid: new HexLayer({
+                grid: new GridLayer({
+                    hexes: tiles,
                     zIndex: 50,
-                    width: tiles[0].length,
-                    height: tiles.length,
-                    gridStyle: 'rgba(255, 255, 255, 0.1)',
-                    drawHex: function (ctx, hex, cx, cy) { }
+                    showGrid: true
                 })
             };
             _.each(this.layers, (layer) => layer.addTo(this.map));
             // Initialize highlighting layers
             this.highlighting.initLayers(this.map, tiles);
+            // Connect grid layer to highlighting for boundary functionality
+            this.highlighting.setGridLayer(this.layers.grid);
             // Get highlighting layers for overlay controls
             const highlightLayers = this.highlighting.getLayers();
             // Add layer switcher
@@ -971,8 +1392,7 @@
                 Cities: this.layers.city,
                 Grid: this.layers.grid,
                 Selection: highlightLayers.selection,
-                Events: highlightLayers.events,
-                Boundaries: highlightLayers.boundaries
+                Events: highlightLayers.events
             };
             this.controls = {
                 switcher: L.control.layers({}, overlays, {
@@ -989,6 +1409,8 @@
                 console.log(e.latlng);
             }
             this.map.on('click', onMapClick);
+            // Remove the zoomend redraw - the city layer will handle its own rendering
+            // through the standard tile update mechanism
             var bounds = [[south, west], [north, east]];
             // Store bounds for later use when map needs to be refit
             this.mapBounds = bounds;
@@ -1028,13 +1450,15 @@
             // Turn is now directly the array index (0-based)
             const turnIndex = turn;
             this.turnState = this.turnStates[turnIndex];
-            // Always update the turn state for the layers
-            if (this.layers.city) {
-                this.layers.city.turnState = this.turnState;
+            // Batch update turn state for all layers that support it
+            const layersWithTurnState = ['territory', 'city', 'grid'];
+            for (const layerName of layersWithTurnState) {
+                if (this.layers[layerName]) {
+                    this.layers[layerName].turnState = this.turnState;
+                }
             }
-            if (this.layers.territory) {
-                this.layers.territory.turnState = this.turnState;
-            }
+            // Also update turn state for highlighting module (which will update grid layer's boundary highlighting)
+            this.highlighting.updateTurnState(this.turnState);
             // Skip if turn hasn't changed
             if (previousTurn === turn) {
                 return;
@@ -1045,16 +1469,10 @@
                 const turnEvents = this.events.filter(e => e.turn === turn);
                 this.highlighting.highlightEventHexes(turnEvents);
             }
-            // Check if layers are properly attached to the map
-            const cityLayerReady = this.layers.city && this.layers.city._map;
-            const territoryLayerReady = this.layers.territory && this.layers.territory._map;
-            // If layers aren't ready, skip rendering (they'll render when attached)
-            if (!cityLayerReady || !territoryLayerReady) {
-                console.log('Layers not ready, skipping render');
-                return;
-            }
             console.log(`Rendering turn ${turn}, previous turn was ${this.turn}`);
             this.turn = turn;
+            // Always redraw grid to ensure boundaries are updated
+            this.layers.grid.redraw();
             // Use incremental rendering to update only changed hexes
             // This works for forward navigation
             if (previousTurn !== undefined && previousTurn >= 0 && turn > previousTurn) {
@@ -1062,25 +1480,19 @@
                 const changedHexes = this.getChangedHexes(previousTurn, turn);
                 if (changedHexes.length === 0)
                     return;
-                // If only a few hexes changed, use incremental rendering
+                // If only a few hexes changed, use incremental rendering for territory
                 // Otherwise fall back to full redraw for major changes
                 if (changedHexes.length < 100) {
-                    // Use incremental rendering for both layers
-                    this.layers.city.redrawHexes(changedHexes);
+                    // Use incremental rendering for territory and city layers
                     this.layers.territory.redrawHexes(changedHexes);
+                    this.layers.city.redrawHexes(changedHexes);
                     return;
                 }
             }
             // Fall back to full redraw for initial load or major changes
-            // Clear the cache and force redraw for these layers
-            if (cityLayerReady) {
-                this.layers.city.tileCache = {};
-                this.layers.city.redraw();
-            }
-            if (territoryLayerReady) {
-                this.layers.territory.tileCache = {};
-                this.layers.territory.redraw();
-            }
+            // Clear the cache and force redraw for territory and city layers
+            this.layers.territory.redraw();
+            this.layers.city.redraw();
         }
         // Reset turn tracking state
         resetTurnState() {

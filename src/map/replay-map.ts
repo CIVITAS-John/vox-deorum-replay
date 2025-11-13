@@ -6,6 +6,8 @@
  */
 
 import { HexLayer } from './hex-layer';
+import { CityLayer } from './city-layer';
+import { GridLayer } from './grid-layer';
 import { MapHighlighting } from './map-highlighting';
 import { CivColors } from '../utils/civ-colors';
 import { TurnState, MapLayer, MapControl, HexData } from '../types/map.types';
@@ -23,12 +25,12 @@ import { throttle } from '../utils/throttle';
 export class ReplayMap {
 	map: any;                             // Leaflet Map instance
 	turn: number;                         // Current turn being displayed
-	turnStates: any[];                    // Array of tile states for each turn
-	turnState: any;                       // Current turn's tile state
+	turnStates: TurnState[];              // Array of tile states for each turn
+	turnState: TurnState;                 // Current turn's tile state
 	layers: Record<string, MapLayer>;    // Map visualization layers by name
 	controls: Record<string, MapControl>; // Map UI controls by name
 	replay: Replay | null;               // Reference to replay instance for civ name lookups
-	mapBounds: any;                       // Stored bounds for refitting the map
+	mapBounds: number[][];               // Stored bounds for refitting the map
 	renderTurnThrottled: (turn: number) => void; // Throttled version of renderTurn
 	highlighting: MapHighlighting;       // Highlighting module instance
 	events: GameEvent[];                 // Reference to all events for turn-based highlighting
@@ -67,14 +69,14 @@ export class ReplayMap {
 		// Track the state of each tile at every turn
 		this.turnStates = [];
 		var eventsByTurn = _.groupBy(events, 'turn');
-		var lastState: TurnState = {} as TurnState;
+		var lastState: TurnState = {};
 
 		// Always start from turn 0, regardless of when first event occurs
 		const lastTurn = events[events.length - 1].turn;
 
 		for (var t = 0; t <= lastTurn; t++) {
 			// Start by copying last state
-			var state = _.clone(lastState, true);
+			var state: TurnState = _.clone(lastState, true);
 
 			// Get events for this turn
 			var turnEvents = eventsByTurn[t] || [];
@@ -86,7 +88,7 @@ export class ReplayMap {
 					case EventType.CityFounded:
 						var index = [event.x, event.y].join(',');
 						var civName = self.replay ? self.replay.getCivName(event.civId) : null;
-						state[index] = { owner: civName, city: event.city.name };
+						state[index] = { owner: civName || undefined, city: event.city.name };
 						break;
 
 					case EventType.TilesClaimed:
@@ -112,7 +114,9 @@ export class ReplayMap {
 							var index = [tile.x, tile.y].join(',');
 							state[index] = state[index] || {};
 							var civName = self.replay ? self.replay.getCivName(event.civId) : null;
-							state[index].owner = civName;
+							if (civName) {
+								state[index].owner = civName;
+							}
 						}
 
 						break;
@@ -214,29 +218,16 @@ export class ReplayMap {
 				}
 			}),
 
-			city: new HexLayer({
+			city: new CityLayer({
 				hexes: tiles,
-				zIndex: 40,
-				drawHex: function (ctx: CanvasRenderingContext2D, hex: HexData, cx: number, cy: number, x1: number, y1: number, x2: number, y2: number) {
-					if (!this.turnState) { return; }
-					var state = this.turnState[hex.x + ',' + hex.y];
-					if (!state) { return; }
-
-					if (state.city) {
-						var civColors = CivColors[state.owner];
-						var color = civColors ? civColors.city : [255, 255, 255];
-						ctx.fillStyle = `rgba(${color.join(',')}, 0.9)`;
-						ctx.fill();
-					}
-				}
+				zIndex: 40, // Above territory but below grid
+				showNames: true
 			}),
 
-			grid: new HexLayer({
+			grid: new GridLayer({
+				hexes: tiles,
 				zIndex: 50,
-				width: tiles[0].length,
-				height: tiles.length,
-				gridStyle: 'rgba(255, 255, 255, 0.1)',
-				drawHex: function (ctx: CanvasRenderingContext2D, hex: HexData, cx: number, cy: number) { }
+				showGrid: true
 			})
 		};
 
@@ -244,6 +235,9 @@ export class ReplayMap {
 
 		// Initialize highlighting layers
 		this.highlighting.initLayers(this.map, tiles);
+
+		// Connect grid layer to highlighting for boundary functionality
+		this.highlighting.setGridLayer(this.layers.grid);
 
 		// Get highlighting layers for overlay controls
 		const highlightLayers = this.highlighting.getLayers();
@@ -257,8 +251,7 @@ export class ReplayMap {
 			Cities: this.layers.city,
 			Grid: this.layers.grid,
 			Selection: highlightLayers.selection,
-			Events: highlightLayers.events,
-			Boundaries: highlightLayers.boundaries
+			Events: highlightLayers.events
 		};
 
 		this.controls = {
@@ -281,6 +274,9 @@ export class ReplayMap {
 		}
 
 		this.map.on('click', onMapClick);
+
+		// Remove the zoomend redraw - the city layer will handle its own rendering
+		// through the standard tile update mechanism
 
 		var bounds = [[south, west], [north, east]];
 		// Store bounds for later use when map needs to be refit
@@ -329,13 +325,16 @@ export class ReplayMap {
 		const turnIndex = turn;
 		this.turnState = this.turnStates[turnIndex];
 
-		// Always update the turn state for the layers
-		if (this.layers.city) {
-			this.layers.city.turnState = this.turnState;
+		// Batch update turn state for all layers that support it
+		const layersWithTurnState = ['territory', 'city', 'grid'];
+		for (const layerName of layersWithTurnState) {
+			if (this.layers[layerName]) {
+				this.layers[layerName].turnState = this.turnState;
+			}
 		}
-		if (this.layers.territory) {
-			this.layers.territory.turnState = this.turnState;
-		}
+
+		// Also update turn state for highlighting module (which will update grid layer's boundary highlighting)
+		this.highlighting.updateTurnState(this.turnState);
 
 		// Skip if turn hasn't changed
 		if (previousTurn === turn) {
@@ -349,18 +348,11 @@ export class ReplayMap {
 			this.highlighting.highlightEventHexes(turnEvents);
 		}
 
-		// Check if layers are properly attached to the map
-		const cityLayerReady = this.layers.city && this.layers.city._map;
-		const territoryLayerReady = this.layers.territory && this.layers.territory._map;
-
-		// If layers aren't ready, skip rendering (they'll render when attached)
-		if (!cityLayerReady || !territoryLayerReady) {
-			console.log('Layers not ready, skipping render');
-			return;
-		}
-
 		console.log(`Rendering turn ${turn}, previous turn was ${this.turn}`);
 		this.turn = turn;
+
+		// Always redraw grid to ensure boundaries are updated
+		this.layers.grid.redraw();
 		
 		// Use incremental rendering to update only changed hexes
 		// This works for forward navigation
@@ -369,26 +361,20 @@ export class ReplayMap {
 			const changedHexes = this.getChangedHexes(previousTurn, turn);
 			if (changedHexes.length === 0) return;
 
-			// If only a few hexes changed, use incremental rendering
+			// If only a few hexes changed, use incremental rendering for territory
 			// Otherwise fall back to full redraw for major changes
 			if (changedHexes.length < 100) {
-				// Use incremental rendering for both layers
-				this.layers.city.redrawHexes(changedHexes);
+				// Use incremental rendering for territory and city layers
 				this.layers.territory.redrawHexes(changedHexes);
+				this.layers.city.redrawHexes(changedHexes);
 				return;
 			}
 		}
 
 		// Fall back to full redraw for initial load or major changes
-		// Clear the cache and force redraw for these layers
-		if (cityLayerReady) {
-			(this.layers.city as any).tileCache = {};
-			this.layers.city.redraw();
-		}
-		if (territoryLayerReady) {
-			(this.layers.territory as any).tileCache = {};
-			this.layers.territory.redraw();
-		}
+		// Clear the cache and force redraw for territory and city layers
+		this.layers.territory.redraw();
+		this.layers.city.redraw();
 	}
 
 	// Reset turn tracking state
