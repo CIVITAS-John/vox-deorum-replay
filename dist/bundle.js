@@ -411,7 +411,7 @@
         initialize: function (config) {
             // Set up city-specific drawing configuration
             const cityConfig = _.extend({}, config, {
-                zIndex: 40, // Above territory but below grid
+                zIndex: 50, // Above territory and above grid
                 clipHexes: false, // Don't clip city rendering
                 drawHex: this.drawCity.bind(this)
             });
@@ -514,7 +514,7 @@
         initialize: function (config) {
             // Set up grid-specific drawing configuration
             const gridConfig = _.extend({}, config, {
-                zIndex: 60, // Above territory and cities but below selection
+                zIndex: 45, // Above territory and cities but below selection
                 drawHex: this.drawGridWithBoundaries.bind(this)
             });
             // Call parent initialize
@@ -1217,6 +1217,7 @@
             this.map = L.map(document.querySelector('.map'), {
                 attributionControl: false,
                 keyboardPanOffset: 0,
+                fadeAnimation: false, // Disable fade animation to prevent transparency transitions during redraw
                 zoomSnap: 0.2 // Allow fractional zoom levels with 0.25 increments
             }).setView([0, 0], 0);
             this.turn = -1; // Initialize to -1 so first renderTurn always triggers a redraw
@@ -1417,36 +1418,8 @@
             // Don't fit bounds here - let it be done after the replay loads
             // to ensure the container is properly sized
         }
-        // Get hexes that have changed between two turns
-        getChangedHexes(fromTurn, toTurn) {
-            const changedHexes = [];
-            // Turn numbers are now directly array indices (0-based)
-            const fromIndex = fromTurn;
-            const toIndex = toTurn;
-            const fromState = this.turnStates[fromIndex] || {};
-            const toState = this.turnStates[toIndex] || {};
-            // Check for changes in toState
-            for (const hexKey in toState) {
-                const fromHex = fromState[hexKey];
-                const toHex = toState[hexKey];
-                // Check if hex is new or has changed
-                if (!fromHex ||
-                    fromHex.owner !== toHex.owner ||
-                    fromHex.city !== toHex.city) {
-                    changedHexes.push(hexKey);
-                }
-            }
-            // Check for removed hexes
-            for (const hexKey in fromState) {
-                if (!toState[hexKey]) {
-                    changedHexes.push(hexKey);
-                }
-            }
-            return changedHexes;
-        }
         // Update map display for specified turn
         renderTurn(turn) {
-            const previousTurn = this.turn;
             // Turn is now directly the array index (0-based)
             const turnIndex = turn;
             this.turnState = this.turnStates[turnIndex];
@@ -1460,7 +1433,7 @@
             // Also update turn state for highlighting module (which will update grid layer's boundary highlighting)
             this.highlighting.updateTurnState(this.turnState);
             // Skip if turn hasn't changed
-            if (previousTurn === turn) {
+            if (this.turn === turn) {
                 return;
             }
             // Highlight events from the current turn
@@ -1471,26 +1444,8 @@
             }
             console.log(`Rendering turn ${turn}, previous turn was ${this.turn}`);
             this.turn = turn;
-            // Always redraw grid to ensure boundaries are updated
+            // Always redraw all layers to ensure they are updated
             this.layers.grid.redraw();
-            // Use incremental rendering to update only changed hexes
-            // This works for forward navigation
-            if (previousTurn !== undefined && previousTurn >= 0 && turn > previousTurn) {
-                // Get list of hexes that changed between turns
-                const changedHexes = this.getChangedHexes(previousTurn, turn);
-                if (changedHexes.length === 0)
-                    return;
-                // If only a few hexes changed, use incremental rendering for territory
-                // Otherwise fall back to full redraw for major changes
-                if (changedHexes.length < 100) {
-                    // Use incremental rendering for territory and city layers
-                    this.layers.territory.redrawHexes(changedHexes);
-                    this.layers.city.redrawHexes(changedHexes);
-                    return;
-                }
-            }
-            // Fall back to full redraw for initial load or major changes
-            // Clear the cache and force redraw for territory and city layers
             this.layers.territory.redraw();
             this.layers.city.redraw();
         }

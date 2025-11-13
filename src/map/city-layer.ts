@@ -24,7 +24,7 @@ export const CityLayer = HexLayer.extend({
 	initialize: function(config: any) {
 		// Set up city-specific drawing configuration
 		const cityConfig = _.extend({}, config, {
-			zIndex: 40, // Above territory but below grid
+			zIndex: 50, // Above territory and above grid
 			clipHexes: false, // Don't clip city rendering
 			drawHex: this.drawCity.bind(this)
 		});

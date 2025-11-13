@@ -31,7 +31,7 @@ export const GridLayer = HexLayer.extend({
 	initialize: function(config: any) {
 		// Set up grid-specific drawing configuration
 		const gridConfig = _.extend({}, config, {
-			zIndex: 60, // Above territory and cities but below selection
+			zIndex: 45, // Above territory and cities but below selection
 			drawHex: this.drawGridWithBoundaries.bind(this)
 		});
 
