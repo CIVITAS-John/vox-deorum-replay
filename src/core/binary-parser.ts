@@ -6,9 +6,9 @@
  */
 
 export class BinaryParser {
-  private view: DataView;  // Native view over the file buffer
-  private offset: number;  // Current read position within the buffer
-  private end: number;     // One past the last readable byte
+  private view: DataView<ArrayBuffer>;  // Native view over the file buffer
+  private offset: number;               // Current read position within the buffer
+  private end: number;                  // One past the last readable byte
 
   /**
    * Create a reader over a file buffer
@@ -26,6 +26,13 @@ export class BinaryParser {
    */
   tell(): number {
     return this.offset;
+  }
+
+  /**
+   * Get the number of bytes left to read
+   */
+  remaining(): number {
+    return this.end - this.offset;
   }
 
   /**
@@ -47,7 +54,7 @@ export class BinaryParser {
   /**
    * Read raw bytes from the current position
    */
-  getBytes(length: number): Uint8Array {
+  getBytes(length: number): Uint8Array<ArrayBuffer> {
     this.checkBounds(length);
     const bytes = new Uint8Array(this.view.buffer, this.view.byteOffset + this.offset, length);
     this.offset += length;
@@ -85,6 +92,16 @@ export class BinaryParser {
     this.checkBounds(2);
     const value = this.view.getInt16(this.offset, true);
     this.offset += 2;
+    return value;
+  }
+
+  /**
+   * Read a 32-bit little-endian float and advance past it
+   */
+  getFloat32(): number {
+    this.checkBounds(4);
+    const value = this.view.getFloat32(this.offset, true);
+    this.offset += 4;
     return value;
   }
 

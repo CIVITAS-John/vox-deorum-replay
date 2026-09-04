@@ -5,6 +5,7 @@
  */
 
 import { ReplayParser } from './replay-parser';
+import { SaveParser, isSaveFile } from './save-parser';
 import { EventParser } from './event-parser';
 import { CivColors } from '../utils/civ-colors';
 import {
@@ -57,10 +58,15 @@ export class Replay {
 
   /**
    * Load replay data from a binary file
+   * Replay files parse synchronously, save files are routed through the
+   * save parser which inflates the compressed game state first
+   * @param file The raw file contents
+   * @param size The size of the file data within the buffer
    */
-  public loadFromFile(file: ArrayBuffer, size: number): void {
-    const parser = new ReplayParser(file, size);
-    const rawData = parser.parse(false);
+  public async loadFromFile(file: ArrayBuffer, size: number): Promise<void> {
+    const rawData = isSaveFile(file)
+      ? await new SaveParser(file, size).parseReplay()
+      : new ReplayParser(file, size).parse(false);
 
     this.processRawData(rawData);
   }

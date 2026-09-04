@@ -274,8 +274,10 @@ export class ReplayMap {
 
 		var north = 85;
 		var west = -180;
-		var south = north - (tiles.length * 0.3888888889);
-		var east = west + (tiles[0].length * 2.4285714286);
+		// Saves without usable map dimensions can carry an empty hex grid, so
+		// guard the bounds math against missing rows
+		var south = north - ((tiles.length ? tiles.length : 1) * 0.3888888889);
+		var east = west + ((tiles.length && tiles[0].length ? tiles[0].length : 1) * 2.4285714286);
 
 		function onMapClick(e: any) {
 			console.log(e.latlng);

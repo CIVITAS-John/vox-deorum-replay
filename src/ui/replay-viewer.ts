@@ -102,7 +102,7 @@ export class ReplayViewer {
   private openFileDialog(): void {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.Civ5Replay';
+    input.accept = '.Civ5Replay,.Civ5Save';
     input.onchange = (e: Event) => {
       const target = e.target as HTMLInputElement;
       if (target.files && target.files.length > 0) {
@@ -155,7 +155,7 @@ export class ReplayViewer {
     reader.onloadend = (e: ProgressEvent<FileReader>) => {
       const result = e.target?.result as ArrayBuffer;
       if (result) {
-        this.processReplayData(result, file.size);
+        void this.processReplayData(result, file.size);
       }
       this.isLoading = false;
     };
@@ -187,7 +187,7 @@ export class ReplayViewer {
     xhr.onload = (e: ProgressEvent<XMLHttpRequest>) => {
       const target = e.target as XMLHttpRequest;
       if (target.status === 200) {
-        this.processReplayData(target.response, target.response.byteLength);
+        void this.processReplayData(target.response, target.response.byteLength);
       } else {
         this.showError(`Failed to load file: HTTP ${target.status}`);
       }
@@ -204,15 +204,20 @@ export class ReplayViewer {
 
   /**
    * Process loaded replay data
+   * Save files parse asynchronously because the compressed body has to be
+   * inflated first, so the loading paths fire and forget this method and
+   * rely on its own error handling
+   * @param data The raw file contents
+   * @param size The size of the file data within the buffer
    */
-  private processReplayData(data: ArrayBuffer, size: number): void {
+  private async processReplayData(data: ArrayBuffer, size: number): Promise<void> {
     try {
       // Clean up previous replay
       this.cleanup();
 
       // Create new replay instance and load data
       this.replay = new Replay();
-      this.replay.loadFromFile(data, size);
+      await this.replay.loadFromFile(data, size);
 
       // Initialize UI components
       this.initializeUIComponents();

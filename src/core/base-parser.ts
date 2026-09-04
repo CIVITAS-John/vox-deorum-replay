@@ -49,7 +49,7 @@ export abstract class BaseParser {
   /**
    * Read raw bytes from the current position
    */
-  getBytes(length: number): Uint8Array {
+  getBytes(length: number): Uint8Array<ArrayBuffer> {
     return this.parser.getBytes(length);
   }
 
@@ -89,6 +89,13 @@ export abstract class BaseParser {
   }
 
   /**
+   * Read a 32-bit little-endian float from the current position
+   */
+  getFloat32(): number {
+    return this.parser.getFloat32();
+  }
+
+  /**
    * Convert a decimal number to a hexadecimal string (for debugging)
    */
   decToHex(dec: number): string {
@@ -119,6 +126,7 @@ export abstract class BaseParser {
       case 'int32': return this.parser.getInt32();
       case 'int16': return this.parser.getInt16();
       case 'int8': return this.parser.getInt8();
+      case 'float32': return this.parser.getFloat32();
       case 'until': return this.parser.getUntil(config.value as number);
       case 'tell': return this.tell();
       case 'array': return this.getArray(config.items as ParserConfig, includeJunk);
