@@ -13,18 +13,6 @@ declare const _: any;
 // Leaflet
 declare const L: any;
 
-// jDataView for binary parsing
-declare class jDataView {
-  constructor(buffer: ArrayBuffer, byteOffset?: number, byteLength?: number, littleEndian?: boolean);
-  tell(): number;
-  seek(position: number): void;
-  getBytes(length: number): any;
-  getString(length: number): string;
-  getInt32(byteOffset?: number, littleEndian?: boolean): number;
-  getInt16(byteOffset?: number, littleEndian?: boolean): number;
-  getInt8(byteOffset?: number): number;
-}
-
 // Bootstrap components
 interface JQuery {
   selectpicker(options?: any): JQuery;

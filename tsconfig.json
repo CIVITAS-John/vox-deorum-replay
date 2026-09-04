@@ -12,6 +12,7 @@
     "forceConsistentCasingInFileNames": true,
     "moduleResolution": "node",
     "resolveJsonModule": true,
+    "types": ["jquery", "lodash", "leaflet"],
     "declaration": false,
     "sourceMap": true
   },

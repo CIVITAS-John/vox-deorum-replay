@@ -114,18 +114,3 @@ export interface DatasetValues {
   turns: number[];                 // Array of turn numbers
   values: number[][];              // 2D array of values per turn
 }
-
-// File configuration for binary parser
-export interface FileConfig {
-  [key: string]: string | number | FileConfigItem | FileConfigArray | Function;  // Dynamic configuration properties
-}
-
-export interface FileConfigItem {
-  type: string;                    // Data type (e.g., 'int', 'str', 'byte')
-  length?: number;                 // Optional length for strings/bytes
-}
-
-export interface FileConfigArray {
-  type: 'array';                   // Array type indicator
-  items: FileConfig;               // Configuration for array items
-}

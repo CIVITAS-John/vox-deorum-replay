@@ -20,12 +20,12 @@ When editing documentation, plans, prioritize coherent rewriting over surgical e
 ## Code Rules
 
 - Prioritize simplification and streamlining more than complicating things or adding unnecessary guardrails.
-- ESM everywhere: all TS modules use `"type": "module"` with `.js` import extensions.
-- npm workspaces: always run `npm install <pkg>` from the repo root, never from a workspace, and keep sub-package `package.json` files minimal. Use `npm install`, `npm run build:all`, and `npm run test:all` from root.
+- Plain TypeScript imports: use extensionless relative import paths. The app is bundled by Rollup into an IIFE for the browser, and Vitest resolves TypeScript imports at test time, so there is no `"type": "module"` and no `.js` import extensions.
+- Single package: run `npm install <pkg>` from the repo root. Use `npm run build` for the browser bundle, `npm test` for the Vitest suite, and `npm run test:watch` while developing.
 - Vitest for all TypeScript testing.
-- Winston logger only: never use `console.log/error/warn` in production code (it is fine in tests).
+- Use `console.log` and `console.error` for logging: this is a browser-bundled app with no logger dependency, and the same applies to tests.
 - camelCase for exported constants (for example, `export const apiKeyFields`).
-- Comment everywhere: every function, at least, needs a comment.s
+- Comment everywhere: every function, at least, needs a comment.
 
 ## Documentation Rules
 
@@ -33,4 +33,4 @@ Documentation is centralized in `/docs/` and serves two audiences: players (how 
 
 - Update docs in the same change that alters behavior, configuration, or setup, and never create docs proactively.
 - Keep the detail light. Avoid raw code in docs; describe the behavior and name the source file instead.
-- No line-number anchors. They drift, so refer to files, functions, or concepts by name.s
+- No line-number anchors. They drift, so refer to files, functions, or concepts by name.

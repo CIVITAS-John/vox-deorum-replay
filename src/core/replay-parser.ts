@@ -1,10 +1,10 @@
 /**
  * replay-parser.ts
- * Handles parsing of Civilization V (Vox Populi) replay files
- * Separates parsing logic from data management
+ * Parser for Civilization V (Vox Populi) replay files
+ * Supplies the replay file schema to the general purpose BaseParser
  */
 
-import { BinaryParser } from './binary-parser';
+import { BaseParser } from './base-parser';
 import { FileConfig } from '../types';
 
 /**
@@ -46,7 +46,7 @@ const DEFAULT_FILE_CONFIG: FileConfig = {
   // 4 bytes for Vox Populi - not sure why, instead of 8
   _4: { type: 'byte', length: 4 },
   mapScript2: 'varstr',
-  _5: function(this: BinaryParser) {
+  _5: function (this: BaseParser) {
     // Heuristic to get around something I don't understand :-(
     // This section still stumps me - it's variable length, but doesn't
     // seem to follow the conventions of the rest of the file.
@@ -57,8 +57,8 @@ const DEFAULT_FILE_CONFIG: FileConfig = {
     }
 
     // We've hit the start year, need to rewind
-    (this.view as any).seek((this.view as any).tell() - 7);
-    console.log(`Found the start year: ${this.decToHex((this.view as any).tell())}`);
+    this.seek(this.tell() - 7);
+    console.log(`Found the start year: ${this.decToHex(this.tell())}`);
   },
   startTurn: 'int32',
   startYear: 'int32',
@@ -132,27 +132,21 @@ const DEFAULT_FILE_CONFIG: FileConfig = {
 
 /**
  * ReplayParser class
- * Responsible for parsing binary replay files
+ * Parses binary replay files using the Civ5 replay schema
  */
-export class ReplayParser {
-  private parser: BinaryParser;
-  private fileConfig: FileConfig;
-
-  constructor(file: ArrayBuffer, size: number, fileConfig?: FileConfig) {
-    this.parser = new BinaryParser(file, size);
-    this.fileConfig = fileConfig || DEFAULT_FILE_CONFIG;
-  }
-
+export class ReplayParser extends BaseParser {
   /**
-   * Parse the replay file and return raw data
-   * @param includeJunk Whether to include unknown/debug fields
+   * Create a replay parser
+   * @param file The raw replay file contents
+   * @param size The size of the replay data within the buffer
+   * @param fileConfig Optional schema override
    */
-  parse(includeJunk: boolean = false): any {
-    return this.parser.parseItems(this.fileConfig, includeJunk);
+  constructor(file: ArrayBuffer, size: number, fileConfig?: FileConfig) {
+    super(file, size, fileConfig ?? DEFAULT_FILE_CONFIG);
   }
 
   /**
-   * Get the default file configuration
+   * Get the default replay file configuration
    */
   static getDefaultFileConfig(): FileConfig {
     return DEFAULT_FILE_CONFIG;

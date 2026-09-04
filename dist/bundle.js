@@ -2484,105 +2484,93 @@
 
     /**
      * binary-parser.ts
-     * Handles parsing of binary replay files for Civilization V
-     * Uses jDataView library to read binary data with proper byte order handling
+     * Pure binary reader for Civilization V binary files
+     * Wraps the native DataView API with little-endian defaults and position
+     * tracking, with no dependency on external libraries or browser globals
      */
-    // External libraries accessed as globals - types defined in globals.d.ts
     class BinaryParser {
+        /**
+         * Create a reader over a file buffer
+         * @param file The raw file contents
+         * @param size Optional number of readable bytes, clamped to the buffer size
+         */
         constructor(file, size) {
-            this.view = new jDataView(file, 0, size, false); // Initialize view with file buffer, false = little-endian
+            this.view = new DataView(file);
+            this.offset = 0;
+            this.end = Math.min(size !== null && size !== void 0 ? size : file.byteLength, file.byteLength);
         }
-        // Parse a single data item based on its configuration
-        parseItem(itemConfig, includeJunk) {
-            if (typeof itemConfig === 'string') {
-                itemConfig = { type: itemConfig };
-            }
-            if (typeof itemConfig === 'function') {
-                (itemConfig.bind(this))();
-                return;
-            }
-            const config = itemConfig;
-            switch (config.type) {
-                case 'byte': return this.getBytes(config.length);
-                case 'str': return this.getString(config.length);
-                case 'varstr': return this.getVarString();
-                case 'int32': return this.getInt32();
-                case 'int16': return this.getInt16();
-                case 'int8': return this.getInt8();
-                case 'until': return this.getUntil(config.value);
-                case 'tell': return this.tell();
-                case 'array': return this.getArray(config.items, includeJunk);
-            }
-        }
-        // Parse multiple items from a configuration object or array
-        parseItems(itemConfigs, includeJunk) {
-            if (typeof itemConfigs === 'object' && 'type' in itemConfigs && itemConfigs.type === 'array') {
-                return this.parseItem(itemConfigs, includeJunk);
-            }
-            // Takes dictionary of configs
-            const data = {};
-            _.each(itemConfigs, (type, key) => {
-                const pointer = this.tell();
-                try {
-                    const value = this.parseItem(type, includeJunk);
-                    if (key === "events" && Array.isArray(value))
-                        console.log(`Parsed ${value.length} events`);
-                    // Bail if we don't want to include junk data
-                    if (key.startsWith('_') && includeJunk === false) {
-                        return;
-                    }
-                    data[key] = value;
-                }
-                catch (e) {
-                    // Seek back to the pointer
-                    this.view.seek(pointer);
-                    console.error(`Error parsing key "${key}" at position ${this.decToHex(pointer)}: ${e}`);
-                    // Print the next 200 bytes
-                    const bytes = this.getBytes(200);
-                    const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-                    console.log(`Next 200 bytes: ${hex.toUpperCase()}`);
-                    // Print the current data
-                    console.log(data);
-                    throw (e);
-                }
-            });
-            return data;
-        }
-        // Get current position in the buffer
+        /**
+         * Get the current read position in the buffer
+         */
         tell() {
-            return this.view.tell();
+            return this.offset;
         }
-        // Read specified number of bytes from current position
-        getBytes(length) {
-            try {
-                return this.view.getBytes(length);
-            }
-            catch (e) {
+        /**
+         * Move the read position to the given byte offset
+         */
+        seek(position) {
+            this.offset = position;
+        }
+        /**
+         * Verify that a read of the given length fits in the buffer
+         */
+        checkBounds(length) {
+            if (this.offset < 0 || this.offset + length > this.end) {
                 throw new Error(`Unable to read ${length} bytes at position ${this.decToHex(this.tell())}`);
             }
         }
-        // Read fixed-length string from current position
+        /**
+         * Read raw bytes from the current position
+         */
+        getBytes(length) {
+            this.checkBounds(length);
+            const bytes = new Uint8Array(this.view.buffer, this.view.byteOffset + this.offset, length);
+            this.offset += length;
+            return bytes;
+        }
+        /**
+         * Read a fixed-length string, decoding each byte as one character (latin1)
+         * This preserves the raw bytes of non-ASCII text (the event mojibake repair
+         * depends on it), so UTF-8 decoding must never be used here
+         */
         getString(length) {
-            try {
-                return this.view.getString(length);
+            const bytes = this.getBytes(length);
+            let value = '';
+            for (let i = 0; i < bytes.length; i++) {
+                value += String.fromCharCode(bytes[i]);
             }
-            catch (e) {
-                throw new Error(`Unable to read string of length ${length} at position ${this.decToHex(this.tell())}`);
-            }
+            return value;
         }
-        // Read 32-bit integer (little-endian)
+        /**
+         * Read a 32-bit little-endian integer and advance past it
+         */
         getInt32() {
-            return this.view.getInt32(this.tell(), true);
+            this.checkBounds(4);
+            const value = this.view.getInt32(this.offset, true);
+            this.offset += 4;
+            return value;
         }
-        // Read 16-bit integer (little-endian)
+        /**
+         * Read a 16-bit little-endian integer and advance past it
+         */
         getInt16() {
-            return this.view.getInt16(this.tell(), true);
+            this.checkBounds(2);
+            const value = this.view.getInt16(this.offset, true);
+            this.offset += 2;
+            return value;
         }
-        // Read 8-bit integer
+        /**
+         * Read an 8-bit integer and advance past it
+         */
         getInt8() {
-            return this.view.getInt8(this.tell());
+            this.checkBounds(1);
+            const value = this.view.getInt8(this.offset);
+            this.offset += 1;
+            return value;
         }
-        // Read bytes until a specific value is encountered
+        /**
+         * Read single bytes until the given value is hit (the terminator is included)
+         */
         getUntil(test) {
             const result = [];
             let val = null;
@@ -2592,21 +2580,186 @@
             } while (val !== test);
             return result;
         }
-        // Read variable-length string (length prefix as 32-bit int)
+        /**
+         * Read a variable-length string: a 32-bit length prefix, then that many bytes
+         */
         getVarString() {
-            // Variable-length string - uses first four bytes to specify length
             const length = this.getInt32();
-            const value = this.getString(length);
-            return value;
+            return this.getString(length);
         }
-        // Read array of items (length prefix as 32-bit int)
+        /**
+         * Convert a decimal number to a hexadecimal string (for debugging)
+         */
+        decToHex(dec) {
+            // Arbitrary length decimal to hex conversion
+            return parseInt(dec.toString()).toString(16).toUpperCase().padStart(2, '0');
+        }
+    }
+
+    /**
+     * base-parser.ts
+     * General purpose, format-agnostic parser base for Civilization V binary files
+     * A subclass supplies a FileConfig schema describing the binary layout of its
+     * file format and gets schema-driven parsing in return: the replay parser and
+     * the upcoming savegame parser both build on this class
+     */
+    class BaseParser {
+        /**
+         * Create a parser over a file buffer
+         * @param file The raw file contents
+         * @param size The size of the file data within the buffer
+         * @param fileConfig Schema describing the binary layout of the file
+         */
+        constructor(file, size, fileConfig) {
+            this.parser = new BinaryParser(file, size);
+            this.fileConfig = fileConfig;
+        }
+        /**
+         * Parse the whole file according to the schema
+         * @param includeJunk Whether to include unknown/debug fields (keys prefixed with an underscore)
+         */
+        parse(includeJunk = false) {
+            return this.parseItems(this.fileConfig, includeJunk);
+        }
+        /**
+         * Get the current read position in the buffer
+         */
+        tell() {
+            return this.parser.tell();
+        }
+        /**
+         * Move the read position to the given byte offset
+         */
+        seek(position) {
+            this.parser.seek(position);
+        }
+        /**
+         * Read raw bytes from the current position
+         */
+        getBytes(length) {
+            return this.parser.getBytes(length);
+        }
+        /**
+         * Read a fixed-length string from the current position
+         */
+        getString(length) {
+            return this.parser.getString(length);
+        }
+        /**
+         * Read a variable-length string from the current position
+         */
+        getVarString() {
+            return this.parser.getVarString();
+        }
+        /**
+         * Read a 32-bit little-endian integer from the current position
+         */
+        getInt32() {
+            return this.parser.getInt32();
+        }
+        /**
+         * Read a 16-bit little-endian integer from the current position
+         */
+        getInt16() {
+            return this.parser.getInt16();
+        }
+        /**
+         * Read an 8-bit integer from the current position
+         */
+        getInt8() {
+            return this.parser.getInt8();
+        }
+        /**
+         * Convert a decimal number to a hexadecimal string (for debugging)
+         */
+        decToHex(dec) {
+            return this.parser.decToHex(dec);
+        }
+        /**
+         * Parse a single schema entry
+         * @param itemConfig A type name, a config object, or a custom function
+         * @param includeJunk Whether to include unknown/debug fields
+         */
+        parseItem(itemConfig, includeJunk) {
+            if (typeof itemConfig === 'string') {
+                itemConfig = { type: itemConfig };
+            }
+            // Custom parse hooks run against this parser and may return a value
+            if (typeof itemConfig === 'function') {
+                return itemConfig.call(this);
+            }
+            const config = itemConfig;
+            switch (config.type) {
+                case 'byte': return this.parser.getBytes(config.length);
+                case 'str': return this.parser.getString(config.length);
+                case 'varstr': return this.parser.getVarString();
+                case 'int32': return this.parser.getInt32();
+                case 'int16': return this.parser.getInt16();
+                case 'int8': return this.parser.getInt8();
+                case 'until': return this.parser.getUntil(config.value);
+                case 'tell': return this.tell();
+                case 'array': return this.getArray(config.items, includeJunk);
+                default:
+                    return undefined;
+            }
+        }
+        /**
+         * Parse a dictionary of schema entries into a data object
+         * @param itemConfigs A schema dictionary, or a nested array config
+         * @param includeJunk Whether to include unknown/debug fields
+         */
+        parseItems(itemConfigs, includeJunk) {
+            // An array config reads its own length prefix and recurses
+            if ('type' in itemConfigs && itemConfigs.type === 'array') {
+                return this.parseItem(itemConfigs, includeJunk);
+            }
+            // Otherwise we have a dictionary of named fields, parsed in order
+            const data = {};
+            Object.keys(itemConfigs).forEach((key) => {
+                const pointer = this.tell();
+                try {
+                    const value = this.parseItem(itemConfigs[key], includeJunk);
+                    // Bail if we don't want to include junk data
+                    if (key.startsWith('_') && !includeJunk) {
+                        return;
+                    }
+                    data[key] = value;
+                }
+                catch (e) {
+                    // Seek back to the pointer before inspecting the damage
+                    this.seek(pointer);
+                    console.error(`Error parsing key "${key}" at position ${this.decToHex(pointer)}: ${e}`);
+                    // Print the next 200 bytes and the data collected so far, but never
+                    // let diagnostics mask the original error
+                    try {
+                        const bytes = this.getBytes(200);
+                        const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+                        console.log(`Next 200 bytes: ${hex.toUpperCase()}`);
+                        console.log(data);
+                    }
+                    catch (e2) {
+                        // Not enough bytes left for diagnostics, nothing more to do
+                    }
+                    throw e;
+                }
+            });
+            return data;
+        }
+        /**
+         * Read an array: a 32-bit length prefix followed by that many records
+         * @param config Schema for each record
+         * @param includeJunk Whether to include unknown/debug fields
+         */
         getArray(config, includeJunk) {
-            const length = this.getInt32();
+            const length = this.parser.getInt32();
             const records = [];
             for (let i = 0; i < length; i++) {
                 let record = {};
                 if (typeof config === 'function') {
-                    record = config(i, includeJunk);
+                    record = config.call(this, i, includeJunk);
+                }
+                else if (typeof config === 'string') {
+                    record = this.parseItem(config, includeJunk);
                 }
                 else if (typeof config === 'object') {
                     record = this.parseItems(config, includeJunk);
@@ -2615,17 +2768,12 @@
             }
             return records;
         }
-        // Convert decimal number to hexadecimal string (for debugging)
-        decToHex(dec) {
-            // arbitrary length decimal to hex conversion
-            return parseInt(dec.toString()).toString(16).toUpperCase().padStart(2, '0');
-        }
     }
 
     /**
      * replay-parser.ts
-     * Handles parsing of Civilization V (Vox Populi) replay files
-     * Separates parsing logic from data management
+     * Parser for Civilization V (Vox Populi) replay files
+     * Supplies the replay file schema to the general purpose BaseParser
      */
     /**
      * Default file configuration for Vox Populi replay files
@@ -2675,8 +2823,8 @@
                 unknown = this.getInt32();
             }
             // We've hit the start year, need to rewind
-            this.view.seek(this.view.tell() - 7);
-            console.log(`Found the start year: ${this.decToHex(this.view.tell())}`);
+            this.seek(this.tell() - 7);
+            console.log(`Found the start year: ${this.decToHex(this.tell())}`);
         },
         startTurn: 'int32',
         startYear: 'int32',
@@ -2749,22 +2897,20 @@
     };
     /**
      * ReplayParser class
-     * Responsible for parsing binary replay files
+     * Parses binary replay files using the Civ5 replay schema
      */
-    class ReplayParser {
-        constructor(file, size, fileConfig) {
-            this.parser = new BinaryParser(file, size);
-            this.fileConfig = fileConfig || DEFAULT_FILE_CONFIG;
-        }
+    class ReplayParser extends BaseParser {
         /**
-         * Parse the replay file and return raw data
-         * @param includeJunk Whether to include unknown/debug fields
+         * Create a replay parser
+         * @param file The raw replay file contents
+         * @param size The size of the replay data within the buffer
+         * @param fileConfig Optional schema override
          */
-        parse(includeJunk = false) {
-            return this.parser.parseItems(this.fileConfig, includeJunk);
+        constructor(file, size, fileConfig) {
+            super(file, size, fileConfig !== null && fileConfig !== void 0 ? fileConfig : DEFAULT_FILE_CONFIG);
         }
         /**
-         * Get the default file configuration
+         * Get the default replay file configuration
          */
         static getDefaultFileConfig() {
             return DEFAULT_FILE_CONFIG;
