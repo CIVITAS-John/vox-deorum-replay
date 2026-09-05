@@ -56,8 +56,6 @@ export interface SaveParserDiagnostics {
   mapDimsSource: 'map-section' | 'events' | 'none';
   terrainCoverage: number;
   terrainTrusted: number;
-  terrainSkipped: number;
-  terrainSegments: number;
   terrainGatePassed: boolean;
 }
 
@@ -65,16 +63,12 @@ export interface SaveParserDiagnostics {
 export interface MapTerrainStats {
   /** Byte offset of the first plot record, or -1 when the array was not found */
   arrayStart: number;
-  /** Plot slots the walk reached, including damaged records counted as skipped */
+  /** Plot slots the walk reached */
   slotsFilled: number;
   /** Records whose terrain values passed the semantic trust rule */
   trustedTiles: number;
-  /** Records found in the data but rejected by the trust rule */
+  /** Records that were walked but whose terrain values looked implausible */
   damagedTiles: number;
-  /** Records that failed the structural check and were only counted, not read */
-  skippedRecords: number;
-  /** Number of contiguous record segments that were walked */
-  segments: number;
 }
 
 /** Terrain extraction result: one entry per plot, null when unknown */
@@ -115,16 +109,28 @@ const PLOT_PREFIX_SIZE = 28;
 const PLOT_BITS_OFFSET = 21;
 /** Position of the owner byte relative to the record base after the river list */
 const PLOT_OWNER_OFFSET = 28;
-/** End of the owning city data relative to the record base after the river list, where the yield list starts */
+/** Position of the yield list relative to the record base after the river list */
 const PLOT_YIELDS_OFFSET = 76;
-/** Size of the per team visibility block that follows the yields */
-const PLOT_TEAM_BLOCK_SIZE = 1024;
-/** Window in which the periodic team block must begin after the yields */
-const PLOT_TEAM_SEARCH = 200;
 /** Number of yield bytes between the owning city data and the team block */
 const PLOT_YIELD_COUNT = 17;
-/** How far ahead the walker scans for the next record before giving up on a segment */
+/** Size of the per team visibility block that follows the yields */
+const PLOT_TEAM_BLOCK_SIZE = 1024;
+/** Size of one visibility entry inside the team block */
+const PLOT_TEAM_ENTRY_SIZE = 16;
+/** Position of the team block relative to the record base after the river list */
+const PLOT_BLOCK_OFFSET = PLOT_YIELDS_OFFSET + PLOT_YIELD_COUNT;
+/** How far past the team block the next record can be searched */
 const PLOT_NEXT_SCAN_LIMIT = 0x10000;
+/** A suffix run of identical team entries must be at least this long to count as a block */
+const PLOT_TEAM_RUN_MIN = 12;
+/** Size of the revealed bits array that follows the team block */
+const PLOT_REVEALED_BITS = 256;
+/** How far past the unit list the closing fields of a record tail can reach */
+const PLOT_TAIL_MAX = 96;
+/** A zeroed record is at least this long, head, block, and revealed bits together */
+const PLOT_BLANK_MIN_SIZE = 1200;
+/** The full length of one zeroed record, head, block, revealed bits, and empty tail */
+const PLOT_BLANK_RECORD_SIZE = 1422;
 
 /** The terrain fields of one plot record that the walker cares about */
 interface PlotHead {
@@ -150,7 +156,7 @@ interface PlotHead {
  * @returns The terrain fields, or null when no record starts here
  */
 export function checkPlotHead(body: Uint8Array, s: number): PlotHead | null {
-  if (s < 0 || s + PLOT_YIELDS_OFFSET + PLOT_TEAM_SEARCH + 400 >= body.length) return null;
+  if (s < 0 || s + PLOT_BLOCK_OFFSET + PLOT_TEAM_BLOCK_SIZE + 400 >= body.length) return null;
   const i16 = (p: number) => ((body[p] | (body[p + 1] << 8)) << 16) >> 16;
   const i8 = (p: number) => (body[p] << 24) >> 24;
   const u8 = (p: number) => body[p];
@@ -189,16 +195,6 @@ export function checkPlotHead(body: Uint8Array, s: number): PlotHead | null {
   const terrain = i8(b + PLOT_OWNER_OFFSET + 2);
   if (terrain < 0 || terrain > 15) return null;
   const feature = i32(b + PLOT_OWNER_OFFSET + 3);
-  // An entirely zero head is a zero run inside some record tail, not a plot:
-  // a grassland mountain carrying the ice feature cannot exist. Damaged real
-  // records keep their nonzero counters and pass this test
-  if (feature === 0 && plotType === 0 && terrain === 0 && owner === 0) {
-    let allZero = true;
-    for (let k = 0; k < PLOT_PREFIX_SIZE; k++) {
-      if (body[s + k] !== 0) { allZero = false; break; }
-    }
-    if (allZero) return null;
-  }
   if (u8(b + 59) > 1) return null;
   for (const off of [60, 64, 68, 72]) {
     const v = i8(b + off);
@@ -216,130 +212,246 @@ function u16le(body: Uint8Array, p: number): number {
 }
 
 /**
+ * Count how many times the sixteen byte pattern at the given position
+ * repeats, which is the length of a run of identical team block entries
+ * @param body The decompressed game state
+ * @param q Position of the first entry of the run
+ */
+function runLengthAt(body: Uint8Array, q: number): number {
+  let reps = 0;
+  while (reps < 200 && q + (reps + 1) * PLOT_TEAM_ENTRY_SIZE <= body.length) {
+    let ok = true;
+    for (let j = 0; j < PLOT_TEAM_ENTRY_SIZE; j++) {
+      if (body[q + reps * PLOT_TEAM_ENTRY_SIZE + j] !== body[q + j]) { ok = false; break; }
+    }
+    if (!ok) break;
+    reps++;
+  }
+  return reps;
+}
+
+/**
+ * Real visibility entries mix the negative enum fill with zero bytes, which
+ * rules out runs of pure padding
+ * @param body The decompressed game state
+ * @param q Position of the entry to inspect
+ */
+function runQualifies(body: Uint8Array, q: number): boolean {
+  let ff = 0;
+  let zz = 0;
+  for (let j = 0; j < PLOT_TEAM_ENTRY_SIZE; j++) {
+    if (body[q + j] === 0xff) ff++;
+    else if (body[q + j] === 0) zz++;
+  }
+  return ff >= 3 && zz >= 2;
+}
+
+/**
  * Check that the per team visibility block behind a candidate head looks
- * real. The block sits after the yield list and consists of 64 entries of
- * sixteen bytes. Most entries repeat identically, so a cheap scan first
- * demands one long periodic run and a second pass demands that runs cover a
- * large fraction of the block. Fake heads inside the variable tail of a big
- * record only see short runs and fail the coverage test
+ * real. The block sits at a fixed offset after the record base and consists
+ * of 64 entries of sixteen bytes. The entries of teams that have seen the
+ * plot vary, while the unused team slots at the end all carry the same fill
+ * value, so a real block always ends with a long run of identical entries
+ * that reaches the end of the block. Fake heads inside record tails, or
+ * heads hijacking a neighbouring record's block, end up with runs that stop
+ * early or run past the block, and fail
  * @param body The decompressed game state
  * @param b The record base after the river list
  */
 export function checkTeamBlock(body: Uint8Array, b: number): boolean {
-  const isRunStart = (q: number): number => {
-    let reps = 0;
-    while (reps < 200 && q + (reps + 1) * 16 <= body.length) {
-      let ok = true;
-      for (let j = 0; j < 16; j++) {
-        if (body[q + reps * 16 + j] !== body[q + j]) { ok = false; break; }
-      }
-      if (!ok) break;
-      reps++;
+  const blockStart = b + PLOT_BLOCK_OFFSET;
+  const blockEnd = blockStart + PLOT_TEAM_BLOCK_SIZE;
+  const maxEntry = PLOT_TEAM_BLOCK_SIZE / PLOT_TEAM_ENTRY_SIZE - PLOT_TEAM_RUN_MIN;
+  for (let k = 0; k <= maxEntry; k++) {
+    const q = blockStart + k * PLOT_TEAM_ENTRY_SIZE;
+    const reps = runLengthAt(body, q);
+    if (reps >= PLOT_TEAM_RUN_MIN && runQualifies(body, q)) {
+      const runEnd = q + reps * PLOT_TEAM_ENTRY_SIZE;
+      // The identical entries are the block suffix, so the run ends at the
+      // block end. A few trailing entries can differ, but a run ending past
+      // the block belongs to some other record's data
+      if (runEnd >= blockEnd - 96 && runEnd <= blockEnd) return true;
     }
-    return reps;
-  };
-  const runQualifies = (q: number): boolean => {
-    let ff = 0, zz = 0;
-    for (let j = 0; j < 16; j++) {
-      if (body[q + j] === 0xff) ff++;
-      else if (body[q + j] === 0) zz++;
-    }
-    return ff >= 3 && zz >= 2;
-  };
-
-  // One periodic run of at least eight repeats near the start of the block.
-  // Seen plots can have many varying entries, so the whole block is not
-  // required to be periodic, only the tail end of unused team slots
-  for (let q = b + PLOT_YIELDS_OFFSET; q < b + PLOT_YIELDS_OFFSET + PLOT_TEAM_SEARCH; q++) {
-    if (isRunStart(q) >= 8 && runQualifies(q)) return true;
   }
   return false;
 }
 
 /**
- * Count plot records between two byte positions by their team blocks. Each
- * record holds exactly one block, and one block can split into several
- * periodic runs when team entries differ, so runs less than 128 bytes apart
- * are merged before counting
- * @param body The decompressed game state
- * @param from First byte to inspect
- * @param to Last byte to inspect
+ * Decide whether the terrain fields of a record are plausible. Implausible
+ * values mean the record is unreadable and its tile is reported as unknown,
+ * but the record still occupies a slot so the plot index stays aligned
+ * @param head The terrain fields of one record
  */
-function countRecordsBetween(body: Uint8Array, from: number, to: number): number {
+function isTrustedTerrain(head: PlotHead): boolean {
+  return head.feature >= -1 && head.feature <= 100 &&
+    (head.plotType !== 3 || head.terrain >= 5) &&
+    // Ice sits on water, but frozen tundra and snow land exist in the raw
+    // save data of modded maps before the game transforms them on load
+    (head.feature !== 0 || head.plotType === 3 || head.terrain === 3 || head.terrain === 4);
+}
+
+/**
+ * Find the next plot record by scanning, used as a fallback when the
+ * structural tail parse fails. The scan starts behind the per player
+ * revealed bits, which are mostly zeros and would otherwise produce a flood
+ * of fake heads. A record prefix carries either the all ones empty river
+ * marker or a small river count at a fixed offset, which filters almost
+ * every tail position out before the structural checks run
+ * @param body The decompressed game state
+ * @param blockEnd The end of the current record's team block
+ * @returns The next record position, or -1 when none is found nearby
+ */
+export function findNextPlotRecord(body: Uint8Array, blockEnd: number): number {
+  // The 256 bytes right behind the block are the per player revealed bits,
+  // mostly zeros, which would otherwise produce a flood of fake heads
+  const from = blockEnd + PLOT_REVEALED_BITS + 40;
+  const limit = Math.min(from + PLOT_NEXT_SCAN_LIMIT, body.length - 350);
+  for (let t = from; t + 21 < limit; t++) {
+    const isMarker = body[t] === 0xff && body[t + 1] === 0xff && body[t + 2] === 0xff && body[t + 3] === 0xff;
+    const isCount = body[t] <= 64 && body[t + 1] === 0 && body[t + 2] === 0 && body[t + 3] === 0;
+    if (!isMarker && !isCount) continue;
+    const cand = t - 17;
+    if (cand < from) continue;
+    const head = checkPlotHead(body, cand);
+    if (head && checkTeamBlock(body, head.riversBase)) return cand;
+  }
+  return -1;
+}
+
+/**
+ * Skip one counted vector body: a size word that is either the all ones
+ * empty marker or a small count followed by that many elements
+ * @param body The decompressed game state
+ * @param view Little endian view over the game state
+ * @param p Position of the size word
+ * @param max The largest plausible element count
+ * @param elementSize The size of one element in bytes
+ * @returns The position after the vector, or -1 when the count is implausible
+ */
+function skipVectorBody(body: Uint8Array, view: DataView, p: number, max: number, elementSize: number): number {
+  const count = view.getUint32(p, true);
+  if (count === 0xFFFFFFFF) return p + 4;
+  if (count > max) return -1;
+  return p + 4 + count * elementSize;
+}
+
+/**
+ * Walk the fixed and counted parts of a record tail up to the end of the
+ * unit list. Behind the team block the tail holds the revealed bits, the
+ * script data, the build progress, two invisible visibility vectors, and
+ * the unit list, and every variable part starts with a size word
+ * @param body The decompressed game state
+ * @param view Little endian view over the game state
+ * @param blockEnd The end of the current record's team block
+ * @returns The position after the unit list, or -1 when a size word is implausible
+ */
+function parseTailToUnits(body: Uint8Array, view: DataView, blockEnd: number): number {
+  let p = blockEnd + PLOT_REVEALED_BITS + 1;
+  // Script data: a flag byte, then a length prefixed string when present.
+  // An empty string is written as the all ones marker
+  if (body[p] !== 0) {
+    p += 1;
+    const len = view.getUint32(p, true);
+    if (len === 0xFFFFFFFF) { p += 4; }
+    else if (len <= 10000) { p += 4 + len; }
+    else return -1;
+  } else {
+    p += 1;
+  }
+  p += 4; // build progress
+  // Invisible visibility unit counts: pairs of team and count
+  p = skipVectorBody(body, view, p, 200, 8);
+  if (p < 0) return -1;
+  // Invisible visibility counts: pairs of team and a counted int vector
+  let count = view.getUint32(p, true);
+  if (count === 0xFFFFFFFF) { p += 4; }
+  else if (count > 200) return -1;
+  else {
+    p += 4;
+    for (let i = 0; i < count; i++) {
+      p += 4; // the team
+      p = skipVectorBody(body, view, p, 500, 4);
+      if (p < 0) return -1;
+    }
+  }
+  // Units: pairs of owner and unit id
+  return skipVectorBody(body, view, p, 500, 8);
+}
+
+/**
+ * Check whether a fully zeroed record starts at the given position. Plots
+ * that a mod transforms when the save is loaded are stored with their head
+ * and visibility block zeroed, and no other data in the section carries a
+ * zero run this long
+ * @param body The decompressed game state
+ * @param s Candidate record start
+ */
+function isBlankRecord(body: Uint8Array, s: number): boolean {
+  const end = Math.min(s + PLOT_BLANK_MIN_SIZE, body.length);
+  for (let p = s; p < end; p++) {
+    if (body[p] !== 0) return false;
+  }
+  return true;
+}
+
+/**
+ * Count the plot records inside a gap that the scan based finder jumped
+ * over. Real records announce themselves through the run of identical
+ * entries that ends their team block, and zeroed records come as long zero
+ * runs of one record length each. Both kinds are counted so the walk can
+ * fill their plot slots with unknown tiles and keep the index aligned
+ * @param body The decompressed game state
+ * @param from First byte of the gap
+ * @param to Last byte of the gap
+ */
+function countSkippedRecords(body: Uint8Array, from: number, to: number): number {
+  // Team blocks: periodic runs that are long enough to only come from a
+  // block, merged when they sit close together because one block can split
+  // into several runs when its entries differ in the middle
   const runs: [number, number][] = [];
   let i = Math.max(0, from);
   while (i < to - 96) {
-    let reps = 0;
-    while (reps < 200 && i + (reps + 1) * 16 <= body.length) {
-      let ok = true;
-      for (let j = 0; j < 16; j++) {
-        if (body[i + reps * 16 + j] !== body[i + j]) { ok = false; break; }
-      }
-      if (!ok) break;
-      reps++;
-    }
-    if (reps >= 6) {
-      let ff = 0, zz = 0;
-      for (let j = 0; j < 16; j++) {
-        if (body[i + j] === 0xff) ff++;
-        else if (body[i + j] === 0) zz++;
-      }
-      if (ff >= 3 && zz >= 2) {
-        runs.push([i, reps * 16]);
-        i += reps * 16;
-        continue;
-      }
+    const reps = runLengthAt(body, i);
+    if (reps >= PLOT_TEAM_RUN_MIN && runQualifies(body, i)) {
+      runs.push([i, reps * PLOT_TEAM_ENTRY_SIZE]);
+      i += reps * PLOT_TEAM_ENTRY_SIZE;
+      continue;
     }
     i++;
   }
-  let count = 0;
+  let records = 0;
   let lastEnd = -1;
   for (const [start, len] of runs) {
-    if (lastEnd < 0 || start - lastEnd > 128) count++;
+    if (lastEnd < 0 || start - lastEnd > 128) records++;
     lastEnd = Math.max(lastEnd, start + len);
   }
-  return count;
-}
 
-/**
- * Find the next plot record after the given position. The scan is filtered:
- * a record prefix carries either the all ones river marker or a small river
- * count at a fixed offset, so only positions preceded by four 0xFF bytes are
- * worth a full check. The window grows progressively because consecutive
- * records sit within a couple of kilobytes of each other, and only skipped
- * or damaged records push the gap wide
- * @param body The decompressed game state
- * @param s The current record position
- * @param minDist Closest accepted distance to the next record
- * @returns The next record position, or -1 when none is found nearby
- */
-export function findNextPlotRecord(body: Uint8Array, s: number, minDist: number): number {
-  const limit = Math.min(s + PLOT_NEXT_SCAN_LIMIT, body.length - 350);
-  const from = s + minDist;
-  let to = Math.min(s + 2048, limit);
-  for (;;) {
-    for (let t = Math.max(from, 4); t + 21 < to; t++) {
-      // A record prefix carries either the all ones empty river marker or a
-      // small river count at offset 17, so both shapes filter the position
-      const isMarker = body[t] === 0xff && body[t + 1] === 0xff && body[t + 2] === 0xff && body[t + 3] === 0xff;
-      const isCount = body[t] <= 64 && body[t + 1] === 0 && body[t + 2] === 0 && body[t + 3] === 0;
-      if (!isMarker && !isCount) continue;
-      const cand = t - 17;
-      if (cand < from) continue;
-      const head = checkPlotHead(body, cand);
-      if (head && checkTeamBlock(body, head.riversBase)) return cand;
+  // Zeroed records: each blank is one record length of zeros, and short
+  // zero padding around them does not reach the threshold
+  let run = 0;
+  for (let p = Math.max(0, from); p < to; p++) {
+    if (body[p] === 0) {
+      run++;
+    } else {
+      if (run >= PLOT_BLANK_MIN_SIZE) records += Math.floor(run / PLOT_BLANK_RECORD_SIZE);
+      run = 0;
     }
-    if (to >= limit) return -1;
-    to = Math.min(to * 4, limit);
   }
+  if (run >= PLOT_BLANK_MIN_SIZE) records += Math.floor(run / PLOT_BLANK_RECORD_SIZE);
+  return records;
 }
 
 /**
- * Walk one contiguous run of plot records starting at the given position. The
- * walk stops when no further record is found within the scan window. Records
- * that fail the structural check are not skipped silently: their team blocks
- * are counted in the gap so the plot index stays aligned, and those plots are
- * reported as unknown
+ * Walk one contiguous run of plot records starting at the given position.
+ * The next record position comes from the structural tail parse first: the
+ * counted vectors are skipped exactly, then the next head is looked for in
+ * the small window of closing fields. This keeps the walk aligned even
+ * across records with zeroed heads and zeroed visibility blocks, the raw
+ * state of plots that mods transform when the save is loaded. When the
+ * parse hits an implausible size word, the wide scan based finder takes
+ * over. Every record fills one plot slot, so the plot index stays aligned
+ * even when a record's terrain values are implausible. The walk stops when
+ * no further record is found
  * @param body The decompressed game state
  * @param start First record position
  * @param maxSlots Stop after filling this many plot slots
@@ -348,54 +460,57 @@ export function findNextPlotRecord(body: Uint8Array, s: number, minDist: number)
 function walkPlotSegment(body: Uint8Array, start: number, maxSlots: number): {
   tiles: (PlotHead | null)[];
   endPos: number;
-  skipped: number;
 } {
+  const view = new DataView(body.buffer, body.byteOffset, body.byteLength);
   const tiles: (PlotHead | null)[] = [];
-  const dists: number[] = [];
-  let minSize = 1500;
-  let bootstrapped = false;
-  let skipped = 0;
   let s = start;
   while (tiles.length < maxSlots) {
     const head = checkPlotHead(body, s);
-    if (!head || !checkTeamBlock(body, head.riversBase)) break;
-    const trusted = head.feature >= -1 && head.feature <= 100 &&
-      (head.plotType !== 3 || head.terrain >= 5) &&
-      (head.feature !== 0 || head.plotType === 3);
-    tiles.push(trusted ? head : null);
-    const next = findNextPlotRecord(body, s, bootstrapped ? minSize - 64 : 1400);
-    if (next < 0) break;
-    if (!bootstrapped) {
-      dists.push(next - s);
-      if (dists.length >= 12) {
-        dists.sort((a, b) => a - b);
-        minSize = dists[1];
-        bootstrapped = true;
+    if (!head) break;
+    tiles.push(isTrustedTerrain(head) ? head : null);
+    const blockEnd = head.riversBase + PLOT_BLOCK_OFFSET + PLOT_TEAM_BLOCK_SIZE;
+    let next = -1;
+    const unitsEnd = parseTailToUnits(body, view, blockEnd);
+    if (unitsEnd >= 0) {
+      // The closing fields after the unit list vary a little in size, so the
+      // next head is searched in a short window instead of a fixed skip
+      const to = Math.min(unitsEnd + PLOT_TAIL_MAX, body.length - 350);
+      for (let cand = unitsEnd + 16; cand <= to; cand++) {
+        const candHead = checkPlotHead(body, cand);
+        if (candHead && checkTeamBlock(body, candHead.riversBase)) { next = cand; break; }
+        if (isBlankRecord(body, cand)) { next = cand; break; }
       }
     }
-    // Records that failed the structural check between the current record and
-    // the next one are counted through their team blocks. The window starts
-    // past this record's own block: the yields, then 1024 block bytes
-    const gap = countRecordsBetween(body, head.riversBase + PLOT_YIELDS_OFFSET + PLOT_YIELD_COUNT + PLOT_TEAM_BLOCK_SIZE + 16, next - 200);
-    for (let k = 0; k < gap && tiles.length < maxSlots; k++) {
-      tiles.push(null);
-      skipped++;
+    if (next < 0) {
+      next = findNextPlotRecord(body, blockEnd);
+      if (next > 0) {
+        // The wide scan can jump over records whose heads or blocks failed
+        // the checks, most of them zeroed or transformed plots. Their slots
+        // are counted and filled with unknown tiles so the index stays put
+        const gap = countSkippedRecords(body, blockEnd + PLOT_REVEALED_BITS + 40, next - 100);
+        for (let k = 0; k < gap && tiles.length < maxSlots; k++) {
+          tiles.push(null);
+        }
+      }
     }
+    if (next < 0 || next <= s) break;
     s = next;
   }
-  return { tiles, endPos: s, skipped };
+  return { tiles, endPos: s };
 }
 
 /**
  * Extract the map terrain by walking the plot record array of the map
  * section. The array start is scanned on the resource table sizing first and
- * falls back to a free scan for layouts that differ. Far away record runs are
- * only joined when the record count proves they complete the map, which keeps
- * a spliced or damaged save from producing shifted terrain
+ * falls back to a free scan for layouts that differ. Only records whose
+ * head, team block, and terrain values all validate start the walk, and a
+ * short trial walk keeps false positives elsewhere in the section from
+ * being mistaken for the array
  * @param body The decompressed game state
  * @param mapPos Byte offset of the map section header
  * @param width Map width in plots
  * @param height Map height in plots
+ * @returns The terrain tiles, null where unknown, plus walk statistics
  */
 export function extractMapTerrain(body: Uint8Array, mapPos: number, width: number, height: number): MapTerrainResult {
   const numPlots = width * height;
@@ -404,19 +519,17 @@ export function extractMapTerrain(body: Uint8Array, mapPos: number, width: numbe
     arrayStart: -1,
     slotsFilled: 0,
     trustedTiles: 0,
-    damagedTiles: 0,
-    skippedRecords: 0,
-    segments: 0
+    damagedTiles: 0
   };
   if (numPlots <= 0) return { tiles, stats };
 
   // The header is 47 bytes, then two resource count tables of width 4 bytes
   // each. The first plot record follows, so candidates sit on that grid
   const validateStart = (pos: number): boolean => {
-    if (checkPlotHead(body, pos) === null) return false;
-    if (!checkTeamBlock(body, checkPlotHead(body, pos)!.riversBase)) return false;
+    const head = checkPlotHead(body, pos);
+    if (!head || !isTrustedTerrain(head) || !checkTeamBlock(body, head.riversBase)) return false;
     const trial = walkPlotSegment(body, pos, 30);
-    return trial.tiles.length >= 30 && trial.skipped === 0;
+    return trial.tiles.length >= 30;
   };
 
   let arrayStart = -1;
@@ -432,46 +545,9 @@ export function extractMapTerrain(body: Uint8Array, mapPos: number, width: numbe
   if (arrayStart < 0) return { tiles, stats };
   stats.arrayStart = arrayStart;
 
-  // Walk the first segment, then look for further record runs
-  const first = walkPlotSegment(body, arrayStart, numPlots);
-  const collected: (PlotHead | null)[] = first.tiles;
-  stats.skippedRecords += first.skipped;
-  stats.segments = 1;
-
-  // A clean save has one contiguous array and never enters this loop. A
-  // spliced save may hold a continuation further out, but more than a handful
-  // of candidate runs means the region is unrelated data, so the attempts and
-  // the search radius are both bounded
-  let scanPos = first.endPos + 600;
-  const farLimit = Math.min(first.endPos + 0x800000, body.length - 350);
-  for (let attempt = 0; attempt < 5 && collected.length < numPlots && scanPos < farLimit; attempt++) {
-    let cand = -1;
-    for (let t = scanPos; t < farLimit; t++) {
-      // Same filter as the walk scan: a record prefix carries a river marker
-      // or a small river count at a fixed offset
-      const isMarker = body[t] === 0xff && body[t + 1] === 0xff && body[t + 2] === 0xff && body[t + 3] === 0xff;
-      const isCount = body[t] <= 64 && body[t + 1] === 0 && body[t + 2] === 0 && body[t + 3] === 0;
-      if (!isMarker && !isCount) continue;
-      const head = checkPlotHead(body, t - 17);
-      if (head && checkTeamBlock(body, head.riversBase)) { cand = t - 17; break; }
-    }
-    if (cand < 0) break;
-    const trial = walkPlotSegment(body, cand, numPlots);
-    // Only trust a far run when the record count proves it completes the map,
-    // then align it to the end of the plot index
-    if (trial.tiles.length >= 30 && collected.length + trial.tiles.length === numPlots) {
-      for (let i = 0; i < trial.tiles.length; i++) {
-        collected.push(trial.tiles[i]);
-      }
-      stats.skippedRecords += trial.skipped;
-      stats.segments++;
-      break;
-    }
-    scanPos = trial.endPos + 600;
-  }
-
-  for (let i = 0; i < Math.min(collected.length, numPlots); i++) {
-    const head = collected[i];
+  const walked = walkPlotSegment(body, arrayStart, numPlots);
+  for (let i = 0; i < Math.min(walked.tiles.length, numPlots); i++) {
+    const head = walked.tiles[i];
     if (head) {
       tiles[i] = { elevation: head.plotType, type: head.terrain, feature: head.feature };
       stats.trustedTiles++;
@@ -479,10 +555,9 @@ export function extractMapTerrain(body: Uint8Array, mapPos: number, width: numbe
       stats.damagedTiles++;
     }
   }
-  stats.slotsFilled = Math.min(collected.length, numPlots);
+  stats.slotsFilled = Math.min(walked.tiles.length, numPlots);
   return { tiles, stats };
 }
-
 /**
  * Skip a CvBaseInfo block: an int32 id followed by eight strings
  */
@@ -793,8 +868,6 @@ export class SaveParser extends BaseParser {
     mapDimsSource: 'none',
     terrainCoverage: 0,
     terrainTrusted: 0,
-    terrainSkipped: 0,
-    terrainSegments: 0,
     terrainGatePassed: false
   };
 
@@ -868,11 +941,10 @@ export class SaveParser extends BaseParser {
       const coverage = terrain.stats.slotsFilled / (mapDims.width * mapDims.height);
       this.diagnostics.terrainCoverage = coverage;
       this.diagnostics.terrainTrusted = terrain.stats.trustedTiles;
-      this.diagnostics.terrainSkipped = terrain.stats.skippedRecords;
-      this.diagnostics.terrainSegments = terrain.stats.segments;
-      // A damaged or spliced save can leave the walk short and its records
-      // misaligned. Only render terrain when the walk covered nearly the
-      // whole map, otherwise fall back to blank hexes
+
+      // A damaged save can leave the walk short and its records misaligned.
+      // Only render terrain when the walk covered nearly the whole map,
+      // otherwise fall back to blank hexes
       this.diagnostics.terrainGatePassed = coverage >= 0.9;
       if (!this.diagnostics.terrainGatePassed) {
         console.warn(`Save terrain unreliable: the plot walk covered ${(coverage * 100).toFixed(1)}% of the map, rendering blank hexes`);
