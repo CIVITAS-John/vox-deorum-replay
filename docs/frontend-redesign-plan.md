@@ -1,190 +1,279 @@
 # Frontend redesign plan
 
-Status: draft for revision. This document keeps the proposed stages, UI mockups, and open decisions together. Implementation will happen one stage at a time. This draft makes no code changes and leaves framework and rendering library choices for implementation.
+Status: draft for revision. This document keeps the stages, mockups, and open decisions in one place. Implementation happens one stage at a time, and each stage ends with a review of the replay and save examples on desktop and phone before the next one starts.
 
 ## Overall direction
 
-Make the map the center of the experience, with a clear timeline, useful inspection, and a separate space for statistics. Keep some Civilization character through restrained colors and typography, while giving controls and content more room to breathe.
+Make the map the center of the experience, with a clear timeline, useful inspection, and a separate space for statistics. Keep some Civilization character through restrained colors and typography, while giving controls and content room to breathe.
 
-The current viewer combines a map, playback controls, and an event log. It loads replay and save files, and already reads statistics datasets. Save files also supply river edges, which are not yet drawn. Richer city, economy, and diplomacy details still need further parser work.
+The current viewer combines a map, playback controls, and an event log. It opens replay and save files and already reads 29 statistics datasets per civilization. Save files also carry river edges, which are not yet drawn. Everything richer (plot ownership from the save, city details, economy, diplomacy) needs parser work first, and part of that work is finding out whether the save holds any history for it or only the final snapshot.
 
-Use three main destinations: **Map**, **Events**, and **Statistics**. On larger screens, events and inspection can sit beside the map. On phones, each destination gets usable space, with map details opening in a bottom sheet. Changing destinations preserves the selected turn and civilization.
+The application has three destinations: **Map**, **Events**, and **Statistics**. On larger screens, events and inspection sit beside the map. On phones, each destination gets the full content area, and map details open in a bottom sheet. Changing destinations preserves the selected turn and civilization.
 
-Treat these as distinct views of the game:
+### Two kinds of data
 
-- **Replay history:** information that can be shown at the selected turn.
-- **Saved position:** extra details known at the turn of the loaded save.
-- **End-game summary:** the final recorded position and available results. An unfinished save should say “Summary at turn ...” instead of implying that the game has ended.
+- **Replay history** is known at every turn: the event log and the datasets, which both file types carry, plus terrain and rivers. Terrain and rivers are fixed when the map is generated, so they are valid at every turn even though only save files store the rivers.
+- **Saved snapshot** is known only at the turn of the loaded save: plot ownership, improvements, resources, routes, city details, and anything else read from the save's game state. Whether any of it comes with history is what Stage 3 finds out.
 
-Saved-position details must not silently appear as historical facts when the timeline moves backward. Replay files should remain useful without save-only information.
+Snapshot details appear only while the timeline sits on the save's last turn and step aside with a short note when it moves back. This keeps a single timeline and needs no separate mode. A replay file never has snapshot data and stays fully useful without it. When the save is a finished game, the snapshot is the end-game position. When it is not, the interface says "Snapshot at turn ..." and never implies that the game ended.
 
-## Stage 1: Refactor the frontend foundation
+### Technology decisions
 
-**Goal:** make later UI, map, and statistics changes easier to develop independently.
+- **Plain TypeScript and plain CSS, no framework.** jQuery, Bootstrap 3, bootstrap-slider, and selectpicker leave in Stage 2 together with the layout they hold up.
+- **Leaflet stays** until Stage 4 produces a measured reason to replace it.
+- **Vitest covers core logic**, meaning the session model, parsers, and statistics selectors. The UI is reviewed by hand on the examples. Each stage lists its minimal coverage.
+- **Shared links carry more state.** The `file` and `turn` parameters grow to include the destination, the highlighted civilization, and the chosen measure, so a link lands where the sender was looking.
 
-Separate the responsibilities for opening a game, navigating turns, drawing the map, browsing events, and presenting statistics. Give these areas a shared understanding of the current game, turn, and selection, so they stay in sync as the layout changes.
+## Stage 1: Refactor the core into a session model
 
-Make the difference between historical data, saved-position data, and missing data clear to the frontend. New map layers or statistics should be able to use additional parser results without requiring another broad reorganization.
+**Goal:** give Stage 2 a clean baseline. The UI stays as it is.
 
-Preserve file opening, drag and drop, shared file links, starting-turn links, playback shortcuts, event filters, and event-to-map interactions. Keep the visible experience stable during this stage.
+Today the turn-by-turn ownership of tiles is computed inside the map class in `src/map/replay-map.ts`, which also keeps a full copy of the tile state for every turn. That logic moves into a core session model that owns the loaded game, the current turn, the selection (civilization, tile, or city), and the per-turn state derived from events. The map, event log, and timeline become subscribers of the session instead of calling each other.
 
-**Ready to move on when:** existing replay and save examples still work, and the map, events, and future statistics view can evolve separately.
+```mermaid
+flowchart LR
+  File[Replay or save file] --> Parsers[Parsers in src/core]
+  Parsers --> Replay[Replay data hub]
+  Replay --> Session[Game session: turn, selection, per-turn state]
+  Session --> Map[Map renderer]
+  Session --> Events[Event log]
+  Session --> Timeline[Timeline and playback]
+  Session --> Stats[Statistics view, Stage 5]
+```
 
-**Decision to revisit:** how much of the current UI and map code is worth retaining. Choose this during implementation, based on the later stages rather than a preference for a particular framework.
+Work in this stage:
 
-## Stage 2: Build a responsive application layout
+- Move per-turn ownership out of the renderer and store it compactly, as a list of ownership changes per tile rather than a full copy of the map per turn. Large maps on phones depend on this.
+- Give every piece of data a kind, history or snapshot, at the Replay level so later views never guess.
+- Fix the datasets typing in `src/core/replay.ts`: the stored shape is one series of turn and value pairs per civilization for each dataset, and the declared type says something else.
+- Keep file opening, drag and drop, shared links, starting turn links, playback shortcuts, event filters, and event-to-map interactions working. The viewer, the Replay hub, the parsers, the event and strategy parsers, the text formatter, and the civilization colors stay.
+
+**Tests:** per-turn ownership from the session model checked against the example replays for a founded city, a tile claim, a city transfer, and a razing. The existing parser tests keep passing.
+
+**Ready to move on when:** the examples still work and the map, events, and timeline are driven by the session rather than by each other.
+
+## Stage 2: Build a responsive layout in plain CSS
 
 **Goal:** make opening and exploring a game comfortable on desktop, tablet, and phone.
 
-Add an obvious Open file action and a welcoming empty state, with clear loading and error feedback. Use a compact header, readable text, consistent controls, and a persistent timeline while exploring history. Keep filters and less frequent actions in panels that can close.
+Rebuild `index.html` and `assets/main.css` around a compact header, the three destination tabs, a side panel that becomes a bottom sheet on phones, and a persistent one-row timeline. Use native controls where they fit (a range input for the timeline, a details element for filters) and small custom ones where they do not. Add an obvious Open file action, a welcoming empty state, and visible loading and error feedback in place of the current alert dialogs.
 
 Desktop layout:
 
 ```text
-+--------------------------------------------------------------------+
-| Vox Deorum Replay     Game name                         [Open file] |
-| [Map]  [Events]  [Statistics]                       Turn 180 / 320   |
-+---------------------------------------------+----------------------+
-| [Layers]  [Civilizations]                    | [Events] [Inspect]   |
-|                                             |                      |
-|                                             | Filter: All events   |
-|                    MAP                      |                      |
-|                                             | Turn 180             |
-|                                             | A city was founded   |
-|                                             |                      |
-|                          [+] [-] [Fit map]   | Select for details   |
-+---------------------------------------------+----------------------+
-| [First] [Back] [Play] [Next]   o-------------   [Turn 180] [Speed 1x] |
-+--------------------------------------------------------------------+
++-----------------------------------------------------------------------------+
+| Vox Deorum Replay    Game 4 · Rome · Standard · Small            [Open file] |
+| [ Map ]  [ Events ]  [ Statistics ]                                          |
++-----------------------------------------------------+-----------------------+
+| [Layers v]  [Highlight: none v]                     | Events      Inspect   |
+|                                                     |-----------------------|
+|                                                     | Filter  [7 types v]   |
+|                                                     |                       |
+|                        MAP                          | T180  Rome founded    |
+|                                                     |       Antium          |
+|                                                     | T180  Egypt claimed   |
+|                                                     |       3 tiles         |
+|                                                     | T179  Rome adopted    |
+|                                     [+] [-] [Fit]   |       Tradition       |
++-----------------------------------------------------+-----------------------+
+| [|<] [<] [ Play ] [>]   o============o-----------------  Turn 180 / 320  1x  |
++-----------------------------------------------------------------------------+
 ```
 
-Phone layout:
+Phone layout, portrait:
 
 ```text
-+--------------------------------+
-| Vox Deorum Replay       [Open] |
-| [Map] [Events] [Statistics]    |
-+--------------------------------+
-| [Layers]       [Civilizations] |
-|                                |
-|              MAP               |
-|                                |
-|              [+] [-] [Fit map] |
-+--------------------------------+
-| Turn 180 / 320       [Go to...] |
-| o----------------------------  |
-| [Back] [Play] [Next] [Speed]    |
-+--------------------------------+
++-------------------------------+
+| Vox Deorum Replay      [Open] |
+| [ Map ] [Events] [Statistics] |
++-------------------------------+
+| [Layers]         [Highlight]  |
+|                               |
+|                               |
+|              MAP              |
+|                               |
+|                               |
+|                   [+][-][Fit] |
++-------------------------------+
+| [<] [Play] [>]  o====o--- 180 |
++-------------------------------+
 ```
 
-On phones, Events and Statistics occupy the main content area. Tapping a city or tile opens a dismissible details sheet. On tablets and in landscape, show the side panel only when enough map space remains. Resizing should preserve the place the user is exploring.
+Tapping the turn number opens a small popover with a go-to field and the speed choice, so the timeline stays one row. Events and Statistics replace the map area when their tab is chosen. On tablets and in landscape, the side panel shows only while enough map space remains. Resizing preserves the place the user is exploring.
 
-Support touch panning and zooming, large tap targets, keyboard navigation, visible focus, and labels that do not rely on color alone. Keep essential information available by tap or selection, rather than requiring hover.
+Empty state, shown before a file is loaded and reachable again from Open file:
+
+```text
++------------------------------------------------+
+|  Vox Deorum Replay                             |
+|                                                |
+|     Drop a .Civ5Replay or .Civ5Save here       |
+|                 [Open file]                    |
+|                                                |
+|     Or try an example:  [Game 1]  [Game 4]     |
+|                                                |
+|  Loading a save takes a few seconds while the  |
+|  compressed game state is unpacked.            |
++------------------------------------------------+
+```
+
+Support touch panning and zooming, large tap targets, keyboard navigation, visible focus, and labels that do not rely on color alone. Essential information is available by tap or selection rather than hover.
+
+**Tests:** the bundle builds and the existing suite passes. Layout is reviewed by hand at phone, tablet, and desktop widths.
 
 **Ready to move on when:** a user can open a file, navigate turns, filter events, and inspect the map on a narrow phone screen without page-wide horizontal scrolling.
 
 **Decision to revisit:** the amount of Civilization ornamentation. The proposed default is a quiet, modern frame around a visually rich map.
 
-## Stage 3: Improve the 2D map renderer and add rivers
+## Stage 3: Explore and expand the parsers
 
-**Goal:** create a clearer, smoother map that can support more detail later.
+**Goal:** know what the files can tell us before designing map layers and statistics around guesses.
 
-Improve the rendering foundation for responsive panning, zooming, and playback on large maps, including mobile devices. Evaluate retaining or replacing the current renderer against these outcomes. Keep the map two-dimensional.
+The save parser in `src/core/save-parser.ts` currently stops reading each plot record after terrain, feature, and river ids, even though `docs/save-format.md` documents where owner, improvement, resource, and route sit. The map header's wrap flags and the game prelude's winning turn are read and discarded. The per-player sections holding cities, units, and diplomacy are not read at all. Datasets from saves are attributed to civilizations by heuristics whose diagnostics never reach the interface.
 
-Draw connected rivers along the correct hex edges from save data. Make their junctions and coast connections readable, and keep rivers distinguishable from civilization borders. Check continuity across the map seam where wrapping applies.
+Work in this stage:
 
-Establish a consistent visual treatment for terrain, hills, mountains, forests, natural wonders, cities, and borders. At a distant zoom, emphasize geography and territory. Reveal more labels and detail as the user zooms in.
+- Expose the map wrap flags and the remaining map header fields.
+- Read plot owner, improvement, resource, route, and any other cheap per-plot field. Compare the plot owner with the event-derived ownership at the save turn; agreement validates both.
+- Expose the winning turn and the victory information from the header, and define what counts as a reliable result.
+- Survey the per-player sections: what a city record carries (population, buildings, founding turn), what the diplomacy block holds, and which fields, if any, are per-turn history rather than current values. Record the findings in `docs/save-format.md`.
+- Surface the save dataset diagnostics (damaged and unattached clusters) so statistics can label uncertain series.
+- Produce a data inventory: every field of interest marked history, snapshot, or unavailable, with the parser cost of reading it.
 
-```text
-+---------------------------------------------+
-| [Layers]                        [Fit map]   |
-| +------------------+                        |
-| | [x] Terrain      |     ^ ^    ~           |
-| | [x] Rivers       |    ^ ^    ~~~          |
-| | [x] Borders      |          ~   * City    |
-| | [x] Cities       |         ~              |
-| | [ ] Hex grid     |       ~~~              |
-| +------------------+     ~                 |
-| Legend: ^ mountains   ~ river   * city      |
-+---------------------------------------------+
-```
+**Tests:** new fields are checked against replay ground truth where one exists (plot owner against events at the final turn) and against invariants where none does (river edge pairing, city count against founded and razed events).
 
-The sketch shows visual priority, not river geometry. The actual map follows hex edges. Offer the river layer when the file supplies it; otherwise explain “Rivers are available from save files.” Treat rivers from a save as saved-map geography unless their historical validity is established.
+**Ready to move on when:** the data inventory is written and Stages 4 to 6 can name their layers and measures from it.
 
-**Ready to move on when:** rivers are continuous and correctly placed, borders and cities remain legible, and representative large games are comfortable to explore on desktop and phone.
+**Decision to revisit:** which per-player fields earn the decode effort. A field with history is worth more than a richer snapshot.
 
-**Decision to revisit:** terrain style, such as textured tiles or a cleaner illustrated appearance. Compare small visual samples before committing to a full asset refresh.
+## Stage 4: Improve the 2D map renderer and add rivers
 
-## Stage 4: Add richer map inspection
+**Goal:** a clearer, smoother map that can carry more detail later.
 
-**Goal:** let users understand a position through the map, starting with the information already available.
+Measure playback frame time and memory on the largest example on a phone first, then decide whether Leaflet's canvas tiles stay or a single canvas replaces them. Keep the map two-dimensional.
 
-Introduce city and tile inspection, civilization highlighting, and a compact legend. Begin with terrain, rivers, and the city and ownership information already supported. Add resources, improvements, routes, city population, and other details only as the parsers make them reliable.
+Draw rivers along the correct hex edges at every turn when the file supplies them. Each hex draws its own river edges, so continuity across the horizontal seam needs no special case, and the wrap flag from Stage 3 allows optional wrapped panning later. Make junctions and coast connections readable and keep rivers distinguishable from borders. For replay files the layer list explains "Rivers are available from save files."
 
-Default richer save-only layers to the saved position. If the loaded file represents a finished game, this becomes the end-game map. Keep a clear route back to replay history, and explain why some layers disappear there.
+Establish one visual treatment for terrain, hills, mountains, forests, natural wonders, cities, and borders. At a distant zoom, emphasize geography and territory. Reveal labels and detail as the user zooms in.
 
 ```text
-+--------------------------------------------------------------------+
-| [Replay history] [Saved position: turn 320]                          |
-+---------------------------------------------+----------------------+
-| [Layers]  [Highlight: Rome]                  | Rome                 |
-|                                             | City at turn 320     |
-|                MAP                          | Owner:  Rome          |
-|          selected city (*)                  | Terrain: grassland   |
-|                                             | River nearby: yes    |
-|                                             |                      |
-|                                             | [Show city events]   |
-+---------------------------------------------+----------------------+
++-----------------------------------------------------+
+| [Layers v]                                   [Fit]  |
+| +------------------+                                |
+| | [x] Terrain      |      ^^  ^                     |
+| | [x] Rivers       |     ^  ^  \                    |
+| | [x] Borders      |          ~~\_                  |
+| | [x] Cities       |     :::::   ~~\   * Antium     |
+| | [ ] Hex grid     |     :Rome:     ~~\___          |
+| | [ ] Resources    |     :::::        ~~~~~ coast   |
+| +------------------+                                |
+| ^ mountain  ~ river  * city  ::: territory          |
++-----------------------------------------------------+
 ```
 
-On phones, the same information appears in a bottom sheet with a Close action. Selecting an event with a known location focuses the map; inspecting a city can open its relevant history. Keep optional overlays off until requested so the map stays readable.
+The sketch shows visual priority only. The real map follows hex edges. Layers that Stage 3 marks as snapshot only, such as resources, stay off by default and follow the snapshot rule from the overall direction.
 
-**Ready to move on when:** users can inspect a city or tile, understand which turn its details describe, and move between inspection and events without losing context.
+**Tests:** river edge geometry for the six directions and the seam, checked in Vitest against the example save.
 
-**Decision to revisit:** which additional layers are most useful. Resources, improvements, and routes are initial candidates. Units and more detailed city views remain open until their data and visual value are clearer.
+**Ready to move on when:** rivers are continuous and correctly placed, borders and cities remain legible, and the largest example is comfortable to explore on desktop and phone.
 
-## Stage 5: Introduce statistics and expand the end-game summary
+**Decision to revisit:** terrain style, textured tiles or a cleaner illustrated look. Compare small visual samples before committing to an asset refresh.
 
-**Goal:** make the available numbers useful now, while leaving room for richer results later.
+## Stage 5: Introduce statistics
 
-Start with the datasets already read from replay and save files. Confirm which measures have reliable names, units, player associations, and turn coverage before presenting them. Offer a summary at the last recorded turn, a comparison table, and a chart for one chosen measure over time.
+**Goal:** make the available numbers useful now, and leave room for richer results later.
+
+The 29 datasets already parsed and tested come first. Confirm each one's name, unit, and turn coverage before presenting it. Offer a summary at the last recorded turn, a comparison table, and one chart of a chosen measure over time. Save-derived series carry the attribution diagnostics from Stage 3 and are labeled when uncertain.
 
 ```text
-+--------------------------------------------------------------------+
-| [Map] [Events] [Statistics]                                         |
-| Summary at turn 320                [Overview] [Trends] [Compare]    |
-+--------------------------------------------------------------------+
-| Available measures: [Score] [Cities] [More...]                       |
-|                                                                    |
-| Civilization       Score at turn 320       Cities at turn 320       |
-| Rome                    ...                        ...              |
-| Egypt                   ...                        ...              |
-|                                                                    |
-| Measure: [Score v]                   Players: [Rome] [Egypt]        |
-| Value                                                              |
-|   |                            ....                                |
-|   |              ..............                                    |
-|   |    ..........                                                  |
-|   +---------------------------------------------------- Turn       |
-|                                                                    |
-| [View selected turn on map]                                        |
-+--------------------------------------------------------------------+
++-----------------------------------------------------------------------------+
+| [ Map ]  [ Events ]  [ Statistics ]                                          |
+| Snapshot at turn 320                [ Overview ]  [ Trends ]  [ Compare ]    |
++-----------------------------------------------------------------------------+
+| Civilization    Score   Cities   Population   Gold    Techs                  |
+| Rome             1240       9         71      1820       48                  |
+| Egypt             980       7         55       640       44                  |
+| Songhai           610       4         30       n/a       39   incomplete     |
+|                                                                              |
+| Measure [Score v]             Civilizations [x] Rome  [x] Egypt  [ ] Songhai |
+|                                                                              |
+| 1240 |                                           ______ Rome                 |
+|      |                                __________/                            |
+|      |                     __________/         .......... Egypt              |
+|  600 |           _________/      ..............                              |
+|      |   _______/    ............                                            |
+|    0 +------------------------------------------------------------ Turn      |
+|      0         80        160       240       320                             |
+|                                            [View turn 240 on map]            |
++-----------------------------------------------------------------------------+
 ```
 
-Measures and values in this mockup are illustrative and depend on the file. On phones, stack the summary and chart, and use a compact comparison list. Provide readable values alongside charts so comparison does not depend on interpreting lines or colors.
+Values in this mockup are illustrative. On phones the table becomes a compact list and the chart stacks below it. Readable values sit next to every chart so comparison never depends on reading lines or colors alone. Unavailable data is shown as unavailable and never as zero, incomplete histories are labeled, and a winner or victory type appears only when Stage 3 established a reliable result.
 
-Separate unavailable data from zero, and avoid presenting a missing final value as a current result. Label incomplete histories. Only show a winner or victory type when the file provides a reliable result.
+Parser-dependent measures follow as separate increments. Candidates include economy, science, culture, military strength, city development, and diplomacy. Choose the questions users want answered first, then take the parser work for each from the Stage 3 inventory. A snapshot-only value can support a final comparison without supporting a chart.
 
-Further statistics are an open extension of this stage. Possible areas include economy, science, culture, military strength, city development, and diplomacy. Choose the questions users want answered first, then identify the parser work needed for each. A current save snapshot can support a final comparison without supporting a historical chart.
+**Tests:** statistics selectors (value at turn, series for a civilization, availability) checked against the example datasets.
 
-**Ready to move on when:** users can compare civilizations using trustworthy existing datasets and connect a chart turn to the map. Parser-dependent additions can follow as separate increments.
+**Ready to move on when:** users can compare civilizations using the existing datasets and jump from a chart turn to the map.
 
-**Decision to revisit:** which two or three end-game questions deserve the next parser work, for example “Who led in science?” or “How did each empire develop its cities?”
+**Decision to revisit:** which two or three end-game questions deserve the next parser work, for example "Who led in science?" or "How did each empire develop its cities?"
+
+## Stage 6: Add richer map inspection
+
+**Goal:** let users understand a position through the map, using the inventory from Stage 3.
+
+Introduce tile and city inspection, civilization highlighting, and a compact legend. Begin with terrain, rivers, and event-derived city and ownership information, which work at every turn. Add snapshot fields such as resources, improvements, routes, and city population as separate layers that follow the snapshot rule.
+
+Desktop, inspecting a city at the save's last turn:
+
+```text
++-----------------------------------------------------+-----------------------+
+| [Layers v]  [Highlight: Rome v]                     | Events      Inspect   |
+|                                                     |-----------------------|
+|                                                     | Antium                |
+|                    MAP                              | Rome, founded T112    |
+|              selected city (*)                      |                       |
+|                                                     | Grassland, hills      |
+|                                                     | River on 2 edges      |
+|                                                     |                       |
+|                                                     | Snapshot at turn 320  |
+|                                                     | Population 14         |
+|                                                     | Wheat, farm, road     |
+|                                                     |                       |
+|                                                     | [Show city events]    |
++-----------------------------------------------------+-----------------------+
+```
+
+The same panel at turn 180 keeps the top block and replaces the snapshot block with one line: "Snapshot details are available at turn 320."
+
+Phone, the same inspection as a bottom sheet:
+
+```text
++-------------------------------+
+|              MAP              |
+|        selected city (*)      |
++-------------------------------+
+| Antium                    [x] |
+| Rome, founded T112            |
+| Grassland, hills, river       |
+| Snapshot at turn 320:         |
+| Population 14, wheat, farm    |
+| [Show city events]            |
++-------------------------------+
+```
+
+Selecting an event with a known location focuses the map. Inspecting a city can open its history in the Events panel. Optional overlays stay off until requested so the map stays readable.
+
+**Tests:** the inspection selectors (tile and city at a coordinate, events for a city) checked against the example replays.
+
+**Ready to move on when:** users can inspect a city or tile, see which turn its details describe, and move between inspection and events without losing context.
+
+**Decision to revisit:** which snapshot layers are most useful. Units and detailed city views stay open until their data and visual value are clearer.
 
 ## How to revise and carry out this plan
 
 Edit each stage and its mockups here as decisions settle. Keep this as the single design draft rather than splitting layouts and open questions into separate documents.
 
-The proposed order is foundation, responsive layout, renderer and rivers, richer inspection, then statistics. The first statistics increment could move ahead of richer inspection if the existing datasets offer more immediate value. Parser expansion should not hold up the responsive layout or river rendering.
+The order is core refactor, responsive layout, parser exploration, renderer and rivers, statistics, then richer inspection. The first statistics increment needs only Stages 1 and 2 and may run alongside Stage 3. Parser expansion must finish before the map layers and measures that depend on it, but it does not hold up the layout or the river rendering.
 
-Before implementing each stage, settle its open design choices and narrow its first deliverable. Review the result using replay and save examples on desktop and phone before starting the next stage.
+Before implementing each stage, settle its open design choices and narrow its first deliverable. Review the result on the replay and save examples on desktop and phone before starting the next stage.
