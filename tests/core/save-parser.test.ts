@@ -22,7 +22,8 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { SaveParser, isSaveFile } from '../../src/core/save-parser';
+import { SaveParser, isSaveFile, extractMapTerrain } from '../../src/core/save-parser';
+import { inflateZlib } from '../../src/core/inflate';
 import { ReplayParser } from '../../src/core/replay-parser';
 import { Replay } from '../../src/core/replay';
 
@@ -248,6 +249,87 @@ describe('SaveParser on examples/4.Civ5Save', () => {
     expect(data.tiles).toHaveLength(79 * 53);
     expect(data.tiles[0]).toEqual({ elevation: -1, type: -1, feature: -1 });
     expect(parser.getDiagnostics().mapDimsSource).toBe('map-section');
+  });
+
+  it('walks the plot records and reads real terrain where the save is intact', async () => {
+    // Inflate the body once and hand it to the walker directly, the same way
+    // the parser does, so the walk itself can be checked against the replay
+    // file even though this save is too damaged for its tiles to be used
+    const raw = new Uint8Array(loadExample('4.Civ5Save'));
+    const marker = new Uint8Array([0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00]);
+    let markerPos = -1;
+    for (let i = 0; i <= raw.length - 8; i++) {
+      let found = true;
+      for (let j = 0; j < 8; j++) {
+        if (raw[i + j] !== marker[j]) { found = false; break; }
+      }
+      if (found) { markerPos = i; break; }
+    }
+    expect(markerPos).toBeGreaterThan(0);
+    const body = await inflateZlib(raw.subarray(markerPos + 8));
+
+    const result = extractMapTerrain(body, 0x4faaf, 79, 53);
+    expect(result.stats.arrayStart).toBe(0x4fcbe);
+    expect(result.tiles).toHaveLength(79 * 53);
+
+    // The walk covers a good part of the map before the spliced save cuts it
+    // off, and most of what it reads is structurally sound
+    expect(result.stats.slotsFilled).toBe(2569);
+    expect(result.stats.trustedTiles).toBe(424);
+    expect(result.stats.segments).toBe(1);
+
+    // Every intact plot matches the replay file ground truth exactly. The
+    // undamaged polar stretch after the first corrupted patch
+    for (let i = 112; i <= 129; i++) {
+      const tile = result.tiles[i];
+      const gt = replayData.tiles[i];
+      expect(tile).not.toBeNull();
+      expect(tile!.elevation).toBe(gt.elevation);
+      expect(tile!.type).toBe(gt.type);
+      expect(tile!.feature).toBe(gt.feature);
+    }
+    // The first corrupted patch is mostly unknown, and the few records whose
+    // terrain bytes survived the damage still read the correct values
+    let nulls = 0;
+    for (let i = 0; i <= 111; i++) {
+      const tile = result.tiles[i];
+      if (!tile) { nulls++; continue; }
+      const gt = replayData.tiles[i];
+      expect(tile.elevation).toBe(gt.elevation);
+      expect(tile.type).toBe(gt.type);
+      expect(tile.feature).toBe(gt.feature);
+    }
+    expect(nulls).toBeGreaterThanOrEqual(100);
+
+    // Against the full ground truth the walk reads more correct terrain than
+    // incorrect terrain, with the damage limited to known corrupted patches
+    let match = 0;
+    let mismatch = 0;
+    for (let i = 0; i < result.tiles.length; i++) {
+      const tile = result.tiles[i];
+      if (!tile) continue;
+      const gt = replayData.tiles[i];
+      if (tile.elevation === gt.elevation && tile.type === gt.type && tile.feature === gt.feature) {
+        match++;
+      } else {
+        mismatch++;
+      }
+    }
+    expect(match).toBe(216);
+    expect(mismatch).toBe(208);
+  });
+
+  it('gates the terrain away when the walk cannot cover the map', () => {
+    // This save is a splice of two damaged streams, so the walk only covers
+    // about sixty percent of the plots and the coverage gate keeps the
+    // partially wrong terrain from rendering
+    const diagnostics = parser.getDiagnostics();
+    expect(diagnostics.terrainGatePassed).toBe(false);
+    expect(diagnostics.terrainCoverage).toBeCloseTo(2569 / (79 * 53), 3);
+    expect(diagnostics.terrainTrusted).toBe(424);
+    for (const tile of data.tiles) {
+      expect(tile).toEqual({ elevation: -1, type: -1, feature: -1 });
+    }
   });
 
   it('keeps every parsed series within the game bounds', () => {
