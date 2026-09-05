@@ -1,21 +1,19 @@
 /**
  * save-parser.test.ts
  * Regression tests for the save parser against real games
- * examples/4.Civ5Save and examples/5.Civ5Replay come from the same game as
- * examples/4.Civ5Replay and examples/5.Civ5Replay: the saves are mid and
- * late game snapshots and the replay files serve as ground truth, so the
- * save parser must rebuild the exact same event log, civilization list, and
- * dataset keys, and the value tables must match wherever the save snapshot
- * reaches
+ * examples/4.Civ5Save and examples/5.Civ5Save are late and mid game
+ * snapshots of the same game as examples/4.Civ5Replay and
+ * examples/5.Civ5Replay. The replay files are the ground truth: the save
+ * parser must rebuild the exact same event log, civilization list, dataset
+ * tables, and map terrain, down to every feature tile
  *
  * Known quirks, locked in by the tests below:
  * - The replay file exporter misattributes barbarian events to the first
  *   player through a defaulting map lookup; the save parser keeps them
  *   unattributed instead, so those seven events differ on purpose
- * - The save stores the raw plot state, and the mod transforms parts of the
- *   map (the polar regions in these games) when a save is loaded, so the
- *   walked terrain differs from the replay file there: the transformed
- *   plots read as zeroed or garbled records and come out as unknown tiles
+ * - Replay files carry no river data, so the river extraction is checked
+ *   structurally: every river edge is shared by the two plots it separates,
+ *   so the per direction edge counts must pair up
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -214,60 +212,80 @@ describe('SaveParser on examples/4.Civ5Save', () => {
     expect(parser.getDiagnostics().mapDimsSource).toBe('map-section');
   });
 
-  it('walks the plot records and reads real terrain', async () => {
-    // Inflate the body once and hand it to the walker directly, the same way
-    // the parser does, so the walk itself can be checked against the replay
+  it('decodes the plot records and the terrain matches the replay exactly', async () => {
+    // Inflate the body once and hand it to the decoder directly, the same
+    // way the parser does, so the walk itself can be checked against the
+    // replay
     const body = await inflateSaveBody('4.Civ5Save');
     const result = extractMapTerrain(body, 0x4faca, 79, 53);
 
-    // The walk covers the whole map and passes the quality gate
+    // The structural walk starts at the first plot record behind the
+    // resource tables and covers the whole map
+    expect(result.stats.arrayStart).toBe(0x4faca + 527);
     expect(result.stats.slotsFilled).toBe(79 * 53);
     const diagnostics = parser.getDiagnostics();
     expect(diagnostics.terrainGatePassed).toBe(true);
     expect(diagnostics.terrainCoverage).toBe(1);
 
-    // The first polar plots are intact ocean with ice and match the replay
-    // file ground truth exactly
-    for (let i = 0; i <= 16; i++) {
-      const tile = result.tiles[i];
-      expect(tile).toEqual({ elevation: 3, type: 6, feature: 0 });
-    }
-
-    // The plots the mod transforms on load are stored zeroed or garbled and
-    // come out as unknown tiles rather than wrong values
-    let unknown = 0;
-    for (const tile of result.tiles) {
-      if (tile === null) unknown++;
-    }
-    expect(unknown).toBeGreaterThan(2000);
-
-    // Among the known tiles the large majority of values that the mod does
-    // not transform on load match the replay file exactly; the differences
-    // concentrate in the transformed polar regions where coast and ocean
-    // shifted between the raw save and the loaded game
-    let match = 0;
-    let known = 0;
+    // Every tile matches the replay file ground truth one for one,
+    // elevation and terrain type and feature
+    expect(result.tiles).toHaveLength(79 * 53);
     for (let i = 0; i < result.tiles.length; i++) {
       const tile = result.tiles[i];
-      if (tile === null) continue;
-      known++;
       const gt = replayData.tiles[i];
-      if (tile.elevation === gt.elevation && tile.type === gt.type && tile.feature === gt.feature) {
-        match++;
-      }
+      expect(tile).not.toBeNull();
+      expect(tile!.elevation).toBe(gt.elevation);
+      expect(tile!.type).toBe(gt.type);
+      expect(tile!.feature).toBe(gt.feature);
     }
-    expect(match).toBeGreaterThan(500);
-    expect(match / known).toBeGreaterThan(0.35);
+
+    // The first polar plot is ocean under ice and carries no river ids
+    expect(result.tiles[0]).toEqual({ elevation: 3, type: 6, feature: 0, rivers: [] });
+  });
+
+  it('extracts the river ids of every plot edge that borders a river', () => {
+    // Each tile carries one river id per hex direction, -1 for no river.
+    // Every river edge is shared with the neighbour across that edge, so
+    // the direction counts must pair up: NE with SW, E with W, SE with NW
+    const dirCount = [0, 0, 0, 0, 0, 0];
+    let riverPlots = 0;
+    let riverEdges = 0;
+    const riverIds = new Set<number>();
+    for (const tile of data.tiles) {
+      const rivers: number[] = tile.rivers ?? [];
+      let hasRiver = false;
+      for (let d = 0; d < 6; d++) {
+        if (rivers[d] >= 0) {
+          dirCount[d]++;
+          riverEdges++;
+          riverIds.add(rivers[d]);
+          hasRiver = true;
+        }
+      }
+      if (hasRiver) riverPlots++;
+    }
+    expect(riverPlots).toBe(479);
+    expect(riverEdges).toBe(1060);
+    expect(riverIds.size).toBe(64);
+    expect(dirCount[0]).toBe(dirCount[3]);
+    expect(dirCount[1]).toBe(dirCount[4]);
+    expect(dirCount[2]).toBe(dirCount[5]);
+
+    // River 1 runs between the plots (16,2) and (17,2), stored once from
+    // each side, on the east edge of the first plot and the west edge of
+    // the second
+    expect(data.tiles[2 * 79 + 16].rivers).toEqual([-1, 1, -1, -1, -1, -1]);
+    expect(data.tiles[2 * 79 + 17].rivers).toEqual([-1, -1, -1, -1, 1, -1]);
   });
 
   it('renders terrain through the full pipeline', () => {
-    // The assembled output carries the walked terrain, not placeholders
+    // The assembled output carries the decoded terrain for the whole map
     let real = 0;
     for (const tile of data.tiles) {
       if (tile.elevation !== -1) real++;
     }
-    expect(real).toBeGreaterThan(1000);
-    expect(data.tiles[0]).toEqual({ elevation: 3, type: 6, feature: 0 });
+    expect(real).toBe(79 * 53);
+    expect(data.tiles[0]).toMatchObject({ elevation: 3, type: 6, feature: 0 });
   });
 
   it('keeps every parsed series within the game bounds', () => {
@@ -373,7 +391,7 @@ describe('SaveParser on examples/5.Civ5Save', () => {
     }
   });
 
-  it('reads the map dimensions and walks real terrain', () => {
+  it('reads the map dimensions and the terrain matches the replay exactly', () => {
     expect(data.mapWidth).toBe(79);
     expect(data.mapHeight).toBe(53);
     expect(parser.getDiagnostics().mapDimsSource).toBe('map-section');
@@ -382,24 +400,23 @@ describe('SaveParser on examples/5.Civ5Save', () => {
     expect(diagnostics.terrainCoverage).toBe(1);
     expect(diagnostics.terrainGatePassed).toBe(true);
 
-    // The polar plots read as ocean with ice, the transformed ones as
-    // unknown, and the known tiles largely agree with the replay file
-    expect(data.tiles[0]).toEqual({ elevation: 3, type: 6, feature: 0 });
-    let unknown = 0;
-    let match = 0;
-    let known = 0;
+    // Every tile matches the replay file ground truth one for one
+    expect(data.tiles).toHaveLength(79 * 53);
     for (let i = 0; i < data.tiles.length; i++) {
       const tile = data.tiles[i];
-      if (tile.elevation === -1) { unknown++; continue; }
-      known++;
       const gt = replayData.tiles[i];
-      if (tile.elevation === gt.elevation && tile.type === gt.type && tile.feature === gt.feature) {
-        match++;
-      }
+      expect(tile.elevation).toBe(gt.elevation);
+      expect(tile.type).toBe(gt.type);
+      expect(tile.feature).toBe(gt.feature);
     }
-    expect(unknown).toBeGreaterThan(1500);
-    expect(match).toBeGreaterThan(700);
-    expect(match / known).toBeGreaterThan(0.3);
+    expect(data.tiles[0]).toEqual({ elevation: 3, type: 6, feature: 0, rivers: [] });
+
+    // The same map as the late game save, so the same rivers run through it
+    let riverPlots = 0;
+    for (const tile of data.tiles) {
+      if ((tile.rivers ?? []).some((id: number) => id >= 0)) riverPlots++;
+    }
+    expect(riverPlots).toBe(479);
   });
 
   it('loads end to end through the Replay class', async () => {
