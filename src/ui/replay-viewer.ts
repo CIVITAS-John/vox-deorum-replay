@@ -1,21 +1,23 @@
 /**
  * replay-viewer.ts
  * UI component for the replay viewer application
- * Manages user interactions, file handling, and coordinates between data and visualization
+ * Manages user interactions and file handling, and connects the game session
+ * to the map, the event log, and the playback controls
  */
 
 import { ReplayMap } from '../map/replay-map';
 import { EventLog } from './event-log';
 import { ControlBar } from './control-bar';
 import { Replay } from '../core/replay';
+import { GameSession } from '../core/session';
 
 /**
  * ReplayViewer UI component
- * Handles user interactions and coordinates between replay data and visualization components
+ * Handles user interactions and connects the loaded game session to the visualization components
  */
 export class ReplayViewer {
   private map: ReplayMap;                    // Map visualization instance
-  private replay: Replay | null = null; // Replay data hub instance
+  private session: GameSession | null = null; // Game session for the loaded replay
   private eventLog: EventLog | null = null; // Event log UI component
   private controlBar: ControlBar | null = null; // Playback control UI component
 
@@ -26,7 +28,7 @@ export class ReplayViewer {
 
   constructor() {
     this.initialize();
-    // Create control bar instance once (will be reinitialized with each replay)
+    // Create control bar instance once (will be reinitialized with each session)
     this.controlBar = new ControlBar();
   }
 
@@ -122,7 +124,7 @@ export class ReplayViewer {
       // Debounce resize events
       clearTimeout(resizeTimeout);
       resizeTimeout = window.setTimeout(() => {
-        // Only refit if we have a loaded replay
+        // Only refit if we have a loaded session
         if (this.hasReplay()) {
           this.map.fitMap();
         }
@@ -212,23 +214,22 @@ export class ReplayViewer {
    */
   private async processReplayData(data: ArrayBuffer, size: number): Promise<void> {
     try {
-      // Clean up previous replay
+      // Clean up previous session
       this.cleanup();
 
-      // Create new replay instance and load data
-      this.replay = new Replay();
-      await this.replay.loadFromFile(data, size);
+      // Parse the file and build the session that owns it
+      const replay = new Replay();
+      await replay.loadFromFile(data, size);
+      this.session = new GameSession(replay);
 
       // Initialize UI components
       this.initializeUIComponents();
 
-      // Set initial turn
+      // Set initial turn, which the session passes to every view
       const initialTurn = this.initialTurn
-        ? parseInt(this.initialTurn) || this.replay.startTurn
-        : this.replay.startTurn;
-
-      // Trigger initial render
-      this.renderTurn(initialTurn);
+        ? parseInt(this.initialTurn) || replay.startTurn
+        : replay.startTurn;
+      this.session.setTurn(initialTurn);
 
       // Fit map to container after everything is loaded
       // Use setTimeout to ensure DOM has updated
@@ -243,57 +244,41 @@ export class ReplayViewer {
   }
 
   /**
-   * Initialize UI components with replay data
+   * Initialize UI components with the game session
    */
   private initializeUIComponents(): void {
-    if (!this.replay) return;
+    if (!this.session) return;
 
     // Initialize event log
-    this.eventLog = new EventLog(this.replay.events, this.replay);
+    this.eventLog = new EventLog(this.session);
 
     // Initialize map layers
-    this.map.initLayers(this.replay.tiles, this.replay.events, this.replay);
+    this.map.initLayers(this.session);
 
     // Fit map immediately after layers are initialized
     this.map.fitMap();
 
-    // Reinitialize control bar with new replay data (reuses existing instance)
+    // Reinitialize control bar with the new session (reuses existing instance)
     this.controlBar.initialize({
-      start: this.replay.startTurn,
-      end: this.replay.endTurn,
-      initial: this.initialTurn
-        ? parseInt(this.initialTurn) || this.replay.startTurn
-        : this.replay.startTurn,
-      onChange: (turn: number) => this.renderTurn(turn)
+      start: this.session.startTurn,
+      end: this.session.endTurn,
+      session: this.session
     });
   }
 
   /**
-   * Render a specific turn
-   */
-  private renderTurn(turn: number): void {
-    if (!this.replay || !this.eventLog || !this.map) return;
-
-    this.eventLog.renderTurn(turn);
-    this.map.renderTurn(turn);
-  }
-
-  /**
-   * Clean up previous replay data and UI components
+   * Clean up previous session and UI components
    */
   private cleanup(): void {
     // Clean up event log
     if (this.eventLog) {
-      const logMessages = document.querySelector('.log-messages');
-      if (logMessages) {
-        logMessages.innerHTML = '';
-      }
+      this.eventLog.destroy();
       this.eventLog = null;
     }
 
     // Clean up map layers and controls
     if (this.map && this.map.map) {
-      // Reset the map's turn tracking state
+      // Detach the map from the session and reset its turn tracking state
       this.map.resetTurnState();
 
       if (this.map.layers) {
@@ -315,8 +300,8 @@ export class ReplayViewer {
     // Clean up control bar (but don't null it - we'll reuse the instance)
     this.controlBar.clear();
 
-    // Clean up replay data
-    this.replay = null;
+    // Clean up the session
+    this.session = null;
   }
 
   /**
@@ -331,14 +316,14 @@ export class ReplayViewer {
    * Get current replay data
    */
   public getReplay(): Replay | null {
-    return this.replay;
+    return this.session ? this.session.replay : null;
   }
 
   /**
    * Check if a replay is loaded
    */
   public hasReplay(): boolean {
-    return this.replay !== null;
+    return this.session !== null;
   }
 
   /**

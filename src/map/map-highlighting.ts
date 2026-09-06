@@ -21,7 +21,7 @@ export class MapHighlighting {
 	private selectionLayer: MapLayer | null;       // Selection/hover highlighting layer
 	private eventsLayer: MapLayer | null;          // Events border layer
 	private parentMap: any;                        // Reference to parent ReplayMap instance
-	private gridLayer: any;                        // Reference to grid layer for boundary highlighting
+	private boundaryLayer: any;                    // Reference to boundary layer for civilization boundaries
 
 	// Kept for backward compatibility
 	private highlightedCivs: Set<string>;
@@ -32,7 +32,7 @@ export class MapHighlighting {
 		this.eventHexes = new Map();
 		this.selectionLayer = null;
 		this.eventsLayer = null;
-		this.gridLayer = null;
+		this.boundaryLayer = null;
 
 		// Keep for backward compatibility
 		this.highlightedCivs = new Set<string>();
@@ -58,15 +58,13 @@ export class MapHighlighting {
 		// Add layers to map
 		this.selectionLayer.addTo(map);
 		this.eventsLayer.addTo(map);
-
-		// Note: Grid layer with boundary functionality is now created and managed by ReplayMap
 	}
 
 	/**
-	 * Set reference to grid layer for boundary highlighting
+	 * Set reference to boundary layer for civilization boundary highlighting
 	 */
-	setGridLayer(gridLayer: any) {
-		this.gridLayer = gridLayer;
+	setBoundaryLayer(boundaryLayer: any) {
+		this.boundaryLayer = boundaryLayer;
 	}
 
 	/**
@@ -76,7 +74,6 @@ export class MapHighlighting {
 		return {
 			selection: this.selectionLayer,
 			events: this.eventsLayer
-			// Note: boundaries are now handled by the grid layer
 		};
 	}
 
@@ -95,18 +92,8 @@ export class MapHighlighting {
 		if (this.eventsLayer) {
 			(this.eventsLayer as any).clearEventHighlights();
 		}
-		if (this.gridLayer) {
-			this.gridLayer.clearCivHighlights();
-		}
-	}
-
-	/**
-	 * Update turn state for boundary highlighting in grid layer
-	 * Note: Grid layer's turnState is set directly by ReplayMap, this just triggers redraw
-	 */
-	updateTurnState(turnState: any) {
-		if (this.gridLayer && this.gridLayer.turnState !== turnState) {
-			this.gridLayer.redraw();
+		if (this.boundaryLayer) {
+			this.boundaryLayer.clearCivHighlights();
 		}
 	}
 
@@ -190,15 +177,15 @@ export class MapHighlighting {
 		this.setSelectedHex(null);
 	}
 
-	// Civilization boundary methods (delegated to grid layer)
+	// Civilization boundary methods (delegated to boundary layer)
 
 	highlightCivBoundaries(civNames: string[]) {
 		this.highlightedCivs.clear();
 		for (const name of civNames) {
 			this.highlightedCivs.add(name);
 		}
-		if (this.gridLayer) {
-			this.gridLayer.highlightCivBoundaries(civNames);
+		if (this.boundaryLayer) {
+			this.boundaryLayer.highlightCivBoundaries(civNames);
 		}
 	}
 
@@ -206,8 +193,8 @@ export class MapHighlighting {
 		for (const name of civNames) {
 			this.highlightedCivs.add(name);
 		}
-		if (this.gridLayer) {
-			this.gridLayer.addHighlightedCivs(civNames);
+		if (this.boundaryLayer) {
+			this.boundaryLayer.addHighlightedCivs(civNames);
 		}
 	}
 
@@ -215,15 +202,15 @@ export class MapHighlighting {
 		for (const name of civNames) {
 			this.highlightedCivs.delete(name);
 		}
-		if (this.gridLayer) {
-			this.gridLayer.removeHighlightedCivs(civNames);
+		if (this.boundaryLayer) {
+			this.boundaryLayer.removeHighlightedCivs(civNames);
 		}
 	}
 
 	clearCivHighlights() {
 		this.highlightedCivs.clear();
-		if (this.gridLayer) {
-			this.gridLayer.clearCivHighlights();
+		if (this.boundaryLayer) {
+			this.boundaryLayer.clearCivHighlights();
 		}
 	}
 

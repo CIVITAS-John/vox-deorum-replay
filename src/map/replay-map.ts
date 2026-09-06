@@ -1,7 +1,7 @@
 /**
  * replay-map.ts
  * Manages the Leaflet map display for the replay viewer
- * Handles rendering of terrain, cities, territories, and turn-based state changes
+ * Renders terrain, cities, and territories for the turn the session sits on
  * Includes highlighting features for hexes and civilization boundaries
  */
 
@@ -11,11 +11,10 @@ import { GridLayer } from './grid-layer';
 import { BoundaryLayer } from './boundary-layer';
 import { MapHighlighting } from './map-highlighting';
 import { CivColors } from '../utils/civ-colors';
-import { TurnState, MapLayer, MapControl, HexData } from '../types/map.types';
-import { Tile, GameEvent, EventType, TileType, FeatureType, ElevationType } from '../types/replay.types';
+import { MapLayer, MapControl, HexData } from '../types/map.types';
+import { GameEvent, TileType, FeatureType, ElevationType, TurnState } from '../types/replay.types';
 import { getTileTypeName, getFeatureName, getElevationName } from '../utils/enum-names';
-import { Replay } from '../core/replay';
-import { throttle } from '../utils/throttle';
+import { GameSession } from '../core/session';
 
 // External libraries accessed as globals - types defined in globals.d.ts
 
@@ -26,18 +25,16 @@ import { throttle } from '../utils/throttle';
 export class ReplayMap {
 	map: any;                             // Leaflet Map instance
 	turn: number;                         // Current turn being displayed
-	turnStates: TurnState[];              // Array of tile states for each turn
-	turnState: TurnState;                 // Current turn's tile state
+	turnState: TurnState | undefined;     // Current turn's tile state, from the session
 	layers: Record<string, MapLayer>;    // Map visualization layers by name
 	controls: Record<string, MapControl>; // Map UI controls by name
-	replay: Replay | null;               // Reference to replay instance for civ name lookups
+	session: GameSession | null;         // Game session that owns the turn and the per-turn state
 	mapBounds: number[][];               // Stored bounds for refitting the map
-	renderTurnThrottled: (turn: number) => void; // Throttled version of renderTurn
 	highlighting: MapHighlighting;       // Highlighting module instance
 	events: GameEvent[];                 // Reference to all events for turn-based highlighting
+	private unsubscribeSession: (() => void) | null;  // Stops following the session
 
-	constructor(replay?: Replay) {
-		this.replay = replay || null;
+	constructor() {
 		this.map = L.map(document.querySelector('.map'), {
 			attributionControl: false,
 			keyboardPanOffset: 0,
@@ -47,99 +44,22 @@ export class ReplayMap {
 
 		this.turn = -1; // Initialize to -1 so first renderTurn always triggers a redraw
 		this.events = []; // Will be populated when initLayers is called
+		this.session = null;
+		this.unsubscribeSession = null;
 
 		// Initialize highlighting module
 		this.highlighting = new MapHighlighting(this);
-
-		// Create throttled version of renderTurn to prevent excessive rendering
-		// when dragging through many turns quickly (e.g., slider dragging)
-		// 100ms throttle provides smooth visual feedback while limiting render calls
-		this.renderTurnThrottled = throttle(this.renderTurn.bind(this), 100);
 	}
 
-	// Initialize map layers and process turn states from events
-	initLayers(tiles: Tile[][], events: GameEvent[], replay?: Replay) {
-		// Store replay reference if provided
-		if (replay) {
-			this.replay = replay;
-		}
-		var self = this;
+	// Initialize map layers and follow the given game session
+	initLayers(session: GameSession) {
+		this.session = session;
+
+		const replay = session.replay;
+		const tiles = replay.tiles;
 
 		// Store events for turn-based highlighting
-		this.events = events;
-
-		// Track the state of each tile at every turn
-		this.turnStates = [];
-		var eventsByTurn = _.groupBy(events, 'turn');
-		var lastState: TurnState = {};
-
-		// Always start from turn 0, regardless of when first event occurs
-		const lastTurn = events[events.length - 1].turn;
-
-		for (var t = 0; t <= lastTurn; t++) {
-			// Start by copying last state
-			var state: TurnState = _.clone(lastState, true);
-
-			// Get events for this turn
-			var turnEvents = eventsByTurn[t] || [];
-
-			for (var e = 0; e < turnEvents.length; e++) {
-				var event = turnEvents[e];
-
-				switch (event.type) {
-					case EventType.CityFounded:
-						var index = [event.x, event.y].join(',');
-						var civName = self.replay ? self.replay.getCivName(event.civId) : null;
-						state[index] = { owner: civName || undefined, city: event.city.name };
-						break;
-
-					case EventType.TilesClaimed:
-						for (var i = 0; i < event.tiles.length; i++) {
-							var tile = event.tiles[i];
-							var index = [tile.x, tile.y].join(',');
-							state[index] = state[index] || {};
-
-							var civName = self.replay ? self.replay.getCivName(event.civId) : null;
-							if (civName) {
-								state[index].owner = civName;
-							}
-							else {
-								delete state[index];
-							}
-						}
-
-						break;
-
-					case EventType.CitiesTransferred:
-						for (var i = 0; i < event.tiles.length; i++) {
-							var tile = event.tiles[i];
-							var index = [tile.x, tile.y].join(',');
-							state[index] = state[index] || {};
-							var civName = self.replay ? self.replay.getCivName(event.civId) : null;
-							if (civName) {
-								state[index].owner = civName;
-							}
-						}
-
-						break;
-
-					case EventType.CityRazed:
-						var index = [event.x, event.y].join(',');
-
-						if (state[index]) {
-							delete state[index].city;
-						}
-
-						break;
-
-					default: break;
-				}
-			}
-
-			this.turnStates.push(state);
-
-			lastState = state;
-		}
+		this.events = replay.events;
 
 		this.layers = {
 			terrain: new HexLayer({
@@ -243,8 +163,8 @@ export class ReplayMap {
 		// Initialize highlighting layers
 		this.highlighting.initLayers(this.map, tiles);
 
-		// Connect grid layer to highlighting for boundary functionality
-		this.highlighting.setGridLayer(this.layers.grid);
+		// Connect boundary layer to highlighting for civilization boundary highlighting
+		this.highlighting.setBoundaryLayer(this.layers.boundary);
 
 		// Get highlighting layers for overlay controls
 		const highlightLayers = this.highlighting.getLayers();
@@ -270,7 +190,11 @@ export class ReplayMap {
 
 		this.controls.switcher.addTo(this.map);
 
-		this.renderTurn(events[0].turn);
+		// Follow the session: every turn change re-renders the map
+		if (this.unsubscribeSession) {
+			this.unsubscribeSession();
+		}
+		this.unsubscribeSession = session.subscribe((turn: number) => this.renderTurn(turn));
 
 		var north = 85;
 		var west = -180;
@@ -297,14 +221,14 @@ export class ReplayMap {
 	}
 
 
-	// Update map display for specified turn
+	// Update map display for the session's current turn
 	renderTurn(turn: number) {
-		// Turn is now directly the array index (0-based)
-		const turnIndex = turn;
-		this.turnState = this.turnStates[turnIndex];
+		if (!this.session) {
+			return;
+		}
 
-		// Also update turn state for highlighting module (which will update grid layer's boundary highlighting)
-		this.highlighting.updateTurnState(this.turnState);
+		// The session holds the per-turn state derived from the events
+		this.turnState = this.session.stateAt(turn);
 
 		// Skip if turn hasn't changed
 		if (this.turn === turn) {
@@ -318,7 +242,6 @@ export class ReplayMap {
 			this.highlighting.highlightEventHexes(turnEvents);
 		}
 
-		console.log(`Rendering turn ${turn}, previous turn was ${this.turn}`);
 		this.turn = turn;
 
 		// Batch update turn state for all layers that support it
@@ -331,12 +254,19 @@ export class ReplayMap {
 		}
 	}
 
-	// Reset turn tracking state
+	// Detach from the session and reset turn tracking state
 	resetTurnState() {
 		// Reset turn to -1 so the first renderTurn will trigger a full redraw
 		this.turn = -1;
-		// Note: We can't cancel pending throttled calls, but resetting turn to -1
-		// ensures the next renderTurn will perform a full redraw regardless
+		this.turnState = undefined;
+
+		// Stop following the previous session
+		if (this.unsubscribeSession) {
+			this.unsubscribeSession();
+			this.unsubscribeSession = null;
+		}
+		this.session = null;
+		this.events = [];
 
 		// Clear all highlighting
 		if (this.highlighting) {

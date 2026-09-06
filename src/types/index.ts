@@ -13,7 +13,12 @@ export type {
   Civilization,
   Tile,
   GameEvent,
-  City
+  City,
+  TileStateInfo,
+  TurnState,
+  DatasetPoint,
+  DatasetSeries,
+  DatasetCivSeries
 } from './replay.types';
 
 // Re-export enums
@@ -21,21 +26,17 @@ export {
   EventType,
   ElevationType,
   TileType,
-  FeatureType
+  FeatureType,
+  DataKind
 } from './replay.types';
 
 export type {
   HexData,
-  TurnState,
   MapLayer,
   MapControl
 } from './map.types';
 
-export type {
-  ControlBarConfig,
-  EventFilter,
-  UIState
-} from './ui.types';
+export type { ControlBarConfig } from './ui.types';
 
 export type {
   ItemConfig,

@@ -3,7 +3,7 @@
  * Type definitions for map-related structures
  */
 
-import { Tile, GameEvent } from './replay.types';
+import { TurnState } from './replay.types';
 
 // Hex layer configuration
 export interface HexLayerConfig {
@@ -21,15 +21,6 @@ export interface HexData {
   type?: number | string;                                  // Tile type - ID or name
   [key: string]: number | number[] | string | undefined;   // Allow additional properties
 }
-
-// Tile state information for a single hex
-export interface TileStateInfo {
-  owner?: string;                          // Civilization that owns this tile
-  city?: string;                           // City name if this tile has a city
-}
-
-// Turn state - maps hex coordinates to tile state
-export type TurnState = Record<string, TileStateInfo>;
 
 // Map layer interface - using any for Leaflet map to avoid namespace issues
 export interface MapLayer {

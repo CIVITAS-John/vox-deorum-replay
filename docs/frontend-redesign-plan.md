@@ -26,6 +26,8 @@ Snapshot details appear only while the timeline sits on the save's last turn and
 
 ## Stage 1: Refactor the core into a session model
 
+Status: implemented. The session model lives in `src/core/session.ts`, the compact ownership timeline in `src/core/ownership.ts`, and the map, the event log, and the timeline all follow the session through subscriptions. Turn-state folding no longer happens in the renderer, and the datasets are typed as one series of turn and value pairs per civilization.
+
 **Goal:** give Stage 2 a clean baseline. The UI stays as it is.
 
 Today the turn-by-turn ownership of tiles is computed inside the map class in `src/map/replay-map.ts`, which also keeps a full copy of the tile state for every turn. That logic moves into a core session model that owns the loaded game, the current turn, the selection (civilization, tile, or city), and the per-turn state derived from events. The map, event log, and timeline become subscribers of the session instead of calling each other.

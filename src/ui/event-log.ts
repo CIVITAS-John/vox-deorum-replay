@@ -6,6 +6,7 @@
 
 import { GameEvent, EventType } from '../types/replay.types';
 import { Replay } from '../core/replay';
+import { GameSession } from '../core/session';
 import { parseStrategyEvent, renderStrategyEvent } from '../utils/strategy-parser';
 import { formatGameText, hasGameMarkup } from '../utils/text-formatter';
 
@@ -32,18 +33,32 @@ export class EventLog {
 	// Track turn separator elements for scrolling
 	private readonly turnSeparators = new Map<number, HTMLElement>();
 
-	constructor(events: GameEvent[], replay: Replay) {
+	// Stops following the session
+	private unsubscribe: (() => void) | null = null;
+
+	constructor(session: GameSession) {
 		this.logContainer = document.querySelector('.log-container');
 		this.messagesEl = this.logContainer.querySelector('.log-messages');
-		this.events = events;
-		this.replay = replay;
+		this.events = session.replay.events;
+		this.replay = session.replay;
 
 		this.initializeEventFilter();
 		this.renderEvents();
 
-		if (events.length > 0) {
-			this.renderTurn(events[0].turn);
+		// Follow the session: every turn change scrolls and activates the log
+		this.unsubscribe = session.subscribe((turn: number) => this.renderTurn(turn));
+	}
+
+	/**
+	 * Stop following the session and empty the log, called when the session
+	 * is discarded
+	 */
+	destroy(): void {
+		if (this.unsubscribe) {
+			this.unsubscribe();
+			this.unsubscribe = null;
 		}
+		this.clear();
 	}
 
 	/**

@@ -15,6 +15,12 @@ export enum EventType {
   Strategies = 7
 }
 
+// Whether a piece of data is known at every turn or only at the loaded save's turn
+export enum DataKind {
+  History = 'history',        // Known at every turn (event log, datasets, terrain)
+  Snapshot = 'snapshot'       // Known only at the turn the save was taken
+}
+
 // Elevation type enum
 export enum ElevationType {
   Mountain = 0,
@@ -104,13 +110,23 @@ export interface City {
   [key: string]: unknown;          // Allow additional properties
 }
 
-// Dataset entry
-export interface DatasetEntry {
-  key: string;                     // Dataset key/identifier
+// Tile state information for a single hex
+export interface TileStateInfo {
+  owner?: string;                          // Civilization that owns this tile
+  city?: string;                           // City name if this tile has a city
 }
 
-// Dataset values
-export interface DatasetValues {
-  turns: number[];                 // Array of turn numbers
-  values: number[][];              // 2D array of values per turn
+// Turn state: maps hex coordinates ("x,y") to the tile state at that turn
+export type TurnState = Record<string, TileStateInfo>;
+
+// One recorded dataset measurement: the value at a specific turn
+export interface DatasetPoint {
+  turn: number;                            // Turn the value was recorded at
+  value: number;                           // Recorded value
 }
+
+// A civilization's full series for one dataset, ordered by turn
+export type DatasetSeries = DatasetPoint[];
+
+// Every civilization's series for one dataset, indexed by civilization id
+export type DatasetCivSeries = DatasetSeries[];

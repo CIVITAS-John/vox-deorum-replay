@@ -2,18 +2,22 @@
  * control-bar.ts
  * UI control bar for replay playback
  * Manages play/pause, speed control, and turn navigation
+ * The bar drives the game session and follows it back, so turns changed
+ * anywhere stay in sync with the slider
  */
 
 import { ControlBarConfig } from '../types/ui.types';
+import { GameSession } from '../core/session';
 
 // External libraries accessed as globals - types defined in globals.d.ts
 
 /**
  * ControlBar class
- * @param {Object} config - Configuration with start/end turns and onChange callback
+ * @param {Object} config - Configuration with the turn range and the session
  */
 export class ControlBar {
-	config: ControlBarConfig & { start: number; end: number; initial?: number };  // Extended configuration with turn range
+	config: ControlBarConfig;        // Configuration with turn range and session
+	session: GameSession | null;     // Game session that owns the turn
 	playPauseBtn: HTMLElement;      // Play/pause button element
 	playIntervals: number[];         // Available playback speed intervals in ms
 	playInterval: number;            // Current playback interval in ms
@@ -25,21 +29,28 @@ export class ControlBar {
 	private initialized: boolean = false;  // Track if the control bar has been initialized
 	private keydownHandler: ((e: KeyboardEvent) => void) | null = null;  // Store keydown handler for cleanup
 	private playPauseHandler: (() => void) | null = null;  // Store play/pause handler for cleanup
+	private unsubscribe: (() => void) | null = null;  // Stops following the session
 
-	constructor(config?: ControlBarConfig & { start: number; end: number; initial?: number }) {
+	constructor(config?: ControlBarConfig) {
 		// Allow constructor to be called without config for initial instance creation
 		if (config) {
 			this.initialize(config);
 		}
 	}
 
-	// Initialize or reinitialize the control bar with new config
-	initialize(config: ControlBarConfig & { start: number; end: number; initial?: number }) {
+	// Initialize or reinitialize the control bar with a new game session
+	initialize(config: ControlBarConfig) {
 		this.config = config;
-		this.config.onChange = (this.config.onChange || function() {}).bind(this);
+		this.session = config.session;
 
 		// Stop any existing playback
 		this.pause();
+
+		// Follow the session so the slider tracks turns changed elsewhere
+		if (this.unsubscribe) {
+			this.unsubscribe();
+		}
+		this.unsubscribe = this.session.subscribe((turn: number) => this.syncSlider(turn));
 
 		// Only set up event handlers on first initialization
 		if (!this.initialized) {
@@ -76,24 +87,24 @@ export class ControlBar {
 				id: 'turnSlider',
 				min: this.config.start,
 				max: this.config.end,
-				value: this.config.initial || this.config.start,
+				value: this.config.start,
 				tooltip: 'always',
 				tooltip_position: 'bottom'
 			});
 
 			this.turnSlider = $(this.turnSliderEl).data().slider;
 
-			// Listen for spacebar to toggle play/pause
+			// Listen for playback shortcuts
 			this.keydownHandler = (e: KeyboardEvent) => {
-				// Prevent handling if not initialized with a config
-				if (!this.config) return;
+				// Prevent handling when no replay is loaded
+				if (!this.session) return;
 
 				switch (e.keyCode) {
 					case 32: this.togglePlay(); return; // space
-					case 33: this.setTurn(this.config.start); return; // page up
-					case 34: this.setTurn(this.config.end); return; // page down
-					case 35: this.setTurn(this.config.end); return; // end
-					case 36: this.setTurn(this.config.start); return; // home
+					case 33: this.requestTurn(this.config.start); return; // page up
+					case 34: this.requestTurn(this.config.end); return; // page down
+					case 35: this.requestTurn(this.config.end); return; // end
+					case 36: this.requestTurn(this.config.start); return; // home
 					case 37: this.step(-1); return; // left
 					case 39: this.step(1); return; // right
 					case 38: this.step(-10); return; // up
@@ -109,53 +120,61 @@ export class ControlBar {
 			document.addEventListener('keydown', this.keydownHandler);
 
 			this.initialized = true;
-		} else {
-			// On subsequent initializations, just update the turn slider range
-			// Update the slider's min, max, and value without destroying it
-			this.turnSlider.setAttribute({
-				min: this.config.start,
-				max: this.config.end
-			});
-			this.turnSlider.setValue(this.config.initial || this.config.start, true, true);
 		}
 
-		// Update turn slider event handlers (remove old ones first)
+		// Update the turn slider range for the newly loaded replay. The slider
+		// library takes one attribute per call.
+		this.turnSlider.setAttribute('min', this.config.start);
+		this.turnSlider.setAttribute('max', this.config.end);
+
+		// Slider events drive the session
 		$(this.turnSliderEl).off('change').on('change', (e: any) => {
-			this.config.onChange(e.value.newValue);
+			this.requestTurn((e.value.newValue as number));
 		});
 
 		// Listen for slide events (fires continuously while dragging)
 		$(this.turnSliderEl).off('slide').on('slide', (e: any) => {
-			this.config.onChange(e.value);
+			this.requestTurn(e.value as number);
 		});
 
-		this.setTurn(this.config.initial || this.config.start);
+		// Park the slider on the first turn until the session moves it
+		this.turnSlider.setValue(this.config.start, false, false);
 	}
-	
+
 	// Get current turn number from slider
 	getTurn() {
 		return this.turnSlider.getValue();
 	}
 
-	// Set turn number on slider
-	setTurn(turn: number) {
-		this.turnSlider.setValue(turn, true, true);
+	// Move the session to a turn; its notification updates the slider and the views
+	private requestTurn(turn: number) {
+		if (!this.session) return;
+		this.session.setTurn(turn);
+	}
+
+	// Track a turn that changed elsewhere, without re-triggering slider events
+	private syncSlider(turn: number) {
+		if (this.turnSlider && this.getTurn() !== turn) {
+			this.turnSlider.setValue(turn, false, false);
+		}
 	}
 
 	// Step forward/backward by specified number of turns
 	step(step?: number) {
+		if (!this.session) return;
 		if (step === undefined) {
 			step = 1;
 		}
 
-		if (this.getTurn() + step < this.config.start) {
-			this.setTurn(this.config.start);
+		const target = (this.getTurn() as number) + step;
+		if (target < this.config.start) {
+			this.requestTurn(this.config.start);
 		}
-		else if (this.getTurn() + step > this.config.end) {
-			this.setTurn(this.config.end);
+		else if (target > this.config.end) {
+			this.requestTurn(this.config.end);
 		}
 		else {
-			this.setTurn(this.getTurn() + step);
+			this.requestTurn(target);
 		}
 	}
 
@@ -205,13 +224,20 @@ export class ControlBar {
 		}
 	}
 
-	// Clear the control bar (cleanup timers)
+	// Clear the control bar (stop playback and stop following the session)
 	clear() {
 		// Stop playback timer if running
 		if (this.playTimer) {
 			clearInterval(this.playTimer);
 			this.playTimer = null;
 		}
+
+		// Stop following the session
+		if (this.unsubscribe) {
+			this.unsubscribe();
+			this.unsubscribe = null;
+		}
+		this.session = null;
 
 		// Reset play/pause button to play icon
 		const icon = this.playPauseBtn?.querySelector('i');

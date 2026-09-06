@@ -901,7 +901,7 @@
             this.eventHexes = new Map();
             this.selectionLayer = null;
             this.eventsLayer = null;
-            this.gridLayer = null;
+            this.boundaryLayer = null;
             // Keep for backward compatibility
             this.highlightedCivs = new Set();
         }
@@ -922,13 +922,12 @@
             // Add layers to map
             this.selectionLayer.addTo(map);
             this.eventsLayer.addTo(map);
-            // Note: Grid layer with boundary functionality is now created and managed by ReplayMap
         }
         /**
-         * Set reference to grid layer for boundary highlighting
+         * Set reference to boundary layer for civilization boundary highlighting
          */
-        setGridLayer(gridLayer) {
-            this.gridLayer = gridLayer;
+        setBoundaryLayer(boundaryLayer) {
+            this.boundaryLayer = boundaryLayer;
         }
         /**
          * Get layers for layer control
@@ -937,7 +936,6 @@
             return {
                 selection: this.selectionLayer,
                 events: this.eventsLayer
-                // Note: boundaries are now handled by the grid layer
             };
         }
         /**
@@ -953,17 +951,8 @@
             if (this.eventsLayer) {
                 this.eventsLayer.clearEventHighlights();
             }
-            if (this.gridLayer) {
-                this.gridLayer.clearCivHighlights();
-            }
-        }
-        /**
-         * Update turn state for boundary highlighting in grid layer
-         * Note: Grid layer's turnState is set directly by ReplayMap, this just triggers redraw
-         */
-        updateTurnState(turnState) {
-            if (this.gridLayer && this.gridLayer.turnState !== turnState) {
-                this.gridLayer.redraw();
+            if (this.boundaryLayer) {
+                this.boundaryLayer.clearCivHighlights();
             }
         }
         // Selection methods
@@ -1036,36 +1025,36 @@
         clearHexHighlights() {
             this.setSelectedHex(null);
         }
-        // Civilization boundary methods (delegated to grid layer)
+        // Civilization boundary methods (delegated to boundary layer)
         highlightCivBoundaries(civNames) {
             this.highlightedCivs.clear();
             for (const name of civNames) {
                 this.highlightedCivs.add(name);
             }
-            if (this.gridLayer) {
-                this.gridLayer.highlightCivBoundaries(civNames);
+            if (this.boundaryLayer) {
+                this.boundaryLayer.highlightCivBoundaries(civNames);
             }
         }
         addHighlightedCivs(civNames) {
             for (const name of civNames) {
                 this.highlightedCivs.add(name);
             }
-            if (this.gridLayer) {
-                this.gridLayer.addHighlightedCivs(civNames);
+            if (this.boundaryLayer) {
+                this.boundaryLayer.addHighlightedCivs(civNames);
             }
         }
         removeHighlightedCivs(civNames) {
             for (const name of civNames) {
                 this.highlightedCivs.delete(name);
             }
-            if (this.gridLayer) {
-                this.gridLayer.removeHighlightedCivs(civNames);
+            if (this.boundaryLayer) {
+                this.boundaryLayer.removeHighlightedCivs(civNames);
             }
         }
         clearCivHighlights() {
             this.highlightedCivs.clear();
-            if (this.gridLayer) {
-                this.gridLayer.clearCivHighlights();
+            if (this.boundaryLayer) {
+                this.boundaryLayer.clearCivHighlights();
             }
         }
         setHighlightColors(hexColor, boundaryColor, eventColor) {
@@ -1090,6 +1079,12 @@
         EventType[EventType["PantheonSelected"] = 6] = "PantheonSelected";
         EventType[EventType["Strategies"] = 7] = "Strategies";
     })(EventType || (EventType = {}));
+    // Whether a piece of data is known at every turn or only at the loaded save's turn
+    var DataKind;
+    (function (DataKind) {
+        DataKind["History"] = "history";
+        DataKind["Snapshot"] = "snapshot"; // Known only at the turn the save was taken
+    })(DataKind || (DataKind = {}));
     // Elevation type enum
     var ElevationType;
     (function (ElevationType) {
@@ -1178,54 +1173,9 @@
     }
 
     /**
-     * throttle.ts
-     * Utility function to throttle function execution
-     * Prevents a function from being called more than once within a specified time period
-     */
-    /**
-     * Creates a throttled version of a function that limits execution frequency
-     * @param func - The function to throttle
-     * @param delay - The minimum delay in milliseconds between executions
-     * @returns A throttled version of the function
-     */
-    function throttle(func, delay) {
-        let timeoutId = null;
-        let lastExecutionTime = 0;
-        let pendingArgs = null;
-        return function (...args) {
-            const currentTime = Date.now();
-            const timeSinceLastExecution = currentTime - lastExecutionTime;
-            const context = this;
-            // Clear any existing timeout
-            if (timeoutId !== null) {
-                clearTimeout(timeoutId);
-                timeoutId = null;
-            }
-            // If enough time has passed, execute immediately
-            if (timeSinceLastExecution >= delay) {
-                lastExecutionTime = currentTime;
-                func.apply(context, args);
-            }
-            else {
-                // Otherwise, store the args and schedule execution
-                pendingArgs = args;
-                const remainingDelay = delay - timeSinceLastExecution;
-                timeoutId = setTimeout(() => {
-                    if (pendingArgs !== null) {
-                        lastExecutionTime = Date.now();
-                        func.apply(context, pendingArgs);
-                        pendingArgs = null;
-                    }
-                    timeoutId = null;
-                }, remainingDelay);
-            }
-        };
-    }
-
-    /**
      * replay-map.ts
      * Manages the Leaflet map display for the replay viewer
-     * Handles rendering of terrain, cities, territories, and turn-based state changes
+     * Renders terrain, cities, and territories for the turn the session sits on
      * Includes highlighting features for hexes and civilization boundaries
      */
     // External libraries accessed as globals - types defined in globals.d.ts
@@ -1234,8 +1184,7 @@
      * Creates and initializes the Leaflet map instance
      */
     class ReplayMap {
-        constructor(replay) {
-            this.replay = replay || null;
+        constructor() {
             this.map = L.map(document.querySelector('.map'), {
                 attributionControl: false,
                 keyboardPanOffset: 0,
@@ -1244,77 +1193,18 @@
             }).setView([0, 0], 0);
             this.turn = -1; // Initialize to -1 so first renderTurn always triggers a redraw
             this.events = []; // Will be populated when initLayers is called
+            this.session = null;
+            this.unsubscribeSession = null;
             // Initialize highlighting module
             this.highlighting = new MapHighlighting(this);
-            // Create throttled version of renderTurn to prevent excessive rendering
-            // when dragging through many turns quickly (e.g., slider dragging)
-            // 100ms throttle provides smooth visual feedback while limiting render calls
-            this.renderTurnThrottled = throttle(this.renderTurn.bind(this), 100);
         }
-        // Initialize map layers and process turn states from events
-        initLayers(tiles, events, replay) {
-            // Store replay reference if provided
-            if (replay) {
-                this.replay = replay;
-            }
-            var self = this;
+        // Initialize map layers and follow the given game session
+        initLayers(session) {
+            this.session = session;
+            const replay = session.replay;
+            const tiles = replay.tiles;
             // Store events for turn-based highlighting
-            this.events = events;
-            // Track the state of each tile at every turn
-            this.turnStates = [];
-            var eventsByTurn = _.groupBy(events, 'turn');
-            var lastState = {};
-            // Always start from turn 0, regardless of when first event occurs
-            const lastTurn = events[events.length - 1].turn;
-            for (var t = 0; t <= lastTurn; t++) {
-                // Start by copying last state
-                var state = _.clone(lastState, true);
-                // Get events for this turn
-                var turnEvents = eventsByTurn[t] || [];
-                for (var e = 0; e < turnEvents.length; e++) {
-                    var event = turnEvents[e];
-                    switch (event.type) {
-                        case EventType.CityFounded:
-                            var index = [event.x, event.y].join(',');
-                            var civName = self.replay ? self.replay.getCivName(event.civId) : null;
-                            state[index] = { owner: civName || undefined, city: event.city.name };
-                            break;
-                        case EventType.TilesClaimed:
-                            for (var i = 0; i < event.tiles.length; i++) {
-                                var tile = event.tiles[i];
-                                var index = [tile.x, tile.y].join(',');
-                                state[index] = state[index] || {};
-                                var civName = self.replay ? self.replay.getCivName(event.civId) : null;
-                                if (civName) {
-                                    state[index].owner = civName;
-                                }
-                                else {
-                                    delete state[index];
-                                }
-                            }
-                            break;
-                        case EventType.CitiesTransferred:
-                            for (var i = 0; i < event.tiles.length; i++) {
-                                var tile = event.tiles[i];
-                                var index = [tile.x, tile.y].join(',');
-                                state[index] = state[index] || {};
-                                var civName = self.replay ? self.replay.getCivName(event.civId) : null;
-                                if (civName) {
-                                    state[index].owner = civName;
-                                }
-                            }
-                            break;
-                        case EventType.CityRazed:
-                            var index = [event.x, event.y].join(',');
-                            if (state[index]) {
-                                delete state[index].city;
-                            }
-                            break;
-                    }
-                }
-                this.turnStates.push(state);
-                lastState = state;
-            }
+            this.events = replay.events;
             this.layers = {
                 terrain: new HexLayer({
                     hexes: tiles,
@@ -1406,8 +1296,8 @@
             _.each(this.layers, (layer) => layer.addTo(this.map));
             // Initialize highlighting layers
             this.highlighting.initLayers(this.map, tiles);
-            // Connect grid layer to highlighting for boundary functionality
-            this.highlighting.setGridLayer(this.layers.grid);
+            // Connect boundary layer to highlighting for civilization boundary highlighting
+            this.highlighting.setBoundaryLayer(this.layers.boundary);
             // Get highlighting layers for overlay controls
             const highlightLayers = this.highlighting.getLayers();
             // Add layer switcher
@@ -1428,7 +1318,11 @@
                 })
             };
             this.controls.switcher.addTo(this.map);
-            this.renderTurn(events[0].turn);
+            // Follow the session: every turn change re-renders the map
+            if (this.unsubscribeSession) {
+                this.unsubscribeSession();
+            }
+            this.unsubscribeSession = session.subscribe((turn) => this.renderTurn(turn));
             var north = 85;
             var west = -180;
             // Saves without usable map dimensions can carry an empty hex grid, so
@@ -1447,13 +1341,13 @@
             // Don't fit bounds here - let it be done after the replay loads
             // to ensure the container is properly sized
         }
-        // Update map display for specified turn
+        // Update map display for the session's current turn
         renderTurn(turn) {
-            // Turn is now directly the array index (0-based)
-            const turnIndex = turn;
-            this.turnState = this.turnStates[turnIndex];
-            // Also update turn state for highlighting module (which will update grid layer's boundary highlighting)
-            this.highlighting.updateTurnState(this.turnState);
+            if (!this.session) {
+                return;
+            }
+            // The session holds the per-turn state derived from the events
+            this.turnState = this.session.stateAt(turn);
             // Skip if turn hasn't changed
             if (this.turn === turn) {
                 return;
@@ -1464,7 +1358,6 @@
                 const turnEvents = this.events.filter(e => e.turn === turn);
                 this.highlighting.highlightEventHexes(turnEvents);
             }
-            console.log(`Rendering turn ${turn}, previous turn was ${this.turn}`);
             this.turn = turn;
             // Batch update turn state for all layers that support it
             const layersWithTurnState = ['territory', 'city', 'grid', 'boundary'];
@@ -1475,12 +1368,18 @@
                 }
             }
         }
-        // Reset turn tracking state
+        // Detach from the session and reset turn tracking state
         resetTurnState() {
             // Reset turn to -1 so the first renderTurn will trigger a full redraw
             this.turn = -1;
-            // Note: We can't cancel pending throttled calls, but resetting turn to -1
-            // ensures the next renderTurn will perform a full redraw regardless
+            this.turnState = undefined;
+            // Stop following the previous session
+            if (this.unsubscribeSession) {
+                this.unsubscribeSession();
+                this.unsubscribeSession = null;
+            }
+            this.session = null;
+            this.events = [];
             // Clear all highlighting
             if (this.highlighting) {
                 this.highlighting.clearAll();
@@ -1994,7 +1893,7 @@
      * Manages and displays game events with filtering and turn-based navigation
      */
     class EventLog {
-        constructor(events, replay) {
+        constructor(session) {
             this.types = new Set();
             // WeakMap for associating DOM elements with their event data
             this.elementToEvent = new WeakMap();
@@ -2003,15 +1902,27 @@
             this.currentTurn = 0;
             // Track turn separator elements for scrolling
             this.turnSeparators = new Map();
+            // Stops following the session
+            this.unsubscribe = null;
             this.logContainer = document.querySelector('.log-container');
             this.messagesEl = this.logContainer.querySelector('.log-messages');
-            this.events = events;
-            this.replay = replay;
+            this.events = session.replay.events;
+            this.replay = session.replay;
             this.initializeEventFilter();
             this.renderEvents();
-            if (events.length > 0) {
-                this.renderTurn(events[0].turn);
+            // Follow the session: every turn change scrolls and activates the log
+            this.unsubscribe = session.subscribe((turn) => this.renderTurn(turn));
+        }
+        /**
+         * Stop following the session and empty the log, called when the session
+         * is discarded
+         */
+        destroy() {
+            if (this.unsubscribe) {
+                this.unsubscribe();
+                this.unsubscribe = null;
             }
+            this.clear();
         }
         /**
          * Initialize event type filtering
@@ -2276,28 +2187,36 @@
      * control-bar.ts
      * UI control bar for replay playback
      * Manages play/pause, speed control, and turn navigation
+     * The bar drives the game session and follows it back, so turns changed
+     * anywhere stay in sync with the slider
      */
     // External libraries accessed as globals - types defined in globals.d.ts
     /**
      * ControlBar class
-     * @param {Object} config - Configuration with start/end turns and onChange callback
+     * @param {Object} config - Configuration with the turn range and the session
      */
     class ControlBar {
         constructor(config) {
             this.initialized = false; // Track if the control bar has been initialized
             this.keydownHandler = null; // Store keydown handler for cleanup
             this.playPauseHandler = null; // Store play/pause handler for cleanup
+            this.unsubscribe = null; // Stops following the session
             // Allow constructor to be called without config for initial instance creation
             if (config) {
                 this.initialize(config);
             }
         }
-        // Initialize or reinitialize the control bar with new config
+        // Initialize or reinitialize the control bar with a new game session
         initialize(config) {
             this.config = config;
-            this.config.onChange = (this.config.onChange || function () { }).bind(this);
+            this.session = config.session;
             // Stop any existing playback
             this.pause();
+            // Follow the session so the slider tracks turns changed elsewhere
+            if (this.unsubscribe) {
+                this.unsubscribe();
+            }
+            this.unsubscribe = this.session.subscribe((turn) => this.syncSlider(turn));
             // Only set up event handlers on first initialization
             if (!this.initialized) {
                 // Play/pause button
@@ -2326,31 +2245,31 @@
                     id: 'turnSlider',
                     min: this.config.start,
                     max: this.config.end,
-                    value: this.config.initial || this.config.start,
+                    value: this.config.start,
                     tooltip: 'always',
                     tooltip_position: 'bottom'
                 });
                 this.turnSlider = $(this.turnSliderEl).data().slider;
-                // Listen for spacebar to toggle play/pause
+                // Listen for playback shortcuts
                 this.keydownHandler = (e) => {
-                    // Prevent handling if not initialized with a config
-                    if (!this.config)
+                    // Prevent handling when no replay is loaded
+                    if (!this.session)
                         return;
                     switch (e.keyCode) {
                         case 32:
                             this.togglePlay();
                             return; // space
                         case 33:
-                            this.setTurn(this.config.start);
+                            this.requestTurn(this.config.start);
                             return; // page up
                         case 34:
-                            this.setTurn(this.config.end);
+                            this.requestTurn(this.config.end);
                             return; // page down
                         case 35:
-                            this.setTurn(this.config.end);
+                            this.requestTurn(this.config.end);
                             return; // end
                         case 36:
-                            this.setTurn(this.config.start);
+                            this.requestTurn(this.config.start);
                             return; // home
                         case 37:
                             this.step(-1);
@@ -2385,46 +2304,53 @@
                 document.addEventListener('keydown', this.keydownHandler);
                 this.initialized = true;
             }
-            else {
-                // On subsequent initializations, just update the turn slider range
-                // Update the slider's min, max, and value without destroying it
-                this.turnSlider.setAttribute({
-                    min: this.config.start,
-                    max: this.config.end
-                });
-                this.turnSlider.setValue(this.config.initial || this.config.start, true, true);
-            }
-            // Update turn slider event handlers (remove old ones first)
+            // Update the turn slider range for the newly loaded replay. The slider
+            // library takes one attribute per call.
+            this.turnSlider.setAttribute('min', this.config.start);
+            this.turnSlider.setAttribute('max', this.config.end);
+            // Slider events drive the session
             $(this.turnSliderEl).off('change').on('change', (e) => {
-                this.config.onChange(e.value.newValue);
+                this.requestTurn(e.value.newValue);
             });
             // Listen for slide events (fires continuously while dragging)
             $(this.turnSliderEl).off('slide').on('slide', (e) => {
-                this.config.onChange(e.value);
+                this.requestTurn(e.value);
             });
-            this.setTurn(this.config.initial || this.config.start);
+            // Park the slider on the first turn until the session moves it
+            this.turnSlider.setValue(this.config.start, false, false);
         }
         // Get current turn number from slider
         getTurn() {
             return this.turnSlider.getValue();
         }
-        // Set turn number on slider
-        setTurn(turn) {
-            this.turnSlider.setValue(turn, true, true);
+        // Move the session to a turn; its notification updates the slider and the views
+        requestTurn(turn) {
+            if (!this.session)
+                return;
+            this.session.setTurn(turn);
+        }
+        // Track a turn that changed elsewhere, without re-triggering slider events
+        syncSlider(turn) {
+            if (this.turnSlider && this.getTurn() !== turn) {
+                this.turnSlider.setValue(turn, false, false);
+            }
         }
         // Step forward/backward by specified number of turns
         step(step) {
+            if (!this.session)
+                return;
             if (step === undefined) {
                 step = 1;
             }
-            if (this.getTurn() + step < this.config.start) {
-                this.setTurn(this.config.start);
+            const target = this.getTurn() + step;
+            if (target < this.config.start) {
+                this.requestTurn(this.config.start);
             }
-            else if (this.getTurn() + step > this.config.end) {
-                this.setTurn(this.config.end);
+            else if (target > this.config.end) {
+                this.requestTurn(this.config.end);
             }
             else {
-                this.setTurn(this.getTurn() + step);
+                this.requestTurn(target);
             }
         }
         // Start automatic playback
@@ -2467,7 +2393,7 @@
                 this.play();
             }
         }
-        // Clear the control bar (cleanup timers)
+        // Clear the control bar (stop playback and stop following the session)
         clear() {
             var _a;
             // Stop playback timer if running
@@ -2475,6 +2401,12 @@
                 clearInterval(this.playTimer);
                 this.playTimer = null;
             }
+            // Stop following the session
+            if (this.unsubscribe) {
+                this.unsubscribe();
+                this.unsubscribe = null;
+            }
+            this.session = null;
             // Reset play/pause button to play icon
             const icon = (_a = this.playPauseBtn) === null || _a === void 0 ? void 0 : _a.querySelector('i');
             if (icon) {
@@ -4571,6 +4503,20 @@
             this.endYear = '';
             this.mapWidth = 0;
             this.mapHeight = 0;
+            // Which kind of file this data came from
+            this.source = 'replay';
+            // Kind of every data area this hub exposes, so views never have to guess
+            // whether something is available at every turn or only at the save's turn.
+            // Rivers are fixed when the map is generated, so their kind is history even
+            // though only save files carry them today. Snapshot entries arrive with the
+            // save parser work that reads the game state.
+            this.dataKinds = {
+                terrain: DataKind.History,
+                rivers: DataKind.History,
+                events: DataKind.History,
+                datasets: DataKind.History,
+                ownership: DataKind.History
+            };
             // Game configuration (absorbed from RawReplayData)
             this.game = '';
             this.version = '';
@@ -4600,7 +4546,9 @@
          * @param size The size of the file data within the buffer
          */
         async loadFromFile(file, size) {
-            const rawData = isSaveFile(file)
+            const fromSave = isSaveFile(file);
+            this.source = fromSave ? 'save' : 'replay';
+            const rawData = fromSave
                 ? await new SaveParser(file, size).parseReplay()
                 : new ReplayParser(file, size).parse(false);
             this.processRawData(rawData);
@@ -4641,6 +4589,7 @@
         }
         /**
          * Process dataset values by civ id and dataset name
+         * Each dataset ends up as one series of turn and value pairs per civilization
          */
         processDatasets(datasets, datasetValues) {
             if (!datasets || !datasetValues)
@@ -4752,7 +4701,7 @@
             return this.events.filter(event => event.turn === turn);
         }
         /**
-         * Get dataset values for a specific civilization and dataset
+         * Get the value series of a dataset for a specific civilization
          */
         getDatasetForCiv(datasetName, civId) {
             const dataset = this.datasets[datasetName];
@@ -4764,17 +4713,281 @@
     }
 
     /**
+     * ownership.ts
+     * Compact per-turn tile ownership derived from the replay events
+     * Instead of a full copy of the tile state for every turn, each tile keeps
+     * a short list of changes, and the state at any turn comes from the last
+     * change recorded at or before that turn
+     */
+    /**
+     * OwnershipTimeline class
+     * Answers which civilization owns each tile and which city stands on it at
+     * any turn, built once from the event log
+     */
+    class OwnershipTimeline {
+        constructor(events, getCivName) {
+            // Change lists per tile key ("x,y"), each ordered by turn
+            this.changesByTile = new Map();
+            // The last materialized turn state, so repeated requests for the same turn
+            // share one object and identity checks in the map layers keep working
+            this.cachedTurn = -1;
+            this.cachedState = {};
+            this.build(events, getCivName);
+        }
+        /**
+         * Total number of recorded changes, one per actual ownership or city change
+         */
+        get changeCount() {
+            let total = 0;
+            for (const changes of this.changesByTile.values()) {
+                total += changes.length;
+            }
+            return total;
+        }
+        /**
+         * Tile state at a turn: every tile whose last change at or before that
+         * turn left it owned or carrying a city
+         */
+        stateAt(turn) {
+            if (turn === this.cachedTurn) {
+                return this.cachedState;
+            }
+            const state = {};
+            for (const [key, changes] of this.changesByTile) {
+                const change = this.lastChangeAtOrBefore(changes, turn);
+                if (change === undefined) {
+                    continue;
+                }
+                const info = {};
+                if (change.owner !== undefined) {
+                    info.owner = change.owner;
+                }
+                if (change.city !== undefined) {
+                    info.city = change.city;
+                }
+                if (info.owner !== undefined || info.city !== undefined) {
+                    state[key] = info;
+                }
+            }
+            this.cachedTurn = turn;
+            this.cachedState = state;
+            return state;
+        }
+        /**
+         * Walk the events in order and record each tile's visible state whenever
+         * it changes, mirroring how the renderer used to fold events into per-turn
+         * copies of the map
+         */
+        build(events, getCivName) {
+            // The tile states as of the event currently being processed
+            const current = new Map();
+            // Records the tile's current state as the situation from this turn on,
+            // skipping tiles whose visible state did not actually change
+            const record = (key, turn) => {
+                const entry = current.get(key);
+                const owner = entry && entry.owner;
+                const city = entry && entry.city;
+                const changes = this.changesByTile.get(key);
+                if (changes) {
+                    const last = changes[changes.length - 1];
+                    if (last.owner === owner && last.city === city) {
+                        return;
+                    }
+                }
+                const change = { turn };
+                if (owner !== undefined) {
+                    change.owner = owner;
+                }
+                if (city !== undefined) {
+                    change.city = city;
+                }
+                if (changes) {
+                    changes.push(change);
+                }
+                else {
+                    this.changesByTile.set(key, [change]);
+                }
+            };
+            for (const event of events) {
+                switch (event.type) {
+                    case EventType.CityFounded: {
+                        if (event.x === undefined || event.y === undefined || !event.city) {
+                            break;
+                        }
+                        // A founding resets the tile: the new city stands on it and the
+                        // founder becomes its owner
+                        const key = `${event.x},${event.y}`;
+                        const civName = getCivName(event.civId);
+                        const entry = { city: event.city.name };
+                        if (civName) {
+                            entry.owner = civName;
+                        }
+                        current.set(key, entry);
+                        record(key, event.turn);
+                        break;
+                    }
+                    case EventType.TilesClaimed: {
+                        if (!event.tiles) {
+                            break;
+                        }
+                        const civName = getCivName(event.civId);
+                        for (const tile of event.tiles) {
+                            const key = `${tile.x},${tile.y}`;
+                            if (civName) {
+                                const entry = current.get(key) || {};
+                                entry.owner = civName;
+                                current.set(key, entry);
+                                record(key, event.turn);
+                            }
+                            else if (current.has(key)) {
+                                // A claim by an unknown civilization releases the tile
+                                current.delete(key);
+                                record(key, event.turn);
+                            }
+                        }
+                        break;
+                    }
+                    case EventType.CitiesTransferred: {
+                        if (!event.tiles) {
+                            break;
+                        }
+                        const civName = getCivName(event.civId);
+                        if (!civName) {
+                            break;
+                        }
+                        for (const tile of event.tiles) {
+                            // A transfer moves ownership and leaves any city in place
+                            const key = `${tile.x},${tile.y}`;
+                            const entry = current.get(key) || {};
+                            entry.owner = civName;
+                            current.set(key, entry);
+                            record(key, event.turn);
+                        }
+                        break;
+                    }
+                    case EventType.CityRazed: {
+                        if (event.x === undefined || event.y === undefined) {
+                            break;
+                        }
+                        // A razing removes the city and keeps the owner
+                        const key = `${event.x},${event.y}`;
+                        const entry = current.get(key);
+                        if (entry && entry.city !== undefined) {
+                            delete entry.city;
+                            record(key, event.turn);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        /**
+         * Binary search for the last change recorded at or before the turn
+         */
+        lastChangeAtOrBefore(changes, turn) {
+            let low = 0;
+            let high = changes.length - 1;
+            let found;
+            while (low <= high) {
+                const mid = (low + high) >> 1;
+                if (changes[mid].turn <= turn) {
+                    found = changes[mid];
+                    low = mid + 1;
+                }
+                else {
+                    high = mid - 1;
+                }
+            }
+            return found;
+        }
+    }
+
+    /**
+     * session.ts
+     * The game session model: one loaded game, the current turn, the selection,
+     * and the per-turn state derived from the events
+     * The map, the event log, and the timeline subscribe to the session instead
+     * of calling each other
+     */
+    /**
+     * GameSession class
+     * Owns the loaded game and the current turn, and lets the views follow both
+     */
+    class GameSession {
+        constructor(replay) {
+            this.listeners = new Set();
+            this.replay = replay;
+            this.currentTurn = replay.startTurn;
+            this.selection = { kind: 'none' };
+            this.ownership = new OwnershipTimeline(replay.events, (civId) => replay.getCivName(civId));
+        }
+        /**
+         * First turn available on the timeline
+         */
+        get startTurn() {
+            return this.replay.startTurn;
+        }
+        /**
+         * Last turn available on the timeline
+         */
+        get endTurn() {
+            return this.replay.endTurn;
+        }
+        /**
+         * Tile ownership and cities at a turn, derived from the events up to it
+         */
+        stateAt(turn) {
+            return this.ownership.stateAt(turn);
+        }
+        /**
+         * Number of ownership changes the timeline stores, a measure of how
+         * compactly the per-turn state is kept
+         */
+        ownershipChangeCount() {
+            return this.ownership.changeCount;
+        }
+        /**
+         * Move to a turn, clamped to the replay's range, and notify subscribers
+         */
+        setTurn(turn) {
+            const clamped = Math.min(Math.max(turn, this.startTurn), this.endTurn);
+            this.currentTurn = clamped;
+            const state = this.ownership.stateAt(clamped);
+            for (const listener of this.listeners) {
+                listener(clamped, state);
+            }
+        }
+        /**
+         * Change what the user is inspecting; views read this on demand
+         */
+        setSelection(selection) {
+            this.selection = selection;
+        }
+        /**
+         * Subscribe to turn changes
+         * @returns A function that unsubscribes the listener again
+         */
+        subscribe(listener) {
+            this.listeners.add(listener);
+            return () => {
+                this.listeners.delete(listener);
+            };
+        }
+    }
+
+    /**
      * replay-viewer.ts
      * UI component for the replay viewer application
-     * Manages user interactions, file handling, and coordinates between data and visualization
+     * Manages user interactions and file handling, and connects the game session
+     * to the map, the event log, and the playback controls
      */
     /**
      * ReplayViewer UI component
-     * Handles user interactions and coordinates between replay data and visualization components
+     * Handles user interactions and connects the loaded game session to the visualization components
      */
     class ReplayViewer {
         constructor() {
-            this.replay = null; // Replay data hub instance
+            this.session = null; // Game session for the loaded replay
             this.eventLog = null; // Event log UI component
             this.controlBar = null; // Playback control UI component
             // UI state
@@ -4782,7 +4995,7 @@
             this.initialTurn = null;
             this.isLoading = false;
             this.initialize();
-            // Create control bar instance once (will be reinitialized with each replay)
+            // Create control bar instance once (will be reinitialized with each session)
             this.controlBar = new ControlBar();
         }
         /**
@@ -4863,7 +5076,7 @@
                 // Debounce resize events
                 clearTimeout(resizeTimeout);
                 resizeTimeout = window.setTimeout(() => {
-                    // Only refit if we have a loaded replay
+                    // Only refit if we have a loaded session
                     if (this.hasReplay()) {
                         this.map.fitMap();
                     }
@@ -4943,19 +5156,19 @@
          */
         async processReplayData(data, size) {
             try {
-                // Clean up previous replay
+                // Clean up previous session
                 this.cleanup();
-                // Create new replay instance and load data
-                this.replay = new Replay();
-                await this.replay.loadFromFile(data, size);
+                // Parse the file and build the session that owns it
+                const replay = new Replay();
+                await replay.loadFromFile(data, size);
+                this.session = new GameSession(replay);
                 // Initialize UI components
                 this.initializeUIComponents();
-                // Set initial turn
+                // Set initial turn, which the session passes to every view
                 const initialTurn = this.initialTurn
-                    ? parseInt(this.initialTurn) || this.replay.startTurn
-                    : this.replay.startTurn;
-                // Trigger initial render
-                this.renderTurn(initialTurn);
+                    ? parseInt(this.initialTurn) || replay.startTurn
+                    : replay.startTurn;
+                this.session.setTurn(initialTurn);
                 // Fit map to container after everything is loaded
                 // Use setTimeout to ensure DOM has updated
                 setTimeout(() => {
@@ -4968,51 +5181,36 @@
             }
         }
         /**
-         * Initialize UI components with replay data
+         * Initialize UI components with the game session
          */
         initializeUIComponents() {
-            if (!this.replay)
+            if (!this.session)
                 return;
             // Initialize event log
-            this.eventLog = new EventLog(this.replay.events, this.replay);
+            this.eventLog = new EventLog(this.session);
             // Initialize map layers
-            this.map.initLayers(this.replay.tiles, this.replay.events, this.replay);
+            this.map.initLayers(this.session);
             // Fit map immediately after layers are initialized
             this.map.fitMap();
-            // Reinitialize control bar with new replay data (reuses existing instance)
+            // Reinitialize control bar with the new session (reuses existing instance)
             this.controlBar.initialize({
-                start: this.replay.startTurn,
-                end: this.replay.endTurn,
-                initial: this.initialTurn
-                    ? parseInt(this.initialTurn) || this.replay.startTurn
-                    : this.replay.startTurn,
-                onChange: (turn) => this.renderTurn(turn)
+                start: this.session.startTurn,
+                end: this.session.endTurn,
+                session: this.session
             });
         }
         /**
-         * Render a specific turn
-         */
-        renderTurn(turn) {
-            if (!this.replay || !this.eventLog || !this.map)
-                return;
-            this.eventLog.renderTurn(turn);
-            this.map.renderTurn(turn);
-        }
-        /**
-         * Clean up previous replay data and UI components
+         * Clean up previous session and UI components
          */
         cleanup() {
             // Clean up event log
             if (this.eventLog) {
-                const logMessages = document.querySelector('.log-messages');
-                if (logMessages) {
-                    logMessages.innerHTML = '';
-                }
+                this.eventLog.destroy();
                 this.eventLog = null;
             }
             // Clean up map layers and controls
             if (this.map && this.map.map) {
-                // Reset the map's turn tracking state
+                // Detach the map from the session and reset its turn tracking state
                 this.map.resetTurnState();
                 if (this.map.layers) {
                     Object.values(this.map.layers).forEach(layer => {
@@ -5031,8 +5229,8 @@
             }
             // Clean up control bar (but don't null it - we'll reuse the instance)
             this.controlBar.clear();
-            // Clean up replay data
-            this.replay = null;
+            // Clean up the session
+            this.session = null;
         }
         /**
          * Show error message to user
@@ -5045,13 +5243,13 @@
          * Get current replay data
          */
         getReplay() {
-            return this.replay;
+            return this.session ? this.session.replay : null;
         }
         /**
          * Check if a replay is loaded
          */
         hasReplay() {
-            return this.replay !== null;
+            return this.session !== null;
         }
         /**
          * Get loading state

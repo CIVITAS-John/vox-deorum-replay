@@ -26,6 +26,7 @@ interface BootstrapSliderOptions {
 interface BootstrapSliderInstance {
   setValue(value: number | number[], triggerSlideEvent?: boolean, triggerChangeEvent?: boolean): void;
   getValue(): number | number[];
+  setAttribute(attribute: string, value: any): BootstrapSliderInstance;
   enable(): void;
   disable(): void;
   destroy(): void;

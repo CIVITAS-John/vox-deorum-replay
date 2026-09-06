@@ -13,13 +13,18 @@ import {
   City,
   GameEvent,
   Tile,
-  DatasetValues,
+  DatasetCivSeries,
+  DatasetSeries,
+  DataKind,
   DLC,
   Mod,
   ElevationType,
   TileType,
   FeatureType
 } from '../types';
+
+// The two file types the viewer opens
+export type ReplaySource = 'replay' | 'save';
 
 /**
  * Replay class - Data hub for replay information
@@ -33,6 +38,22 @@ export class Replay {
   public endYear: string = '';
   public mapWidth: number = 0;
   public mapHeight: number = 0;
+
+  // Which kind of file this data came from
+  public source: ReplaySource = 'replay';
+
+  // Kind of every data area this hub exposes, so views never have to guess
+  // whether something is available at every turn or only at the save's turn.
+  // Rivers are fixed when the map is generated, so their kind is history even
+  // though only save files carry them today. Snapshot entries arrive with the
+  // save parser work that reads the game state.
+  public readonly dataKinds: Record<string, DataKind> = {
+    terrain: DataKind.History,
+    rivers: DataKind.History,
+    events: DataKind.History,
+    datasets: DataKind.History,
+    ownership: DataKind.History
+  };
 
   // Game configuration (absorbed from RawReplayData)
   public game: string = '';
@@ -53,7 +74,7 @@ export class Replay {
   public civs: Civilization[] = [];
   public cities: Record<string, City> = {};
   public events: GameEvent[] = [];
-  public datasets: Record<string, DatasetValues> = {};
+  public datasets: Record<string, DatasetCivSeries> = {};
   public tiles: Tile[][] = [];
 
   /**
@@ -64,7 +85,10 @@ export class Replay {
    * @param size The size of the file data within the buffer
    */
   public async loadFromFile(file: ArrayBuffer, size: number): Promise<void> {
-    const rawData = isSaveFile(file)
+    const fromSave = isSaveFile(file);
+    this.source = fromSave ? 'save' : 'replay';
+
+    const rawData = fromSave
       ? await new SaveParser(file, size).parseReplay()
       : new ReplayParser(file, size).parse(false);
 
@@ -113,6 +137,7 @@ export class Replay {
 
   /**
    * Process dataset values by civ id and dataset name
+   * Each dataset ends up as one series of turn and value pairs per civilization
    */
   private processDatasets(datasets: any[], datasetValues: any): void {
     if (!datasets || !datasetValues) return;
@@ -241,9 +266,9 @@ export class Replay {
   }
 
   /**
-   * Get dataset values for a specific civilization and dataset
+   * Get the value series of a dataset for a specific civilization
    */
-  public getDatasetForCiv(datasetName: string, civId: number): any[] {
+  public getDatasetForCiv(datasetName: string, civId: number): DatasetSeries {
     const dataset = this.datasets[datasetName];
     if (!dataset || !dataset[civId]) {
       return [];
