@@ -7,7 +7,7 @@
 import { HexLayer } from './hex-layer';
 import { HexData } from './types';
 import { GameEvent, EventType } from '../replay/types';
-import { calculateHexBorderWidth } from '../utils/hex-border-utils';
+import { calculateHexBorderWidth } from './utils/hex-border-utils';
 
 declare const _: any;
 

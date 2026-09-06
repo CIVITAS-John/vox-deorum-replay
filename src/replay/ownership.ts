@@ -7,7 +7,7 @@
  */
 
 import { GameEvent, EventType, TurnState, TileStateInfo } from './types';
-import { lastAtOrBefore } from '../utils/arrays';
+import { lastAtOrBefore } from './utils/arrays';
 
 // Resolves a civilization id to its name, as the Replay hub provides it
 export type CivNameResolver = (civId?: number) => string | null;

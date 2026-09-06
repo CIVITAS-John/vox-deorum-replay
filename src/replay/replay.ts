@@ -8,7 +8,7 @@ import { ReplayParser } from '../parsers/replay-parser';
 import { SaveParser, isSaveFile } from '../parsers/save-parser';
 import { EventParser } from './event-parser';
 import { getCivColors } from '../utils/civ-colors';
-import { indexDatasets, buildTileGrid } from '../utils/replay-data';
+import { indexDatasets, buildTileGrid } from './utils/replay-data';
 import {
   Civilization,
   City,

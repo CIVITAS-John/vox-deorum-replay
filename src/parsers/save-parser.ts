@@ -19,8 +19,8 @@
 
 import { BaseParser } from './base-parser';
 import { BinaryParser } from './binary-parser';
-import { inflateZlib } from '../utils/inflate';
-import { getCivNameFromType } from '../utils/civ-names';
+import { inflateZlib } from './utils/inflate';
+import { getCivNameFromType } from './utils/civ-names';
 import { FileConfig } from './types';
 
 /** One replay message straight off the wire */

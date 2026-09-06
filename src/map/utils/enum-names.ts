@@ -9,7 +9,7 @@ import {
   ElevationType,
   TileType,
   FeatureType
-} from '../replay/types';
+} from '../../replay/types';
 
 /**
  * Convert EventType enum to display name

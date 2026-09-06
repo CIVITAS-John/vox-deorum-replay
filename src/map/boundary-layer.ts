@@ -8,7 +8,7 @@
 import { HexLayer } from './hex-layer';
 import { HexData } from './types';
 import { CivColors } from '../utils/civ-colors';
-import { calculateHexBorderWidth } from '../utils/hex-border-utils';
+import { calculateHexBorderWidth } from './utils/hex-border-utils';
 
 declare const _: any;
 

@@ -7,8 +7,8 @@
 import { GameEvent, EventType } from '../replay/types';
 import { Replay } from '../replay/replay';
 import { GameSession } from '../replay/session';
-import { parseStrategyEvent, renderStrategyEvent } from '../utils/strategy-parser';
-import { formatGameText, hasGameMarkup } from '../utils/text-formatter';
+import { parseStrategyEvent, renderStrategyEvent } from './utils/strategy-parser';
+import { formatGameText, hasGameMarkup } from './utils/text-formatter';
 
 // External libraries accessed as globals - types defined in globals.d.ts
 

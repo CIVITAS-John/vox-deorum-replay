@@ -8,7 +8,7 @@ import { HexLayer } from './hex-layer';
 import { CivColors } from '../utils/civ-colors';
 import { TurnState } from '../replay/types';
 import { HexData } from './types';
-import { calculateTextOutlineWidth } from '../utils/hex-border-utils';
+import { calculateTextOutlineWidth } from './utils/hex-border-utils';
 
 declare const L: any;
 declare const _: any;

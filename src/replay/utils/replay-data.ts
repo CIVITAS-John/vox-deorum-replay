@@ -3,7 +3,7 @@
  * Shapes raw parser output into the structures the Replay hub stores
  */
 
-import { DatasetCivSeries, Tile, ElevationType, FeatureType } from '../replay/types';
+import { DatasetCivSeries, Tile, ElevationType, FeatureType } from '../types';
 import { chunk } from './arrays';
 
 /**

@@ -13,7 +13,7 @@ import { MapHighlighting } from './map-highlighting';
 import { CivColors } from '../utils/civ-colors';
 import { MapLayer, MapControl, HexData } from './types';
 import { GameEvent, TileType, FeatureType, ElevationType, TurnState } from '../replay/types';
-import { getTileTypeName, getFeatureName, getElevationName } from '../utils/enum-names';
+import { getTileTypeName, getFeatureName, getElevationName } from './utils/enum-names';
 import { GameSession } from '../replay/session';
 
 // External libraries accessed as globals - types defined in globals.d.ts

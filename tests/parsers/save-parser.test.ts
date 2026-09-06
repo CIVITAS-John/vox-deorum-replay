@@ -20,7 +20,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { SaveParser, isSaveFile, extractMapTerrain } from '../../src/parsers/save-parser';
-import { inflateZlib } from '../../src/utils/inflate';
+import { inflateZlib } from '../../src/parsers/utils/inflate';
 import { ReplayParser } from '../../src/parsers/replay-parser';
 import { Replay } from '../../src/replay/replay';
 
