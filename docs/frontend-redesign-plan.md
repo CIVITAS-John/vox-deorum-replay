@@ -64,19 +64,17 @@ Desktop layout:
 
 ```text
 +-----------------------------------------------------------------------------+
-| Vox Deorum Replay    Game 4 · Rome · Standard · Small            [Open file] |
-| [ Map ]  [ Events ]  [ Statistics ]                                          |
+| Vox Deorum Replay    Game 4 · Rome · Standard · Small   [Open] [Statistics] |
 +-----------------------------------------------------+-----------------------+
-| [Layers v]  [Highlight: none v]                     | Events      Inspect   |
+| [Layers v]  [Highlight: none v]                     | Events     [7 types v]|
 |                                                     |-----------------------|
-|                                                     | Filter  [7 types v]   |
 |                                                     |                       |
 |                        MAP                          | T180  Rome founded    |
 |                                                     |       Antium          |
 |                                                     | T180  Egypt claimed   |
 |                                                     |       3 tiles         |
 |                                                     | T179  Rome adopted    |
-|                                     [+] [-] [Fit]   |       Tradition       |
+|                                            [+] [-]  |       Tradition       |
 +-----------------------------------------------------+-----------------------+
 | [|<] [<] [ Play ] [>]   o============o-----------------  Turn 180 / 320  1x  |
 +-----------------------------------------------------------------------------+
@@ -95,29 +93,30 @@ Phone layout, portrait:
 |              MAP              |
 |                               |
 |                               |
-|                   [+][-][Fit] |
+|                        [+][-] |
 +-------------------------------+
 | [<] [Play] [>]  o====o--- 180 |
 +-------------------------------+
 ```
 
-Tapping the turn number opens a small popover with a go-to field and the speed choice, so the timeline stays one row. Events and Statistics replace the map area when their tab is chosen. On tablets and in landscape, the side panel shows only while enough map space remains. Resizing preserves the place the user is exploring.
+Tapping on the play button switches between Pause/Play, rotating. Tapping the turn number opens a small popover with a go-to field and the speed choice, so the timeline stays one row. Events and Statistics replace the map area when their tab is chosen. On tablets and in landscape, the side panel shows only while enough map space remains. Resizing preserves the place the user is exploring.
 
 Empty state, shown before a file is loaded and reachable again from Open file:
 
 ```text
 +------------------------------------------------+
-|  Vox Deorum Replay                             |
+|                Vox Deorum Replay               |
 |                                                |
+|                [Open file icon]                |
 |     Drop a .Civ5Replay or .Civ5Save here       |
-|                 [Open file]                    |
 |                                                |
-|     Or try an example:  [Game 1]  [Game 4]     |
+|    ---------------------------------------     |
+|[Example 1]  [Example 2] [Example 3] [ Example 4 ]|
 |                                                |
-|  Loading a save takes a few seconds while the  |
-|  compressed game state is unpacked.            |
 +------------------------------------------------+
 ```
+
+Show a loading indicator while we process the save, including from the URL.
 
 Support touch panning and zooming, large tap targets, keyboard navigation, visible focus, and labels that do not rely on color alone. Essential information is available by tap or selection rather than hover.
 
