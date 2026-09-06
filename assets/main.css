@@ -67,6 +67,11 @@
 	display: none !important;
 }
 
+/* Offscreen tile textures that the canvas renderer draws from */
+.textures {
+	display: none;
+}
+
 html,
 body {
 	height: 100%;
@@ -129,6 +134,7 @@ a:hover {
 	border: 1px solid var(--border-gold);
 	border-radius: 6px;
 	cursor: pointer;
+	margin: 16px 0;
 	font-family: var(--font-body);
 	line-height: 1.2;
 	transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
@@ -265,12 +271,27 @@ summary::-webkit-details-marker {
 	overflow: hidden;
 }
 
+/* Loaded-game summary: name, then game speed and map size, each with an icon */
 .game-summary {
+	display: flex;
+	align-items: center;
+	gap: 8px;
 	font-size: 0.85rem;
 	color: var(--parchment-dim);
 	white-space: nowrap;
 	overflow: hidden;
-	text-overflow: ellipsis;
+}
+
+.summary-item {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	min-width: 0;
+}
+
+.summary-item i {
+	color: var(--gold);
+	font-size: 0.78rem;
 }
 
 .annotation-line {
@@ -477,6 +498,9 @@ summary::-webkit-details-marker {
 	padding: 5px 10px;
 	background-color: var(--bg);
 	border-bottom: 2px solid var(--message-border);
+	/* Long unbreakable tokens (slash-joined identifiers, URLs) wrap
+	   instead of pushing a horizontal scrollbar into the list */
+	overflow-wrap: break-word;
 }
 
 .message:not(.active) {

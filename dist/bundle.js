@@ -5356,6 +5356,16 @@
     // How often the address bar is refreshed while the turn changes
     const urlSyncThrottleMs = 400;
     /**
+     * Turn a raw file enum value into a display name, so "GAMESPEED_STANDARD"
+     * reads as "Standard" and "WORLDSIZE_SMALL" as "Small"
+     */
+    function prettifyEnumValue(value) {
+        // Keep only the part after the last underscore
+        const name = value.split('_').pop() || value;
+        // Title case the remaining words
+        return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+    }
+    /**
      * ReplayViewer class
      * Handles user interactions and connects the loaded game session to the
      * visualization components
@@ -5692,7 +5702,9 @@
             this.unsubscribeTurnSync = this.session.subscribe(() => this.syncUrlState());
         }
         /**
-         * Fill the header with the loaded game's summary and annotation line
+         * Fill the header with the loaded game's summary and annotation line.
+         * The summary shows the file name, then the game speed and map size as
+         * icon and value pairs.
          */
         updateHeader() {
             if (!this.session) {
@@ -5701,19 +5713,37 @@
                 return;
             }
             const replay = this.session.replay;
-            const summaryParts = [this.fileLabel || 'Loaded game'];
+            // Rebuild the summary from scratch, since it mixes text and icons
+            this.gameSummary.textContent = '';
+            this.gameSummary.appendChild(document.createTextNode(this.fileLabel || 'Loaded game'));
             if (replay.gameSpeed) {
-                summaryParts.push(replay.gameSpeed);
+                this.gameSummary.appendChild(document.createTextNode(' · '));
+                this.gameSummary.appendChild(this.createSummaryItem('fa-gauge-high', prettifyEnumValue(replay.gameSpeed) + ' Speed'));
             }
             if (replay.worldSize) {
-                summaryParts.push(replay.worldSize);
+                this.gameSummary.appendChild(document.createTextNode(' · '));
+                this.gameSummary.appendChild(this.createSummaryItem('fa-map', prettifyEnumValue(replay.worldSize) + ' Speed'));
             }
-            this.gameSummary.textContent = summaryParts.join(' · ');
             this.gameSummary.hidden = false;
             const civNames = replay.civs.map(civ => civ.name);
             const annotationText = formatAnnotationLine(civNames, this.annotations);
             this.annotationLine.textContent = annotationText;
             this.annotationLine.hidden = !annotationText;
+        }
+        /**
+         * Create one icon and value pair for the header summary
+         */
+        createSummaryItem(icon, value) {
+            const item = document.createElement('span');
+            item.className = 'summary-item';
+            const iconEl = document.createElement('i');
+            iconEl.className = `fa-solid ${icon}`;
+            iconEl.setAttribute('aria-hidden', 'true');
+            const text = document.createElement('span');
+            text.textContent = value;
+            item.appendChild(iconEl);
+            item.appendChild(text);
+            return item;
         }
         /**
          * Show the empty state only while no game is loaded
