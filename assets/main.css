@@ -1,413 +1,481 @@
-/* ============================================
-   TABLE OF CONTENTS
-   ============================================
-   1. CSS Variables & Custom Properties
-   2. Reset & Base Styles
-   3. Typography
-   4. Form Elements & Inputs
-   5. Bootstrap Select Customization
-   6. Page Layout & Structure
-   7. UI Borders & Decorative Elements
-   8. Map Container & Controls
-   9. Log Container & Messages
-   10. Control Bar & Media Controls
-   11. Sliders & Interactive Elements
-   12. Leaflet Map Customization
-   13. Utility Classes
-   ============================================ */
+/* ==========================================================
+   Vox Deorum Replay stylesheet
+   ==========================================================
+   A responsive, plain-CSS frame around the map. The layout has
+   three rows (header, content, timeline) and two content panels
+   (map and events). Wide screens show the panels side by side;
+   narrow screens turn them into tabs driven by body[data-view].
 
-/* ============================================
-   1. CSS VARIABLES & CUSTOM PROPERTIES
-   ============================================ */
+   Table of contents:
+   1. Palette and shared variables
+   2. Reset and base styles
+   3. Typography and links
+   4. Buttons and form controls
+   5. Header
+   6. Destination tabs (narrow screens)
+   7. Content layout: map and events panels
+   8. Map toolbar, layers panel, and map buttons
+   9. Events panel: header, filter, and log
+   10. Timeline: transport, range input, chips, popover
+   11. Empty state
+   12. Loading overlay and error banner
+   13. Drag-and-drop overlay
+   14. Leaflet overrides
+   15. Narrow-screen adjustments
+   ========================================================== */
+
+/* ==========================================================
+   1. Palette and shared variables
+   ========================================================== */
 :root {
-	--primary-color: #ffffc8;
-	--bg-primary: black;
-	--bg-gradient-start: #0e5d54;
-	--bg-gradient-end: #35746c;
-	--border-gold: #A58B4C;
-	--border-dark: #666;
-	--text-inactive: #3D3D30;
-	--message-border: #07201F;
-	--control-bg: #0D3630;
-	--control-border: #E3C37D;
-	--slider-border-top: #E3D1AA;
-	--slider-border-bottom: #856B36;
-	--top-left-width: 300px; /* Width for top-left section */
-	--right-column-width: 400px; /* Width for right column */
+	/* Civilization-flavored palette: parchment text, gold trim,
+	   deep teal panels on a near-black background */
+	--parchment: #f2e9c4;
+	--parchment-dim: #b9b299;
+	--text-inactive: #5f604c;
+	--gold: #a58b4c;
+	--gold-bright: #e3c37d;
+	--teal: #0e5d54;
+	--teal-soft: rgba(14, 93, 84, 0.35);
+	--bg: #0b100e;
+	--panel: #101a17;
+	--panel-raised: #16241f;
+	--border-gold: rgba(165, 139, 76, 0.5);
+	--border-faint: rgba(165, 139, 76, 0.22);
+	--message-border: #07201f;
+	--danger-bg: #3a1f16;
+	--danger-border: #a05c3a;
+	--danger-text: #f4d7c4;
+	--font-heading: 'EB Garamond', serif;
+	--font-body: Lato, Verdana, sans-serif;
+	--events-panel-width: 360px;
+	--header-height: 56px;
+	--timeline-height: 62px;
 }
 
-/* ============================================
-   2. RESET & BASE STYLES
-   ============================================ */
+/* ==========================================================
+   2. Reset and base styles
+   ========================================================== */
 * {
 	margin: 0;
 	padding: 0;
 	box-sizing: border-box;
 }
 
-*:focus,
-*:focus-visible {
-	outline: none !important;
+/* Keep the hidden attribute winning over any display rule */
+[hidden] {
+	display: none !important;
 }
 
-/* Drag and drop styles */
-body.drag-over {
-	position: relative;
-}
-
-body.drag-over::after {
-	content: "Drop Civ5Replay file here";
-	position: fixed;
-	top: 0;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	background: rgba(13, 54, 48, 0.95);
-	border: 4px dashed var(--border-gold);
-	z-index: 10000;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	font-size: 2rem;
-	color: var(--primary-color);
-	font-family: 'EB Garamond', serif;
-	pointer-events: none;
+html,
+body {
+	height: 100%;
 }
 
 body {
-	width: 100%;
-	height: 100%;
-	background-color: var(--bg-primary) !important;
-	color: var(--primary-color);
-	font-family: Lato, Verdana, sans-serif;
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+	height: 100dvh;
 	overflow: hidden;
+	background:
+		radial-gradient(1200px 600px at 50% -10%, #142822, transparent),
+		var(--bg);
+	color: var(--parchment);
+	font-family: var(--font-body);
+	font-size: 16px;
 }
 
-/* ============================================
-   3. TYPOGRAPHY
-   ============================================ */
-h1, h2, h3, h4, h5, h6 {
-	font-family: 'EB Garamond', serif;
-	color: var(--primary-color);
-	margin: 0;
-	padding: 0;
+/* Visible keyboard focus everywhere */
+:focus-visible {
+	outline: 2px solid var(--gold-bright);
+	outline-offset: 2px;
+}
+
+/* ==========================================================
+   3. Typography and links
+   ========================================================== */
+h1,
+h2,
+h3 {
+	font-family: var(--font-heading);
+	font-weight: 600;
+	color: var(--parchment);
 }
 
 a {
-	color: var(--primary-color) !important;
+	color: var(--gold-bright);
 	text-decoration: underline;
 }
 
-/* ============================================
-   4. FORM ELEMENTS & INPUTS
-   ============================================ */
-/* Custom Checkbox Styling */
-input[type=checkbox] {
-	-webkit-appearance: none;
-	appearance: none;
-	width: 10px;
-	height: 10px;
-	background-image: url(ui/checkbox-empty.png);
-	background-size: cover;
-	background-repeat: no-repeat;
+a:hover {
+	color: #f0dfae;
+}
+
+/* ==========================================================
+   4. Buttons and form controls
+   ========================================================== */
+/* Shared look for every button-like control */
+.action-button,
+.chip,
+.map-button,
+.transport-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	background: linear-gradient(180deg, var(--panel-raised), var(--panel));
+	color: var(--parchment);
+	border: 1px solid var(--border-gold);
+	border-radius: 6px;
+	cursor: pointer;
+	font-family: var(--font-body);
+	line-height: 1.2;
+	transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.action-button:hover,
+.chip:hover,
+.map-button:hover,
+.transport-button:hover {
+	border-color: var(--gold-bright);
+	color: #fffdf2;
+	background: linear-gradient(180deg, #1d2f29, #14221d);
+}
+
+.action-button:active,
+.chip:active,
+.map-button:active,
+.transport-button:active {
+	background: linear-gradient(180deg, var(--teal), #0a423c);
+}
+
+/* Header-sized action, e.g. Open */
+.action-button {
+	padding: 9px 14px;
+	font-size: 0.95rem;
+}
+
+/* Small labeled buttons in the timeline and popover */
+.chip {
+	padding: 6px 10px;
+	font-size: 0.85rem;
+}
+
+/* Buttons that sit on top of the map */
+.map-button {
+	padding: 8px 10px;
+	font-size: 0.85rem;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+
+/* Square transport buttons for playback */
+.transport-button {
+	width: 40px;
+	height: 40px;
+	font-size: 0.95rem;
+	flex-shrink: 0;
+}
+
+.transport-button.play {
+	border-color: var(--gold-bright);
+	color: var(--gold-bright);
+}
+
+.transport-button.play:hover {
+	background: linear-gradient(180deg, #1d2f29, #14221d);
+	color: #f0dfae;
+}
+
+/* The play button glows gently while playing */
+body.playing .transport-button.play {
+	background: linear-gradient(180deg, var(--teal), #0a423c);
+	color: #fffdf2;
+}
+
+/* Checkboxes and radios keep their native shape with a gold accent */
+input[type="checkbox"],
+input[type="radio"] {
+	accent-color: var(--gold);
+	width: 16px;
+	height: 16px;
+	flex-shrink: 0;
 	cursor: pointer;
 }
 
-input[type=checkbox]:checked {
-	background-image: url(ui/checkbox-checked.png);
+/* Number and text inputs */
+input[type="number"] {
+	background: var(--bg);
+	color: var(--parchment);
+	border: 1px solid var(--border-gold);
+	border-radius: 6px;
+	padding: 7px 9px;
+	font-family: var(--font-body);
+	font-size: 0.9rem;
+	width: 90px;
 }
 
-/* ============================================
-   5. BOOTSTRAP SELECT CUSTOMIZATION
-   ============================================ */
-.bootstrap-select,
-.bootstrap-select .dropdown-toggle,
-.bootstrap-select span {
-	color: var(--primary-color) !important;
-	background: transparent !important;
-	outline: none !important;
-	box-shadow: none !important;
+/* Details summaries behave like buttons, without the default marker */
+summary {
+	list-style: none;
 }
 
-.bootstrap-select {
-	margin-left: 12px !important;
-	margin-top: 3px !important;
+summary::-webkit-details-marker {
+	display: none;
 }
 
-.bootstrap-select .dropdown-toggle {
-	border: none !important;
+/* ==========================================================
+   5. Header
+   ========================================================== */
+.app-header {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	min-height: var(--header-height);
+	padding: 8px 14px;
+	border-bottom: 1px solid var(--border-faint);
+	background: linear-gradient(180deg, #16241f, #0e1916);
 }
 
-.bootstrap-select .dropdown-toggle:focus {
-	outline: none !important;
+.brand {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-shrink: 0;
 }
 
-/* Dropdown Menu Styling */
-.bootstrap-select .dropdown-menu.open {
-	background: var(--bg-primary) !important;
-	border: 1px solid var(--border-gold) !important;
-	border-top: none !important;
-	border-radius: 0 0 4px 4px;
-	top: 1px;
+.brand i {
+	color: var(--gold-bright);
+	font-size: 1.15rem;
+}
+
+.brand h1 {
+	font-size: 1.25rem;
+	letter-spacing: 0.04em;
+	white-space: nowrap;
+}
+
+/* Loaded-game summary and annotation line */
+.game-info {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: 1px;
+	min-width: 0;
+	overflow: hidden;
+}
+
+.game-summary {
+	font-size: 0.85rem;
+	color: var(--parchment-dim);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.annotation-line {
+	font-size: 0.85rem;
+	color: var(--gold-bright);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+#openButton {
+	margin-left: auto;
+}
+
+/* ==========================================================
+   6. Destination tabs (narrow screens)
+   ========================================================== */
+.view-tabs {
+	display: none;
+	border-bottom: 1px solid var(--border-faint);
+	background: var(--panel);
+}
+
+.view-tab {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	padding: 11px 8px;
+	background: transparent;
+	border: none;
+	border-bottom: 2px solid transparent;
+	color: var(--parchment-dim);
+	font-family: var(--font-body);
+	font-size: 0.95rem;
+	cursor: pointer;
+}
+
+.view-tab:hover {
+	color: var(--parchment);
+}
+
+.view-tab.active {
+	color: var(--gold-bright);
+	border-bottom-color: var(--gold);
+	background: rgba(165, 139, 76, 0.08);
+}
+
+/* ==========================================================
+   7. Content layout: map and events panels
+   ========================================================== */
+.app-main {
+	flex: 1;
+	display: flex;
+	min-height: 0;
 	position: relative;
 }
 
-.bootstrap-select .dropdown-menu.inner {
-	background: var(--bg-primary) !important;
-}
-
-/* Dropdown Hover State */
-.bootstrap-select a:hover,
-.bootstrap-select a:hover span {
-	background: linear-gradient(to bottom, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%) !important;
-}
-
-/* Custom Checkmark Icon */
-.glyphicon.glyphicon-ok.check-mark {
-	background-image: url(ui/checkbox-checked.png) !important;
-	width: 10px;
-	height: 10px;
-	background-size: cover !important;
-}
-
-.glyphicon.glyphicon-ok.check-mark:before {
-	content: "";
-}
-
-/* ============================================
-   6. PAGE LAYOUT & STRUCTURE
-   ============================================ */
-/* Header Area */
-.page-header-area {
-	position: absolute;
-	top: 0;
-	left: 0;
-	width: 100%;
-	height: 37px;
-	font-size: 20px;
-	text-align: center;
-	line-height: 26px;
-	background: url(./ui/header.png) center/contain no-repeat;
-}
-
-/* Main Container */
-.main-container {
-	position: absolute;
-	top: 50px;
-	left: 20px;
-	width: calc(100% - 40px);
-	height: calc(100% - 85px); /* header + legal footer */
-}
-
-/* Disclaimer Footer */
-.disclaimer {
-	position: absolute;
-	bottom: 0;
-	left: 50%;
-	transform: translateX(-50%);
-	width: 1000px;
-	height: 32px;
-	text-align: center;
-	font-size: 11px;
-}
-
-/* ============================================
-   7. UI BORDERS & DECORATIVE ELEMENTS
-   ============================================ */
-/* Top Border Elements */
-.top-bar {
-	position: absolute;
-	top: 0;
-	left: 0;
-	width: 100%;
-	height: 38px;
-}
-
-.top-left-corner,
-.top-right-corner {
-	position: absolute;
-	top: 0;
-	width: 38px;
-	height: 100%;
-	background: url(./ui/border_top_corner.png) center/contain no-repeat;
-}
-
-.top-left-corner {
-	left: 0;
-}
-
-.top-right-corner {
-	right: 0;
-}
-
-.top-left,
-.top-right {
-	position: absolute;
-	top: 0;
-	height: 100%;
-	background-image: url(./ui/border_top_side.png);
-}
-
-.top-left {
-	left: 38px;
-	width: var(--top-left-width);
-}
-
-.top-right {
-	right: 38px;
-	width: calc(var(--right-column-width) - 20px); /* Adjusted to match wider column */
-}
-
-.top-left-split {
-	position: absolute;
-	top: 0;
-	left: calc(38px + var(--top-left-width)); /* 38px + top-left width */
-	width: 3px;
-	height: 100%;
-	background-image: url(./ui/border_top_split.png);
-}
-
-.top-middle {
-	position: absolute;
-	top: 0;
-	left: calc(38px + var(--top-left-width) + 3px); /* 38px + top-left width + 3px */
-	width: calc(100% - 38px - var(--top-left-width) - 3px - 5px - var(--right-column-width) + 20px - 38px); /* dynamic calculation */
-	height: 100%;
-	background-image: url(./ui/border_top_middle.png);
-}
-
-.top-right-split {
-	position: absolute;
-	top: 0;
-	right: calc(38px + var(--right-column-width) - 20px); /* Adjusted for wider column */
-	width: 5px;
-	height: 100%;
-	background-image: url(./ui/border_top_right_split.png);
-}
-
-/* Side Borders */
-.border {
-	position: absolute;
-	top: 38px;
-	width: 11px;
-	height: calc(100% - 38px - 54px);
-	/* top bar, bottom border */
-	background-image: url(./ui/border_side.png);
-	background-repeat: repeat-y;
-}
-
-.left-border {
-	left: 2px;
-}
-
-.right-border {
-	right: 2px;
-}
-
-.split-border {
-	right: calc(var(--right-column-width) + 11px); /* sidebar width + border */
-}
-
-/* Bottom Border Elements */
-.bottom-border {
-	position: absolute;
-	bottom: 0;
-	left: 0;
-	width: 100%;
-	height: 54px;
-}
-
-.bottom-left-corner,
-.bottom-right-corner {
-	position: absolute;
-	top: 0;
-	width: 38px;
-	height: 100%;
-}
-
-.bottom-left-corner {
-	left: 0;
-	background-image: url(./ui/border_bottom_corner.png);
-}
-
-.bottom-right-corner {
-	right: 0;
-	background-image: url(./ui/border_bottom_corner.png);
-}
-
-.bottom-left,
-.bottom-right {
-	position: absolute;
-	top: 0;
-	width: calc((100% - 368px) / 2); /* (total - corners - middle) / 2 */
-	height: 100%;
-	background-image: url(./ui/border_bottom_side.png);
-}
-
-.bottom-left {
-	left: 38px;
-}
-
-.bottom-right {
-	right: 38px;
-}
-
-.bottom-middle {
-	position: absolute;
-	top: 0;
-	left: 50%;
-	transform: translateX(-50%);
-	width: 292px;
-	height: 100%;
-	background-image: url(./ui/border_bottom_middle.png);
-}
-
-/* ============================================
-   8. MAP CONTAINER & CONTROLS
-   ============================================ */
-.map-container {
-	position: absolute;
-	top: 38px;
-	left: 11px;
-	width: calc(100% - var(--right-column-width) - 30px); /* sidebar + borders */
-	height: calc(100% - 92px); /* top + bottom borders */
-	border-right: 1px solid var(--border-dark);
+.map-panel {
+	flex: 1;
+	position: relative;
+	min-width: 0;
 }
 
 .map {
-	width: 100%;
-	height: 100%;
-}
-
-/* ============================================
-   9. LOG CONTAINER & MESSAGES
-   ============================================ */
-.log-container {
 	position: absolute;
-	top: 38px;
-	right: 11px;
-	width: var(--right-column-width);
-	height: calc(100% - 92px); /* top + bottom borders */
+	inset: 0;
 }
 
-.log-filter-container {
-	height: 30px;
-	width: 100%;
-	border-bottom: 1px solid var(--border-dark);
+.events-panel {
+	width: var(--events-panel-width);
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	border-left: 1px solid var(--border-faint);
+	background: var(--panel);
 }
 
-.log-messages {
-	height: 100%;
-	width: 100%;
-	overflow-y: auto;
-	margin: 0;
+/* ==========================================================
+   8. Map toolbar, layers panel, and map buttons
+   ========================================================== */
+.map-toolbar {
+	position: absolute;
+	top: 10px;
+	left: 10px;
+	z-index: 1000;
+}
+
+.layers-control {
+	position: relative;
+	display: inline-block;
+}
+
+.layers-panel {
+	position: absolute;
+	top: calc(100% + 6px);
+	left: 0;
+	min-width: 220px;
+	background: var(--panel-raised);
+	border: 1px solid var(--border-gold);
+	border-radius: 8px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+	padding: 8px 10px;
+	z-index: 1001;
+}
+
+.layer-option,
+.filter-option {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	padding: 7px 6px;
+	border-radius: 6px;
+	cursor: pointer;
+	font-size: 0.9rem;
+	user-select: none;
+}
+
+.layer-option:hover,
+.filter-option:hover {
+	background: rgba(165, 139, 76, 0.12);
+}
+
+.layer-option i,
+.filter-option i {
+	color: var(--gold-bright);
+	width: 16px;
+	text-align: center;
+}
+
+.map-buttons {
+	position: absolute;
+	right: 10px;
+	bottom: 10px;
+	z-index: 1000;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.map-buttons .map-button {
+	width: 42px;
+	height: 42px;
 	padding: 0;
 }
 
-/* Message Styling */
+/* ==========================================================
+   9. Events panel: header, filter, and log
+   ========================================================== */
+.events-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 9px 12px;
+	border-bottom: 1px solid var(--border-faint);
+	background: linear-gradient(180deg, var(--panel-raised), var(--panel));
+	flex-shrink: 0;
+}
+
+.events-header h2 {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 1.1rem;
+	white-space: nowrap;
+}
+
+.events-header h2 i {
+	color: var(--gold-bright);
+	font-size: 0.95rem;
+}
+
+.events-filter {
+	position: relative;
+}
+
+.filter-panel {
+	position: absolute;
+	top: calc(100% + 6px);
+	right: 0;
+	width: 240px;
+	background: var(--panel-raised);
+	border: 1px solid var(--border-gold);
+	border-radius: 8px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+	padding: 8px 10px;
+	z-index: 30;
+}
+
+.log-messages {
+	flex: 1;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/* Event entries */
 .message {
-	padding: 3px 10px;
-	background-color: var(--bg-primary);
+	padding: 5px 10px;
+	background-color: var(--bg);
 	border-bottom: 2px solid var(--message-border);
 }
 
@@ -416,18 +484,18 @@ input[type=checkbox]:checked {
 }
 
 .message.active:hover {
-	background: linear-gradient(to bottom, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+	background: linear-gradient(to bottom, var(--teal) 0%, #35746c 100%);
 }
 
 .message.hidden {
 	display: none;
 }
 
-/* Civilization Header Styling */
+/* Civilization line above an event */
 .civ-header {
 	display: flex;
 	align-items: center;
-	margin-bottom: 4px;
+	margin-bottom: 3px;
 }
 
 .civ-circle {
@@ -453,6 +521,19 @@ input[type=checkbox]:checked {
 	font-size: 0.9em;
 }
 
+/* Annotation shown next to the civilization name, e.g. "· GLM" */
+.civ-annotation {
+	color: var(--gold-bright);
+	font-style: italic;
+	font-weight: normal;
+	margin-left: 5px;
+	font-size: 0.9em;
+}
+
+.message:not(.active) .civ-annotation {
+	opacity: 0.7;
+}
+
 .event-text {
 	line-height: 1.4;
 }
@@ -470,22 +551,19 @@ input[type=checkbox]:checked {
 	display: inline-block;
 }
 
-/* Special styling for gold icons to look like coins */
 .formatted-text .game-icon.fa-circle {
 	text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
 }
 
-/* Color text styling */
 .formatted-text .colored-text {
 	font-weight: 500;
 }
 
-/* Ensure colored text inherits active/inactive states */
 .message:not(.active) .formatted-text .colored-text {
 	opacity: 0.7;
 }
 
-/* Strategy Change Styling */
+/* Strategy change entries */
 .strategy-change {
 	margin-top: 4px;
 }
@@ -498,7 +576,6 @@ input[type=checkbox]:checked {
 	flex-wrap: wrap;
 }
 
-/* Base styles for all strategy elements */
 .strategy-key {
 	font-weight: bold;
 	min-width: fit-content;
@@ -536,9 +613,9 @@ input[type=checkbox]:checked {
 	font-style: normal;
 }
 
-/* Active state colors */
+/* Active strategy colors */
 .message.active .strategy-key {
-	color: var(--primary-color);
+	color: var(--parchment);
 }
 
 .message.active .strategy-from {
@@ -548,25 +625,25 @@ input[type=checkbox]:checked {
 }
 
 .message.active .strategy-to {
-	background-color: rgba(14, 93, 84, 0.4);
-	color: var(--primary-color);
+	background-color: var(--teal-soft);
+	color: var(--parchment);
 	border-color: rgba(14, 93, 84, 0.8);
 }
 
 .message.active .strategy-arrow {
-	color: var(--border-gold);
+	color: var(--gold-bright);
 }
 
 .message.active .strategy-rationale {
 	background-color: rgba(13, 54, 48, 0.3);
-	border-left-color: var(--border-gold);
+	border-left-color: var(--gold);
 }
 
 .message.active .rationale-label {
-	color: var(--border-gold);
+	color: var(--gold-bright);
 }
 
-/* Inactive state colors */
+/* Inactive strategy colors */
 .message:not(.active) .strategy-key {
 	color: var(--text-inactive);
 }
@@ -597,17 +674,17 @@ input[type=checkbox]:checked {
 	color: #5a5a4a;
 }
 
-/* Turn Separator Styling */
+/* Turn separators between event groups */
 .turn-separator {
 	padding: 5px 10px;
-	background: linear-gradient(to right, var(--bg-gradient-start), var(--bg-gradient-end));
-	color: var(--primary-color);
+	background: linear-gradient(to right, var(--teal), #35746c);
+	color: var(--parchment);
 	font-weight: bold;
-	font-family: 'EB Garamond', serif;
+	font-family: var(--font-heading);
 	font-size: 14px;
 	text-align: center;
-	border-top: 2px solid var(--border-gold);
-	border-bottom: 2px solid var(--border-gold);
+	border-top: 2px solid var(--gold);
+	border-bottom: 2px solid var(--gold);
 	margin: 5px 0;
 }
 
@@ -617,181 +694,403 @@ input[type=checkbox]:checked {
 	border-color: var(--message-border);
 }
 
-/* ============================================
-   10. CONTROL BAR & MEDIA CONTROLS
-   ============================================ */
-.control-bar {
-	position: absolute;
-	top: 37px;
-	left: 0;
-	width: calc(100% - var(--right-column-width));
-	height: 50px;
-	border-bottom: 1px solid var(--border-dark);
-	background-size: contain;
-	background-repeat: no-repeat;
+/* ==========================================================
+   10. Timeline: transport, range input, chips, popover
+   ========================================================== */
+.timeline {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	min-height: var(--timeline-height);
+	padding: 10px 14px;
+	border-top: 1px solid var(--border-faint);
+	background: linear-gradient(180deg, #101c18, #0c1512);
 }
 
-/* Play/Pause Button */
-#playPause {
-	position: absolute;
-	left: 10px;
-	top: 6px;
-	width: 33px;
-	height: 27px;
-	background: url(ui/button_black.png) 4px center/contain no-repeat;
-	background-color: transparent;
-	border: none;
-	font-size: 13px;
-	color: #F9FBC5;
+.transport {
+	display: flex;
+	gap: 6px;
+}
+
+/* Native range input styled like an old scroll track */
+#turnRange {
+	flex: 1;
+	min-width: 60px;
+	-webkit-appearance: none;
+	appearance: none;
+	background: transparent;
+	height: 32px;
 	cursor: pointer;
 }
 
-#playPause:hover {
-	background-image: url(ui/button_green.png);
+#turnRange::-webkit-slider-runnable-track {
+	height: 8px;
+	border-radius: 4px;
+	background: linear-gradient(180deg, #1c2a26, #14201c);
+	border: 1px solid var(--border-faint);
 }
 
-#playPause > .fa-play {
-	margin-left: -2px;
+#turnRange::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	width: 22px;
+	height: 22px;
+	margin-top: -8px;
+	border-radius: 50%;
+	background: radial-gradient(circle at 35% 30%, #f0dfae, var(--gold) 60%);
+	border: 1px solid #6e5a2c;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
 }
 
-#playPause > .fa-pause {
-	margin-left: -3px;
+#turnRange::-moz-range-track {
+	height: 8px;
+	border-radius: 4px;
+	background: linear-gradient(180deg, #1c2a26, #14201c);
+	border: 1px solid var(--border-faint);
 }
 
-/* ============================================
-   11. SLIDERS & INTERACTIVE ELEMENTS
-   ============================================ */
-/* Speed Slider */
-#speedSlider {
-	position: absolute;
-	top: 10px;
-	left: 70px;
-	width: 200px;
+#turnRange::-moz-range-thumb {
+	width: 20px;
+	height: 20px;
+	border-radius: 50%;
+	background: radial-gradient(circle at 35% 30%, #f0dfae, var(--gold) 60%);
+	border: 1px solid #6e5a2c;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
 }
 
-/* Turn Slider */
-#turnSlider {
-	position: absolute;
-	width: calc(100% - 30px);
-	left: 15px;
-	top: 9px;
+.timeline-meta {
+	display: flex;
+	gap: 8px;
+	flex-shrink: 0;
 }
 
-/* Slider Base Styling */
-.slider {
-	border-top: 2px solid var(--slider-border-top);
-	border-bottom: 1px solid var(--slider-border-bottom);
-	border-radius: 20px;
-}
-
-.slider-track {
-	height: 16px !important;
-	width: calc(100% - 2px) !important;
-	margin-top: -9px !important;
-	margin-left: 1px !important;
-	background-image: none;
-}
-
-.slider-selection,
-.tick-slider-selection,
-.slider-track-high {
-	background-color: var(--bg-primary) !important;
-	background-image: none !important;
-	border-radius: 20px;
-}
-
-/* Slider Ticks */
-.slider-tick,
-.slider-tick.in-selection {
-	background-color: var(--bg-gradient-start) !important;
-	background-image: none;
-	width: 5px;
-	height: 5px;
-	top: 5px;
-	margin-left: -2px !important;
-	margin-top: 1px !important;
-}
-
-.slider-track-high + .slider-tick,
-.slider-tick:nth-child(5n) {
+/* Short turn label is only used on narrow screens */
+.turn-short {
 	display: none;
 }
 
-/* Slider Handle */
-.slider-handle {
-	width: 29px;
-	height: 29px;
-	background: url(ui/slider_handle.png) no-repeat;
-	background-color: transparent !important;
-	border-radius: 0 !important;
-	border: none !important;
-	margin-left: -15px !important;
-	margin-top: -7px !important;
-	box-shadow: none !important;
+/* Popover with the go-to field and the speed choice */
+.turn-popover {
+	position: absolute;
+	right: 14px;
+	bottom: calc(100% + 8px);
+	width: min(280px, calc(100vw - 28px));
+	background: var(--panel-raised);
+	border: 1px solid var(--border-gold);
+	border-radius: 10px;
+	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+	padding: 14px;
+	z-index: 100;
 }
 
-/* ============================================
-   12. LEAFLET MAP CUSTOMIZATION
-   ============================================ */
+.goto-form {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.goto-form label {
+	font-size: 0.85rem;
+	color: var(--parchment-dim);
+	flex-shrink: 0;
+}
+
+.goto-form input {
+	flex: 1;
+	width: auto;
+	min-width: 0;
+}
+
+.speed-section {
+	margin-top: 14px;
+	border-top: 1px solid var(--border-faint);
+	padding-top: 10px;
+}
+
+.speed-heading {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-family: var(--font-heading);
+	color: var(--gold-bright);
+	margin-bottom: 4px;
+}
+
+.speed-option {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	padding: 7px 6px;
+	border-radius: 6px;
+	cursor: pointer;
+	font-size: 0.9rem;
+	user-select: none;
+}
+
+.speed-option:hover {
+	background: rgba(165, 139, 76, 0.12);
+}
+
+.speed-option i {
+	color: var(--gold-bright);
+	width: 16px;
+	text-align: center;
+}
+
+/* ==========================================================
+   11. Empty state
+   ========================================================== */
+.empty-state {
+	position: absolute;
+	inset: 0;
+	z-index: 20;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	overflow-y: auto;
+	background:
+		radial-gradient(900px 480px at 50% -5%, #173029, transparent),
+		var(--bg);
+}
+
+.empty-card {
+	max-width: 600px;
+	width: calc(100% - 32px);
+	text-align: center;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 13px;
+	padding: 36px 16px;
+}
+
+.empty-title {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	font-size: 2rem;
+	letter-spacing: 0.04em;
+}
+
+.empty-title i {
+	color: var(--gold-bright);
+	font-size: 1.7rem;
+}
+
+.empty-subtitle {
+	color: var(--parchment-dim);
+	font-size: 0.95rem;
+}
+
+.empty-open {
+	font-size: 1.05rem;
+	padding: 12px 20px;
+	border-color: var(--gold-bright);
+}
+
+.drop-hint {
+	color: var(--parchment-dim);
+	font-size: 0.9rem;
+}
+
+.drop-hint i {
+	margin-right: 4px;
+}
+
+.examples-label {
+	margin-top: 14px;
+	font-family: var(--font-heading);
+	font-size: 1.05rem;
+	color: var(--gold-bright);
+}
+
+.examples {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	justify-content: center;
+}
+
+.example-button {
+	flex-direction: column;
+	gap: 2px;
+	padding: 10px 16px;
+	min-width: 96px;
+}
+
+.example-button .example-kind {
+	font-size: 0.72rem;
+	color: var(--parchment-dim);
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+}
+
+.example-button:hover .example-kind {
+	color: var(--parchment);
+}
+
+.disclaimer {
+	font-size: 0.72rem;
+	color: #6f7a6c;
+	margin-top: 16px;
+	line-height: 1.55;
+	max-width: 520px;
+}
+
+/* ==========================================================
+   12. Loading overlay and error banner
+   ========================================================== */
+.loading-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 40;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 12px;
+	background: rgba(8, 12, 10, 0.78);
+	font-size: 1.05rem;
+}
+
+.loading-overlay i {
+	color: var(--gold-bright);
+	font-size: 1.4rem;
+}
+
+.error-banner {
+	position: fixed;
+	top: 12px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 300;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	max-width: min(560px, calc(100vw - 24px));
+	background: var(--danger-bg);
+	border: 1px solid var(--danger-border);
+	border-radius: 8px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+	padding: 8px 8px 8px 14px;
+	color: var(--danger-text);
+	font-size: 0.9rem;
+}
+
+.error-banner i {
+	flex-shrink: 0;
+}
+
+.error-banner span {
+	flex: 1;
+}
+
+.error-banner .transport-button {
+	width: 32px;
+	height: 32px;
+	background: transparent;
+	border-color: var(--danger-border);
+	color: var(--danger-text);
+}
+
+/* ==========================================================
+   13. Drag-and-drop overlay
+   ========================================================== */
+body.drag-over::after {
+	content: "Drop your .Civ5Replay or .Civ5Save file to load it";
+	position: fixed;
+	top: 8px;
+	left: 8px;
+	right: 8px;
+	bottom: 8px;
+	background: rgba(13, 54, 48, 0.9);
+	border: 3px dashed var(--gold-bright);
+	border-radius: 12px;
+	z-index: 10000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+	padding: 20px;
+	font-size: 1.4rem;
+	font-family: var(--font-heading);
+	color: var(--parchment);
+	pointer-events: none;
+}
+
+/* ==========================================================
+   14. Leaflet overrides
+   ========================================================== */
 .leaflet-container {
-	background: var(--bg-primary) !important;
+	background: var(--bg);
+	font-family: var(--font-body);
 }
 
-/* Zoom Controls */
-.leaflet-control-zoom-in,
-.leaflet-control-zoom-out {
-	background-color: var(--control-bg) !important;
-	color: var(--primary-color) !important;
-	border: 1px solid var(--control-border) !important;
+/* ==========================================================
+   15. Narrow-screen adjustments
+   ========================================================== */
+/* Below the tab breakpoint the events panel overlays the map */
+@media (max-width: 900px) {
+	.view-tabs {
+		display: flex;
+	}
+
+	.events-panel {
+		position: absolute;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		left: 0;
+		width: auto;
+		border-left: none;
+		z-index: 10;
+		display: none;
+	}
+
+	body[data-view="events"] .events-panel {
+		display: flex;
+	}
 }
 
-.leaflet-control-zoom-in {
-	border-bottom: none !important;
-}
+/* Phone-sized tweaks: compact header, tighter timeline */
+@media (max-width: 640px) {
+	.app-header {
+		gap: 10px;
+		padding: 8px 10px;
+	}
 
-/* Layers Control */
-.leaflet-control-layers {
-	background-color: transparent !important;
-	box-shadow: none !important;
-}
+	.brand h1 {
+		font-size: 1.05rem;
+	}
 
-.leaflet-control-layers-toggle {
-	width: 64px;
-	height: 64px;
-	background: url(ui/layers.png) center/cover no-repeat;
-	background-color: rgba(12, 53, 48, 0.85);
-	border-radius: 5px;
-	border: 1px solid var(--control-border) !important;
-}
+	.game-summary {
+		display: none;
+	}
 
-.leaflet-control-layers-list {
-	background: rgba(12, 53, 48, 0.85);
-	padding: 10px 10px 5px 10px;
-	border-radius: 5px;
-	border: 1px solid var(--control-border) !important;
-}
+	.annotation-line {
+		font-size: 0.78rem;
+	}
 
-.leaflet-control-layers-list label {
-	color: var(--primary-color);
-	font-size: 13px;
-}
+	/* First and last turn buttons move out of the row */
+	#firstButton,
+	#lastButton {
+		display: none;
+	}
 
-.leaflet-control-layers-list span {
-	padding: 0 5px;
-}
+	.timeline {
+		gap: 10px;
+		padding: 8px 10px;
+	}
 
-/* ============================================
-   13. UTILITY CLASSES
-   ============================================ */
-.flipped {
-	transform: scaleX(-1);
-	-webkit-transform: scaleX(-1);
-	-moz-transform: scaleX(-1);
-	-o-transform: scaleX(-1);
-	filter: FlipH;
-	-ms-filter: "FlipH";
-}
+	/* Swap the long turn label for the bare number */
+	.turn-long {
+		display: none;
+	}
 
-.textures {
-	display: none;
+	.turn-short {
+		display: inline;
+	}
+
+	.chip {
+		padding: 8px 10px;
+	}
 }

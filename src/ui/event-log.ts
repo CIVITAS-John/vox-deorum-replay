@@ -1,7 +1,8 @@
 /**
  * event-log.ts
- * Manages the event log display for game events
- * Shows filtered messages and events from the replay based on turn and event type
+ * The event log in the side panel
+ * Shows filtered events from the replay grouped by turn, follows the session,
+ * and shows civilization annotations next to civilization names
  */
 
 import { GameEvent, EventType } from '../replay/types';
@@ -9,40 +10,76 @@ import { Replay } from '../replay/replay';
 import { GameSession } from '../replay/session';
 import { parseStrategyEvent, renderStrategyEvent } from './utils/strategy-parser';
 import { formatGameText, hasGameMarkup } from './utils/text-formatter';
+import { CivAnnotations, annotationFor } from './annotations';
 
-// External libraries accessed as globals - types defined in globals.d.ts
+// One entry in the event type filter: the type, its label, and its icon
+interface FilterableType {
+	type: EventType;
+	label: string;
+	icon: string;
+}
+
+// The event types the filter offers, in display order
+const filterableTypes: FilterableType[] = [
+	{ type: EventType.Message, label: 'Messages', icon: 'fa-comment-dots' },
+	{ type: EventType.Strategies, label: 'Strategies', icon: 'fa-chess-knight' },
+	{ type: EventType.CityFounded, label: 'New cities', icon: 'fa-city' },
+	{ type: EventType.CitiesTransferred, label: 'City transfers', icon: 'fa-right-left' },
+	{ type: EventType.CityRazed, label: 'City razings', icon: 'fa-fire' },
+	{ type: EventType.PantheonSelected, label: 'Pantheons', icon: 'fa-hands-praying' },
+	{ type: EventType.ReligionFounded, label: 'Religions', icon: 'fa-star-and-crescent' },
+	{ type: EventType.TilesClaimed, label: 'Tile claims', icon: 'fa-draw-polygon' }
+];
+
+// Types shown when the log first appears: everything except tile claims,
+// which are noisy on large maps
+const defaultTypes: EventType[] = [
+	EventType.Message,
+	EventType.Strategies,
+	EventType.CityFounded,
+	EventType.CitiesTransferred,
+	EventType.CityRazed,
+	EventType.PantheonSelected,
+	EventType.ReligionFounded
+];
 
 /**
  * EventLog class
- * Manages and displays game events with filtering and turn-based navigation
+ * Renders the session's events and filters them by type
  */
 export class EventLog {
-	private readonly logContainer: HTMLElement;
 	private readonly messagesEl: HTMLElement;
 	private readonly events: GameEvent[];
 	private readonly replay: Replay;
+	private readonly annotations: CivAnnotations;
+	private readonly filterPanel: HTMLElement;
+	private readonly filterDetails: HTMLDetailsElement;
+	private readonly filterCount: HTMLElement;
 	private types: Set<EventType> = new Set();
 
-	// WeakMap for associating DOM elements with their event data
+	// Associations between DOM elements and their event data
 	private readonly elementToEvent = new WeakMap<HTMLElement, GameEvent>();
 	private readonly eventToElement = new Map<GameEvent, HTMLElement>();
 
-	// Track current turn for scrolling optimization
-	private currentTurn: number = 0;
-
-	// Track turn separator elements for scrolling
+	// Turn separator elements by turn, for scrolling
 	private readonly turnSeparators = new Map<number, HTMLElement>();
 
 	// Stops following the session
 	private unsubscribe: (() => void) | null = null;
 
-	constructor(session: GameSession) {
-		this.logContainer = document.querySelector('.log-container');
-		this.messagesEl = this.logContainer.querySelector('.log-messages');
+	// Closes the filter dropdown on outside clicks
+	private outsideClickHandler: ((e: MouseEvent) => void) | null = null;
+
+	constructor(session: GameSession, annotations: CivAnnotations = {}) {
+		this.messagesEl = document.getElementById('logMessages');
+		this.filterPanel = document.getElementById('filterPanel');
+		this.filterDetails = document.getElementById('eventsFilter') as HTMLDetailsElement;
+		this.filterCount = document.getElementById('filterCount');
 		this.events = session.replay.events;
 		this.replay = session.replay;
+		this.annotations = annotations;
 
-		this.initializeEventFilter();
+		this.buildFilter();
 		this.renderEvents();
 
 		// Follow the session: every turn change scrolls and activates the log
@@ -58,44 +95,76 @@ export class EventLog {
 			this.unsubscribe();
 			this.unsubscribe = null;
 		}
+		if (this.outsideClickHandler) {
+			document.removeEventListener('click', this.outsideClickHandler);
+			this.outsideClickHandler = null;
+		}
 		this.clear();
 	}
 
 	/**
-	 * Initialize event type filtering
+	 * Build the filter checkbox for every offered event type
 	 */
-	private initializeEventFilter(): void {
-		const eventSelect = document.getElementById('event-select');
+	private buildFilter(): void {
+		filterableTypes.forEach(entry => {
+			const label = document.createElement('label');
+			label.className = 'filter-option';
 
-		// Bootstrap selectpicker event handling
-		$(eventSelect).on('changed.bs.select', (e: any) => {
-			const selectedValues = $(e.target).val() || [];
-			console.log('Event filter changed:', selectedValues);
-			this.updateTypeFilter(selectedValues);
+			const checkbox = document.createElement('input');
+			checkbox.type = 'checkbox';
+			checkbox.checked = defaultTypes.includes(entry.type);
+			checkbox.addEventListener('change', () => {
+				if (checkbox.checked) {
+					this.types.add(entry.type);
+				} else {
+					this.types.delete(entry.type);
+				}
+				this.updateFilterCount();
+				this.applyTypeFilter();
+			});
+
+			const icon = document.createElement('i');
+			icon.className = `fa-solid ${entry.icon}`;
+			icon.setAttribute('aria-hidden', 'true');
+
+			const text = document.createElement('span');
+			text.textContent = entry.label;
+
+			label.appendChild(checkbox);
+			label.appendChild(icon);
+			label.appendChild(text);
+			this.filterPanel.appendChild(label);
+
+			if (checkbox.checked) {
+				this.types.add(entry.type);
+			}
 		});
 
-		// Set initial filter values
-		const initialValues = ($(eventSelect) as any).selectpicker('val') || [];
-		this.updateTypeFilter(initialValues);
+		this.updateFilterCount();
+
+		// Close the dropdown when clicking anywhere outside it
+		this.outsideClickHandler = (e: MouseEvent) => {
+			if (this.filterDetails.open && !this.filterDetails.contains(e.target as Node)) {
+				this.filterDetails.open = false;
+			}
+		};
+		document.addEventListener('click', this.outsideClickHandler);
 	}
 
 	/**
-	 * Update the type filter with new values
+	 * Refresh the count shown on the filter button
 	 */
-	private updateTypeFilter(types: (string | number)[]): void {
-		this.types.clear();
-		types.forEach(type => this.types.add(Number(type) as EventType));
-
-		console.log('Setting types:', Array.from(this.types));
-		this.applyTypeFilter();
+	private updateFilterCount(): void {
+		this.filterCount.textContent = this.types.size === filterableTypes.length
+			? 'All types'
+			: `${this.types.size} types`;
 	}
 
 	/**
-	 * Apply type filter to all message elements
+	 * Apply the type filter to all message elements
 	 */
 	private applyTypeFilter(): void {
 		const messages = this.messagesEl.querySelectorAll<HTMLElement>('.message');
-		console.log('Total messages:', messages.length);
 
 		messages.forEach(msg => {
 			const event = this.elementToEvent.get(msg);
@@ -106,7 +175,6 @@ export class EventLog {
 			}
 		});
 	}
-
 
 	/**
 	 * Create a message element for an event
@@ -129,29 +197,36 @@ export class EventLog {
 			const civColor = this.replay.getCivColor(event.civId);
 
 			if (civName) {
-				// Create civ header
 				const civHeader = document.createElement('div');
 				civHeader.className = 'civ-header';
 
 				if (civColor) {
-					// Major civ - use colored circle with territory/tile color
+					// Major civ: colored circle in the territory color
 					const circle = document.createElement('span');
 					circle.className = 'civ-circle';
 					circle.style.backgroundColor = `rgb(${civColor.territory[0]}, ${civColor.territory[1]}, ${civColor.territory[2]})`;
 					civHeader.appendChild(circle);
 				} else {
-					// Minor civ - use rectangle with default color
+					// Minor civ: gray rectangle
 					const rect = document.createElement('span');
 					rect.className = 'civ-rectangle';
 					civHeader.appendChild(rect);
 				}
 
-				// Create civ name text
 				const civNameEl = document.createElement('span');
 				civNameEl.className = 'civ-name';
 				civNameEl.textContent = civName;
-
 				civHeader.appendChild(civNameEl);
+
+				// URL annotation for this civilization, e.g. "· GLM"
+				const annotation = annotationFor(this.annotations, event.civId);
+				if (annotation) {
+					const annotationEl = document.createElement('span');
+					annotationEl.className = 'civ-annotation';
+					annotationEl.textContent = `· ${annotation}`;
+					civHeader.appendChild(annotationEl);
+				}
+
 				msg.appendChild(civHeader);
 			}
 		}
@@ -166,7 +241,7 @@ export class EventLog {
 				const strategyElement = renderStrategyEvent(parsed);
 				msg.appendChild(strategyElement);
 			} else if (hasGameMarkup(event.text)) {
-				// Check if text contains game markup (icons/colors)
+				// Text contains game markup (icons/colors)
 				const formattedElement = formatGameText(event.text);
 				formattedElement.classList.add('event-text');
 				msg.appendChild(formattedElement);
@@ -179,11 +254,11 @@ export class EventLog {
 			}
 		}
 
-		// Store bidirectional association using WeakMap and Map
+		// Store bidirectional association
 		this.elementToEvent.set(msg, event);
 		this.eventToElement.set(event, msg);
 
-		// Apply initial filter
+		// Apply the current filter
 		if (!this.types.has(event.type)) {
 			msg.classList.add('hidden');
 		}
@@ -203,19 +278,18 @@ export class EventLog {
 	}
 
 	/**
-	 * Render all events
+	 * Render all events grouped by turn
 	 */
 	private renderEvents(): void {
 		this.clear();
 
-		// If no events, return early
 		if (this.events.length === 0) {
 			return;
 		}
 
 		const fragment = document.createDocumentFragment();
 
-		// Find the range of turns
+		// Find the range of turns that carry events
 		let minTurn = Infinity;
 		let maxTurn = -Infinity;
 
@@ -224,12 +298,12 @@ export class EventLog {
 			if (event.turn > maxTurn) maxTurn = event.turn;
 		});
 
-		// Handle case where all events were empty and got filtered
+		// Handle the case where all events were empty and got filtered
 		if (minTurn === Infinity || maxTurn === -Infinity) {
 			return;
 		}
 
-		// Group events by turn for easier processing
+		// Group events by turn
 		const eventsByTurn = new Map<number, GameEvent[]>();
 		this.events.forEach(event => {
 			// Skip empty message events
@@ -243,14 +317,12 @@ export class EventLog {
 			eventsByTurn.get(event.turn)!.push(event);
 		});
 
-		// Create turn separators for all turns in range
+		// Create a separator for every turn in range, then its events
 		for (let turn = minTurn; turn <= maxTurn; turn++) {
-			// Add turn separator for every turn
 			const separator = this.createTurnSeparator(turn);
 			this.turnSeparators.set(turn, separator);
 			fragment.appendChild(separator);
 
-			// Add events for this turn if they exist
 			const turnEvents = eventsByTurn.get(turn) || [];
 			turnEvents.forEach(event => {
 				const element = this.renderEvent(event);
@@ -267,17 +339,16 @@ export class EventLog {
 	 * Clear all events from the log
 	 */
 	clear(): void {
-		// Clear associations
 		this.eventToElement.clear();
 		this.turnSeparators.clear();
-		// WeakMap will be garbage collected automatically
+		// The WeakMap garbage collects itself
 
 		this.messagesEl.innerHTML = '';
 	}
 
 	/**
-	 * Update log display to show events up to specified turn
-	 * and scroll to the turn separator for that turn
+	 * Update the log for the session's turn: mark past events active and
+	 * scroll to the turn separator
 	 */
 	renderTurn(turn: number): void {
 		const messages = this.messagesEl.querySelectorAll<HTMLElement>('.message');
@@ -285,40 +356,27 @@ export class EventLog {
 
 		// Update active state for messages
 		messages.forEach(msg => {
-			const msgTurn = parseInt(msg.dataset.turn || '0');
-
-			if (msgTurn <= turn) {
-				msg.classList.add('active');
-			} else {
-				msg.classList.remove('active');
-			}
+			const msgTurn = parseInt(msg.dataset.turn || '0', 10);
+			msg.classList.toggle('active', msgTurn <= turn);
 		});
 
 		// Update active state for turn separators
 		separators.forEach(sep => {
-			const sepTurn = parseInt(sep.dataset.turn || '0');
-
-			if (sepTurn <= turn) {
-				sep.classList.add('active');
-			} else {
-				sep.classList.remove('active');
-			}
+			const sepTurn = parseInt(sep.dataset.turn || '0', 10);
+			sep.classList.toggle('active', sepTurn <= turn);
 		});
 
-		// Scroll to the turn separator if it exists
+		// Scroll to the top when the timeline sits before the first event
 		if (turn === 0) {
-			// Scroll to top when at turn 0
 			this.messagesEl.scrollTop = 0;
-			this.currentTurn = turn;
 			return;
 		}
 
-		// Try to get the turn separator for this turn
+		// Otherwise put the turn's separator at the top of the list
 		const turnSeparator = this.turnSeparators.get(turn);
-
-		if (turnSeparator) this.scrollToElement(turnSeparator);
-
-		this.currentTurn = turn;
+		if (turnSeparator) {
+			this.scrollToElement(turnSeparator);
+		}
 	}
 
 	/**
@@ -328,20 +386,22 @@ export class EventLog {
 		const containerRect = this.messagesEl.getBoundingClientRect();
 		const elementRect = element.getBoundingClientRect();
 
-		// Calculate the scroll position to put the element at the top
+		// Calculate the scroll position that puts the element at the top
 		const relativeTop = elementRect.top - containerRect.top;
 		const scrollOffset = this.messagesEl.scrollTop + relativeTop;
 
-		// Direct scroll without animation
 		this.messagesEl.scrollTop = Math.max(0, scrollOffset);
 	}
 
 	/**
-	 * Set visible event types based on filter selection
-	 * @deprecated Use updateTypeFilter instead
+	 * Set visible event types based on a filter selection
 	 */
 	setTypes(types: string[] | number[]): void {
-		this.updateTypeFilter(types);
+		this.types.clear();
+		types.forEach(type => this.types.add(Number(type) as EventType));
+
+		this.updateFilterCount();
+		this.applyTypeFilter();
 	}
 
 	/**

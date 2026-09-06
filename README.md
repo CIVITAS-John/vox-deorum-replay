@@ -21,12 +21,24 @@ Simply drag your `.Civ5Replay` file from your computer and drop it onto the webp
 ### Option 2: Direct Link
 Share replays with others by linking directly to a hosted replay file. Add the `file` parameter with the full URL to your replay:
 ```
-https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/1.Civ5Replay
+https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/1.Civ5Replay
 ```
-You can also specify a starting turn with the `turn` parameter:
+The viewer keeps the address bar in sync while you explore, so copying the URL at any point shares the exact view. These parameters are available:
+
+Parameter   | Meaning
+------------| --------
+`file`       | Full URL of a hosted `.Civ5Replay` or `.Civ5Save` file to load on open
+`turn`       | Starting turn, kept in sync as you move through the timeline
+`view`       | Which destination is active: `map` (default) or `events`
+`player0` … `playerN` | Annotation for a civilization, see below
+
+### Annotating Civilizations
+
+When sharing a game between LLMs or specific players, you can label each civilization through the address bar. Player numbering starts at zero, so `player0` annotates the first civilization in the file, `player1` the second, and so on:
 ```
-https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/1.Civ5Replay&turn=150
+https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/1.Civ5Replay&player0=Qwen&player1=GLM
 ```
+The annotations appear in the header ("Rome: Qwen · Egypt: GLM") and next to civilization names in the event log.
 
 The project is built on Alex Webb's [civ5replayer](https://github.com/aiwebb/civ5replay).
 

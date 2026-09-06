@@ -1,7 +1,12 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
 
 <head>
 	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>Vox Deorum Replay</title>
+	<link rel="icon" href="assets/tiles/MOUNTAIN.png">
+
 	<!-- Fonts -->
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -10,17 +15,15 @@
 		rel="stylesheet">
 
 	<!-- Vendors -->
-	<link href="vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet" />
-	<link href="vendor/bootstrap-slider/css/bootstrap-slider.min.css" rel="stylesheet" />
-	<link href="vendor/selectpicker/css/bootstrap-select.min.css" rel="stylesheet" />
-	<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+	<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+		integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 	<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/all.min.css" rel="stylesheet">
 
 	<!-- Ours -->
-	<link href="assets/main.css" rel="stylesheet" />
+	<link href="assets/main.css" rel="stylesheet">
 </head>
 
-<body>
+<body data-view="map">
 	<div class="textures">
 		<!-- Terrain -->
 		<img id="GRASSLAND" src="./assets/tiles/GRASSLAND.png" crossOrigin="Anonymous">
@@ -44,89 +47,175 @@
 		<img id="FOREST" src="./assets/tiles/FOREST.png" crossOrigin="Anonymous">
 	</div>
 
-	<h2 class="page-header-area">Civilization V (<a href="https://github.com/LoneGazebo/Community-Patch-DLL"
-			target="_blank">Community Patch/Vox Populi</a>) Replay Viewer</h2>
+	<header class="app-header">
+		<div class="brand">
+			<i class="fa-solid fa-earth-americas" aria-hidden="true"></i>
+			<h1>Vox Deorum Replay</h1>
+		</div>
+		<div class="game-info">
+			<div id="gameSummary" class="game-summary" hidden></div>
+			<div id="annotationLine" class="annotation-line" hidden></div>
+		</div>
+		<button id="openButton" class="action-button" type="button">
+			<i class="fa-solid fa-folder-open" aria-hidden="true"></i>
+			<span>Open</span>
+		</button>
+		<input type="file" id="fileInput" accept=".Civ5Replay,.Civ5Save" hidden>
+	</header>
 
-	<div class="main-container">
-		<div class="top-bar">
-			<div class="top-left-corner"></div>
+	<nav class="view-tabs" aria-label="Destination">
+		<button type="button" class="view-tab" data-view="map">
+			<i class="fa-solid fa-map" aria-hidden="true"></i>
+			<span>Map</span>
+		</button>
+		<button type="button" class="view-tab" data-view="events">
+			<i class="fa-solid fa-list" aria-hidden="true"></i>
+			<span>Events</span>
+		</button>
+	</nav>
 
-			<div class="top-left">
-				<button id="playPause" class="btn btn-primary"><i class="fa fa-play"></i></button>
-				<input id="speedSlider" type="text" />
+	<main class="app-main">
+		<section class="map-panel" aria-label="Map">
+			<div class="map" id="map"></div>
+			<div class="map-toolbar">
+				<details class="layers-control" id="layersControl">
+					<summary class="map-button" id="layersButton" aria-haspopup="menu">
+						<i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+						<span>Layers</span>
+					</summary>
+					<div class="layers-panel" id="layersPanel"></div>
+				</details>
 			</div>
-
-			<div class="top-left-split"></div>
-
-			<div class="top-middle">
-				<input id="turnSlider" type="text" />
+			<div class="map-buttons">
+				<button type="button" class="map-button" id="zoomInButton" aria-label="Zoom in">
+					<i class="fa-solid fa-plus" aria-hidden="true"></i>
+				</button>
+				<button type="button" class="map-button" id="zoomOutButton" aria-label="Zoom out">
+					<i class="fa-solid fa-minus" aria-hidden="true"></i>
+				</button>
+				<button type="button" class="map-button" id="fitButton" aria-label="Fit map to view">
+					<i class="fa-solid fa-expand" aria-hidden="true"></i>
+				</button>
 			</div>
+		</section>
 
-			<div class="top-right-split"></div>
-
-			<div class="top-right">
-				<select id="event-select" class="selectpicker" multiple data-selected-text-format="count">
-					<option value="0">Messages </option>
-					<option value="7">Strategies </option>
-					<option value="1">New cities </option>
-					<option value="3">City transfers</option>
-					<option value="4">City razings </option>
-					<option value="6">Pantheons </option>
-					<option value="5">Religions </option>
-					<option value="2">Tile claims </option>
-				</select>
+		<section class="events-panel" aria-label="Events">
+			<div class="events-header">
+				<h2><i class="fa-solid fa-list" aria-hidden="true"></i> Events</h2>
+				<details class="events-filter" id="eventsFilter">
+					<summary class="map-button" id="filterButton" aria-haspopup="menu">
+						<i class="fa-solid fa-filter" aria-hidden="true"></i>
+						<span id="filterCount">7 types</span>
+					</summary>
+					<div class="filter-panel" id="filterPanel"></div>
+				</details>
 			</div>
+			<ul class="log-messages" id="logMessages"></ul>
+		</section>
 
-			<div class="top-right-corner flipped"></div>
+		<div class="empty-state" id="emptyState">
+			<div class="empty-card">
+				<h2 class="empty-title">
+					<i class="fa-solid fa-earth-americas" aria-hidden="true"></i>
+					Vox Deorum Replay
+				</h2>
+				<p class="empty-subtitle">
+					Civilization V (<a href="https://github.com/LoneGazebo/Community-Patch-DLL"
+						target="_blank">Community Patch / Vox Populi</a>) replay and save viewer
+				</p>
+				<button type="button" class="action-button empty-open" id="emptyOpenButton">
+					<i class="fa-solid fa-folder-open" aria-hidden="true"></i>
+					<span>Open a replay or save</span>
+				</button>
+				<p class="drop-hint">
+					<i class="fa-solid fa-hand" aria-hidden="true"></i>
+					or drop a .Civ5Replay or .Civ5Save file anywhere on the page
+				</p>
+				<div class="examples-label">Try an example game</div>
+				<div class="examples" id="exampleButtons"></div>
+				<p class="disclaimer">
+					MIT License. <a href="https://civitas-john.github.io/">John Chen (2025)</a>. Based on Alex
+					Webb's <a href="https://github.com/aiwebb/civ5replay">civ5replay</a>.
+					Most artwork and designs were done by
+					<a href="http://www.firaxis.com/" target="_blank">Firaxis</a>
+					and originated from their game
+					<a href="http://www.civilization5.com/" target="_blank">Civilization V</a>.
+					Special thanks to
+					<a href="https://github.com/LoneGazebo/Community-Patch-DLL" target="_blank">the Vox Populi
+						Team</a>, which keeps Civ V alive to this date.
+				</p>
+			</div>
 		</div>
 
-		<div class="border left-border"></div>
-
-		<div class="map-container">
-			<div class="map"></div>
+		<div class="loading-overlay" id="loadingOverlay" hidden>
+			<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+			<span id="loadingText">Loading…</span>
 		</div>
+	</main>
 
-		<div class="border split-border"></div>
-
-		<div class="log-container">
-			<ul class="log-messages"></ul>
+	<footer class="timeline">
+		<div class="transport">
+			<button type="button" class="transport-button" id="firstButton" aria-label="First turn">
+				<i class="fa-solid fa-backward-fast" aria-hidden="true"></i>
+			</button>
+			<button type="button" class="transport-button" id="prevButton" aria-label="Previous turn">
+				<i class="fa-solid fa-backward-step" aria-hidden="true"></i>
+			</button>
+			<button type="button" class="transport-button play" id="playPauseButton" aria-label="Play">
+				<i class="fa-solid fa-play" aria-hidden="true"></i>
+			</button>
+			<button type="button" class="transport-button" id="nextButton" aria-label="Next turn">
+				<i class="fa-solid fa-forward-step" aria-hidden="true"></i>
+			</button>
+			<button type="button" class="transport-button" id="lastButton" aria-label="Last turn">
+				<i class="fa-solid fa-forward-fast" aria-hidden="true"></i>
+			</button>
 		</div>
-
-		<div class="border right-border flipped"></div>
-
-		<div class="bottom-border">
-			<div class="bottom-left-corner"></div>
-			<div class="bottom-left"></div>
-			<div class="bottom-middle"></div>
-			<div class="bottom-right"></div>
-			<div class="bottom-right-corner flipped"></div>
+		<input type="range" id="turnRange" min="0" max="0" value="0" step="1" aria-label="Turn">
+		<div class="timeline-meta">
+			<button type="button" class="chip" id="turnButton" aria-expanded="false" aria-haspopup="dialog">
+				<i class="fa-regular fa-clock" aria-hidden="true"></i>
+				<span class="turn-long" id="turnLabelLong">Turn 0</span>
+				<span class="turn-short" id="turnLabelShort">0</span>
+			</button>
+			<button type="button" class="chip" id="speedChip" aria-expanded="false" aria-haspopup="dialog">
+				<i class="fa-solid fa-gauge-high" aria-hidden="true"></i>
+				<span id="speedLabel">1x</span>
+			</button>
 		</div>
+		<div class="turn-popover" id="turnPopover" role="dialog" aria-label="Turn and speed" hidden>
+			<form class="goto-form" id="gotoForm">
+				<label for="gotoInput">Go to turn</label>
+				<input type="number" id="gotoInput">
+				<button type="submit" class="chip">
+					<i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+					<span>Go</span>
+				</button>
+			</form>
+			<div class="speed-section">
+				<div class="speed-heading">
+					<i class="fa-solid fa-gauge-high" aria-hidden="true"></i>
+					Speed
+				</div>
+				<div class="speed-options" id="speedOptions"></div>
+			</div>
+		</div>
+	</footer>
+
+	<div class="error-banner" id="errorBanner" role="alert" hidden>
+		<i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+		<span id="errorText"></span>
+		<button type="button" class="transport-button" id="errorDismiss" aria-label="Dismiss error">
+			<i class="fa-solid fa-xmark" aria-hidden="true"></i>
+		</button>
 	</div>
 
-	<div class="disclaimer">
-		MIT License. <a href="https://civitas-john.github.io/">John Chen (2025)</a>. Based on Alex Webb's <a
-			href="https://github.com/aiwebb/civ5replay">civ5replay</a>.
-		Most artwork and designs were done by
-		<a href="http://www.firaxis.com/" target="_blank">Firaxis</a>
-		and originated from their game
-		<a href="http://www.civilization5.com/" target="_blank">Civilization V</a>.
-		Special thanks to
-		<a href="https://github.com/LoneGazebo/Community-Patch-DLL" target="_blank">the Vox Populi Team</a>,
-		which keeps Civ V alive to this date.
-	</div>
-
-	<!-- General -->
+	<!-- Vendors -->
 	<script src="./vendor/lodash.js" type="text/javascript"></script>
-	<script src="./vendor/jquery.js" type="text/javascript"></script>
-	<script src="./vendor/bootstrap/js/bootstrap.js" type="text/javascript"></script>
-	<script src="./vendor/bootstrap-slider/bootstrap-slider.min.js" type="text/javascript"></script>
-	<script src="./vendor/selectpicker/js/bootstrap-select.min.js" type="text/javascript"></script>
-
-	<!-- File parsing -->
-	<!-- (binary parsing is bundled from src/core/binary-parser.ts, no vendor script needed) -->
 
 	<!-- Mapping -->
-	<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+	<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+		integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
 	<!-- App code (bundled from TypeScript) -->
 	<script src="./dist/bundle.js" type="text/javascript"></script>
@@ -135,7 +224,7 @@
 	<script async src="https://www.googletagmanager.com/gtag/js?id=G-CKC37PN3C2"></script>
 	<script>
 		window.dataLayer = window.dataLayer || [];
-		function gtag(){dataLayer.push(arguments);}
+		function gtag() { dataLayer.push(arguments); }
 		gtag('js', new Date());
 
 		gtag('config', 'G-CKC37PN3C2');

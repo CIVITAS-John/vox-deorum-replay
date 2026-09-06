@@ -1,249 +1,414 @@
 /**
  * control-bar.ts
- * UI control bar for replay playback
- * Manages play/pause, speed control, and turn navigation
- * The bar drives the game session and follows it back, so turns changed
- * anywhere stay in sync with the slider
+ * The playback bar under the content area
+ * Holds the transport buttons, a native range input for the timeline, and a
+ * popover with a go-to field and the speed choice. The bar drives the game
+ * session and follows it back, so turns changed anywhere stay in sync
  */
 
 import { ControlBarConfig } from './types';
 import { GameSession } from '../replay/session';
 
-// External libraries accessed as globals - types defined in globals.d.ts
+// One playback speed: a short label, the milliseconds between turns, and an icon
+interface SpeedOption {
+	label: string;
+	interval: number;
+	icon: string;
+}
+
+// Available speeds, from slowest to "as fast as the browser allows"
+const speedOptions: SpeedOption[] = [
+	{ label: '0.5x', interval: 2000, icon: 'fa-hourglass-half' },
+	{ label: '1x', interval: 1000, icon: 'fa-person-walking' },
+	{ label: '2x', interval: 500, icon: 'fa-person-running' },
+	{ label: '4x', interval: 250, icon: 'fa-bolt' },
+	{ label: 'Max', interval: 0, icon: 'fa-forward-fast' }
+];
+
+// Index of the speed the bar starts with (1x)
+const defaultSpeedIndex = 1;
 
 /**
  * ControlBar class
- * @param {Object} config - Configuration with the turn range and the session
+ * @param config - Configuration with the turn range and the session
  */
 export class ControlBar {
-	config: ControlBarConfig;        // Configuration with turn range and session
-	session: GameSession | null;     // Game session that owns the turn
-	playPauseBtn: HTMLElement;      // Play/pause button element
-	playIntervals: number[];         // Available playback speed intervals in ms
-	playInterval: number;            // Current playback interval in ms
-	speedSliderEl: HTMLElement;      // Speed control slider element
-	speedSlider: any;                // Bootstrap slider instance for speed
-	turnSliderEl: HTMLElement;       // Turn navigation slider element
-	turnSlider: any;                 // Bootstrap slider instance for turns
-	playTimer: number | null;        // Timer ID for playback animation
-	private initialized: boolean = false;  // Track if the control bar has been initialized
-	private keydownHandler: ((e: KeyboardEvent) => void) | null = null;  // Store keydown handler for cleanup
-	private playPauseHandler: (() => void) | null = null;  // Store play/pause handler for cleanup
-	private unsubscribe: (() => void) | null = null;  // Stops following the session
+	config: ControlBarConfig;                // Configuration with turn range and session
+	session: GameSession | null;             // Game session that owns the turn
+	playInterval: number;                    // Current milliseconds between turns during playback
+	private speedIndex: number;              // Index of the current speed option
+	private playTimer: number | null;        // Timer ID for playback animation
+	private initialized: boolean = false;    // Whether the DOM controls are bound
+	private keydownHandler: ((e: KeyboardEvent) => void) | null = null;   // Keyboard shortcuts
+	private outsideClickHandler: ((e: MouseEvent) => void) | null = null; // Closes the popover
+	private unsubscribe: (() => void) | null = null;                      // Stops following the session
+
+	// DOM elements the bar drives
+	private firstButton: HTMLButtonElement;
+	private prevButton: HTMLButtonElement;
+	private playPauseButton: HTMLButtonElement;
+	private nextButton: HTMLButtonElement;
+	private lastButton: HTMLButtonElement;
+	private turnRange: HTMLInputElement;
+	private turnButton: HTMLButtonElement;
+	private turnLabelLong: HTMLElement;
+	private turnLabelShort: HTMLElement;
+	private speedChip: HTMLButtonElement;
+	private speedLabel: HTMLElement;
+	private turnPopover: HTMLElement;
+	private gotoForm: HTMLFormElement;
+	private gotoInput: HTMLInputElement;
+	private speedOptionsEl: HTMLElement;
 
 	constructor(config?: ControlBarConfig) {
-		// Allow constructor to be called without config for initial instance creation
+		// Allow construction without a config; initialize arrives with the session
 		if (config) {
 			this.initialize(config);
 		}
 	}
 
-	// Initialize or reinitialize the control bar with a new game session
+	/**
+	 * Initialize or reinitialize the bar with a new game session
+	 */
 	initialize(config: ControlBarConfig) {
 		this.config = config;
 		this.session = config.session;
 
-		// Stop any existing playback
+		// Stop any running playback and follow the new session
 		this.pause();
-
-		// Follow the session so the slider tracks turns changed elsewhere
 		if (this.unsubscribe) {
 			this.unsubscribe();
 		}
-		this.unsubscribe = this.session.subscribe((turn: number) => this.syncSlider(turn));
+		this.unsubscribe = this.session.subscribe((turn: number) => this.syncFromSession(turn));
 
-		// Only set up event handlers on first initialization
+		// Bind the DOM controls once; later sessions only refresh the ranges
 		if (!this.initialized) {
-			// Play/pause button
-			this.playPauseBtn = document.getElementById('playPause');
-			this.playPauseHandler = this.togglePlay.bind(this);
-			this.playPauseBtn.addEventListener('click', this.playPauseHandler);
-
-			// Speed slider
-			this.playIntervals = [2000, 1000, 600, 400, 0];
-			this.playInterval = this.playIntervals[2];
-
-			this.speedSliderEl = document.getElementById('speedSlider');
-
-			// Note: Bootstrap slider still requires jQuery internally, we'll keep using it through its API
-			$(this.speedSliderEl).slider({
-				id: 'speedSlider',
-				min: 0,
-				max: 4,
-				value: 2,
-				tooltip: 'hide',
-				ticks: [0, 1, 2, 3, 4],
-				ticks_snap_bounds: 1
-			});
-
-			this.speedSlider = $(this.speedSliderEl).data().slider;
-
-			$(this.speedSliderEl).on('change', (e: any) => this.setSpeed((e.value.newValue as number)));
-
-			// Turn slider
-			this.turnSliderEl = document.getElementById('turnSlider');
-
-			$(this.turnSliderEl).slider({
-				id: 'turnSlider',
-				min: this.config.start,
-				max: this.config.end,
-				value: this.config.start,
-				tooltip: 'always',
-				tooltip_position: 'bottom'
-			});
-
-			this.turnSlider = $(this.turnSliderEl).data().slider;
-
-			// Listen for playback shortcuts
-			this.keydownHandler = (e: KeyboardEvent) => {
-				// Prevent handling when no replay is loaded
-				if (!this.session) return;
-
-				switch (e.keyCode) {
-					case 32: this.togglePlay(); return; // space
-					case 33: this.requestTurn(this.config.start); return; // page up
-					case 34: this.requestTurn(this.config.end); return; // page down
-					case 35: this.requestTurn(this.config.end); return; // end
-					case 36: this.requestTurn(this.config.start); return; // home
-					case 37: this.step(-1); return; // left
-					case 39: this.step(1); return; // right
-					case 38: this.step(-10); return; // up
-					case 40: this.step(10); return; // down
-					case 49: this.speedSlider.setValue(0, true, true); return; // 1
-					case 50: this.speedSlider.setValue(1, true, true); return; // 2
-					case 51: this.speedSlider.setValue(2, true, true); return; // 3
-					case 52: this.speedSlider.setValue(3, true, true); return; // 4
-					case 53: this.speedSlider.setValue(4, true, true); return; // 5
-					default: return;
-				}
-			};
-			document.addEventListener('keydown', this.keydownHandler);
-
+			this.bindControls();
 			this.initialized = true;
 		}
 
-		// Update the turn slider range for the newly loaded replay. The slider
-		// library takes one attribute per call.
-		this.turnSlider.setAttribute('min', this.config.start);
-		this.turnSlider.setAttribute('max', this.config.end);
-
-		// Slider events drive the session
-		$(this.turnSliderEl).off('change').on('change', (e: any) => {
-			this.requestTurn((e.value.newValue as number));
-		});
-
-		// Listen for slide events (fires continuously while dragging)
-		$(this.turnSliderEl).off('slide').on('slide', (e: any) => {
-			this.requestTurn(e.value as number);
-		});
-
-		// Park the slider on the first turn until the session moves it
-		this.turnSlider.setValue(this.config.start, false, false);
+		// Point the range input and the labels at the new turn range
+		this.turnRange.min = String(this.config.start);
+		this.turnRange.max = String(this.config.end);
+		this.turnRange.value = String(this.session.currentTurn);
+		this.gotoInput.min = String(this.config.start);
+		this.gotoInput.max = String(this.config.end);
+		this.updateTurnLabels(this.session.currentTurn);
+		this.hidePopover();
 	}
 
-	// Get current turn number from slider
-	getTurn() {
-		return this.turnSlider.getValue();
+	/**
+	 * Bind click, input, and keyboard handlers to the DOM controls
+	 */
+	private bindControls() {
+		this.firstButton = document.getElementById('firstButton') as HTMLButtonElement;
+		this.prevButton = document.getElementById('prevButton') as HTMLButtonElement;
+		this.playPauseButton = document.getElementById('playPauseButton') as HTMLButtonElement;
+		this.nextButton = document.getElementById('nextButton') as HTMLButtonElement;
+		this.lastButton = document.getElementById('lastButton') as HTMLButtonElement;
+		this.turnRange = document.getElementById('turnRange') as HTMLInputElement;
+		this.turnButton = document.getElementById('turnButton') as HTMLButtonElement;
+		this.turnLabelLong = document.getElementById('turnLabelLong');
+		this.turnLabelShort = document.getElementById('turnLabelShort');
+		this.speedChip = document.getElementById('speedChip') as HTMLButtonElement;
+		this.speedLabel = document.getElementById('speedLabel');
+		this.turnPopover = document.getElementById('turnPopover');
+		this.gotoForm = document.getElementById('gotoForm') as HTMLFormElement;
+		this.gotoInput = document.getElementById('gotoInput') as HTMLInputElement;
+		this.speedOptionsEl = document.getElementById('speedOptions');
+
+		// Transport buttons
+		this.firstButton.addEventListener('click', () => this.requestTurn(this.config.start));
+		this.prevButton.addEventListener('click', () => this.step(-1));
+		this.nextButton.addEventListener('click', () => this.step(1));
+		this.lastButton.addEventListener('click', () => this.requestTurn(this.config.end));
+		this.playPauseButton.addEventListener('click', () => this.togglePlay());
+
+		// The range input drives the session while dragging
+		this.turnRange.addEventListener('input', () => {
+			this.requestTurn(Number(this.turnRange.value));
+		});
+
+		// Both the turn chip and the speed chip open the popover
+		this.turnButton.addEventListener('click', () => this.togglePopover());
+		this.speedChip.addEventListener('click', () => this.togglePopover());
+
+		// The go-to form jumps to the entered turn
+		this.gotoForm.addEventListener('submit', (e: Event) => {
+			e.preventDefault();
+			const target = parseInt(this.gotoInput.value, 10);
+			if (!Number.isNaN(target)) {
+				this.requestTurn(target);
+			}
+			this.hidePopover();
+		});
+
+		// Build the speed choices into the popover
+		this.buildSpeedOptions();
+		this.applySpeed(defaultSpeedIndex);
+
+		// Playback shortcuts, skipped while typing in a form field
+		this.keydownHandler = (e: KeyboardEvent) => {
+			if (!this.session) {
+				return;
+			}
+
+			const target = e.target as HTMLElement;
+			if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement ||
+				target instanceof HTMLSelectElement || target.isContentEditable) {
+				return;
+			}
+
+			switch (e.keyCode) {
+				case 32: e.preventDefault(); this.togglePlay(); return;  // space, canceled so a focused button does not also fire
+				case 33: this.requestTurn(this.config.start); return; // page up
+				case 34: this.requestTurn(this.config.end); return;   // page down
+				case 35: this.requestTurn(this.config.end); return;   // end
+				case 36: this.requestTurn(this.config.start); return; // home
+				case 37: this.step(-1); return;                  // left
+				case 39: this.step(1); return;                   // right
+				case 38: this.step(-10); return;                 // up
+				case 40: this.step(10); return;                  // down
+				case 49: this.applySpeed(0); return;             // 1
+				case 50: this.applySpeed(1); return;             // 2
+				case 51: this.applySpeed(2); return;             // 3
+				case 52: this.applySpeed(3); return;             // 4
+				case 53: this.applySpeed(4); return;             // 5
+				default: return;
+			}
+		};
+		document.addEventListener('keydown', this.keydownHandler);
+
+		// Close the popover when clicking anywhere outside it or its chips
+		this.outsideClickHandler = (e: MouseEvent) => {
+			if (!this.turnPopover.hidden && !this.turnPopover.contains(e.target as Node) &&
+				!this.turnButton.contains(e.target as Node) && !this.speedChip.contains(e.target as Node)) {
+				this.hidePopover();
+			}
+		};
+		document.addEventListener('click', this.outsideClickHandler);
+
+		// Escape closes the popover
+		document.addEventListener('keydown', (e: KeyboardEvent) => {
+			if (e.key === 'Escape' && !this.turnPopover.hidden) {
+				this.hidePopover();
+			}
+		});
 	}
 
-	// Move the session to a turn; its notification updates the slider and the views
+	/**
+	 * Build one radio choice per speed option into the popover
+	 */
+	private buildSpeedOptions() {
+		speedOptions.forEach((option, index) => {
+			const label = document.createElement('label');
+			label.className = 'speed-option';
+
+			const radio = document.createElement('input');
+			radio.type = 'radio';
+			radio.name = 'playbackSpeed';
+			radio.value = String(index);
+			radio.addEventListener('change', () => this.applySpeed(index));
+
+			const icon = document.createElement('i');
+			icon.className = `fa-solid ${option.icon}`;
+			icon.setAttribute('aria-hidden', 'true');
+
+			const text = document.createElement('span');
+			text.textContent = option.label;
+
+			label.appendChild(radio);
+			label.appendChild(icon);
+			label.appendChild(text);
+			this.speedOptionsEl.appendChild(label);
+		});
+	}
+
+	/**
+	 * Move the session to a turn; its notification updates the bar and the views
+	 */
 	private requestTurn(turn: number) {
-		if (!this.session) return;
+		if (!this.session) {
+			return;
+		}
 		this.session.setTurn(turn);
 	}
 
-	// Track a turn that changed elsewhere, without re-triggering slider events
-	private syncSlider(turn: number) {
-		if (this.turnSlider && this.getTurn() !== turn) {
-			this.turnSlider.setValue(turn, false, false);
+	/**
+	 * Track a turn that changed elsewhere, without re-triggering the range input
+	 */
+	private syncFromSession(turn: number) {
+		if (String(turn) !== this.turnRange.value) {
+			this.turnRange.value = String(turn);
+		}
+		this.updateTurnLabels(turn);
+
+		// Stop playback when the timeline reaches the last turn
+		if (this.playTimer && turn >= this.config.end) {
+			this.pause();
 		}
 	}
 
-	// Step forward/backward by specified number of turns
+	/**
+	 * Refresh the turn chips, long form on wide screens and bare number on phones
+	 */
+	private updateTurnLabels(turn: number) {
+		this.turnLabelLong.textContent = `Turn ${turn} / ${this.config.end}`;
+		this.turnLabelShort.textContent = String(turn);
+	}
+
+	/**
+	 * Step forward or backward by a number of turns, clamped to the range
+	 */
 	step(step?: number) {
-		if (!this.session) return;
-		if (step === undefined) {
-			step = 1;
+		if (!this.session) {
+			return;
 		}
 
-		const target = (this.getTurn() as number) + step;
+		const amount = step === undefined ? 1 : step;
+		const target = this.session.currentTurn + amount;
+
 		if (target < this.config.start) {
 			this.requestTurn(this.config.start);
-		}
-		else if (target > this.config.end) {
+		} else if (target > this.config.end) {
 			this.requestTurn(this.config.end);
-		}
-		else {
+		} else {
 			this.requestTurn(target);
 		}
 	}
 
-	// Start automatic playback
+	/**
+	 * Start automatic playback
+	 */
 	play() {
-		if (this.playTimer) { return; }
+		if (this.playTimer || !this.session) {
+			return;
+		}
+
+		// Playback that starts at the last turn restarts from the beginning
+		if (this.session.currentTurn >= this.config.end) {
+			this.requestTurn(this.config.start);
+		}
 
 		this.playTimer = setInterval(() => {
 			this.step();
 		}, this.playInterval);
+		this.updatePlayButton();
 	}
 
-	// Pause automatic playback
+	/**
+	 * Pause automatic playback
+	 */
 	pause() {
-		if (!this.playTimer) { return; }
+		if (!this.playTimer) {
+			return;
+		}
 
 		clearInterval(this.playTimer);
 		this.playTimer = null;
+		this.updatePlayButton();
 	}
 
-	// Toggle between play and pause states
+	/**
+	 * Toggle between play and pause states
+	 */
 	togglePlay() {
-		const icon = this.playPauseBtn.querySelector('i');
 		if (this.playTimer) {
 			this.pause();
-			icon.classList.remove('fa-pause');
-			icon.classList.add('fa-play');
-		}
-		else {
-			this.play();
-			icon.classList.remove('fa-play');
-			icon.classList.add('fa-pause');
-		}
-	}
-
-	// Set playback speed (0-4 scale)
-	setSpeed(speed: number) {
-		speed = speed || 0;
-
-		this.playInterval = this.playIntervals[
-			Math.max(0, Math.min(Math.round(speed), this.playIntervals.length - 1))
-		];
-
-		if (this.playTimer) {
-			this.pause();
+		} else {
 			this.play();
 		}
 	}
 
-	// Clear the control bar (stop playback and stop following the session)
+	/**
+	 * Point the play button's icon and label at the current playback state
+	 */
+	private updatePlayButton() {
+		if (!this.playPauseButton) {
+			return;
+		}
+
+		const icon = this.playPauseButton.querySelector('i');
+		const playing = this.playTimer !== null;
+
+		if (playing) {
+			icon.className = 'fa-solid fa-pause';
+			this.playPauseButton.setAttribute('aria-label', 'Pause');
+		} else {
+			icon.className = 'fa-solid fa-play';
+			this.playPauseButton.setAttribute('aria-label', 'Play');
+		}
+
+		document.body.classList.toggle('playing', playing);
+	}
+
+	/**
+	 * Apply a speed option by index, refreshing the radios, the chip, and a running timer
+	 */
+	private applySpeed(index: number) {
+		const clamped = Math.max(0, Math.min(Math.round(index), speedOptions.length - 1));
+		this.speedIndex = clamped;
+		this.playInterval = speedOptions[clamped].interval;
+		this.speedLabel.textContent = speedOptions[clamped].label;
+
+		// Keep the radios in the popover in sync, also when set via keyboard
+		const radios = this.speedOptionsEl.querySelectorAll<HTMLInputElement>('input[name="playbackSpeed"]');
+		radios.forEach(radio => {
+			radio.checked = Number(radio.value) === clamped;
+		});
+
+		// A running timer picks up the new interval
+		if (this.playTimer) {
+			clearInterval(this.playTimer);
+			this.playTimer = null;
+			this.play();
+		}
+	}
+
+	/**
+	 * Show or hide the turn and speed popover
+	 */
+	private togglePopover() {
+		if (this.turnPopover.hidden) {
+			this.turnPopover.hidden = false;
+			this.turnButton.setAttribute('aria-expanded', 'true');
+			this.speedChip.setAttribute('aria-expanded', 'true');
+			this.gotoInput.value = String(this.session ? this.session.currentTurn : this.config.start);
+			this.gotoInput.focus();
+		} else {
+			this.hidePopover();
+		}
+	}
+
+	/**
+	 * Hide the popover and drop its open state from the chips
+	 */
+	private hidePopover() {
+		if (!this.initialized) {
+			return;
+		}
+
+		this.turnPopover.hidden = true;
+		this.turnButton.setAttribute('aria-expanded', 'false');
+		this.speedChip.setAttribute('aria-expanded', 'false');
+	}
+
+	/**
+	 * Clear the bar: stop playback and stop following the session
+	 */
 	clear() {
-		// Stop playback timer if running
 		if (this.playTimer) {
 			clearInterval(this.playTimer);
 			this.playTimer = null;
 		}
 
-		// Stop following the session
 		if (this.unsubscribe) {
 			this.unsubscribe();
 			this.unsubscribe = null;
 		}
 		this.session = null;
 
-		// Reset play/pause button to play icon
-		const icon = this.playPauseBtn?.querySelector('i');
-		if (icon) {
-			icon.classList.remove('fa-pause');
-			icon.classList.add('fa-play');
-		}
+		this.hidePopover();
+		this.updatePlayButton();
 	}
 }

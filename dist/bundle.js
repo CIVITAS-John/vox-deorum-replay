@@ -1193,6 +1193,7 @@
         constructor() {
             this.map = L.map(document.querySelector('.map'), {
                 attributionControl: false,
+                zoomControl: false, // The map buttons in the interface replace Leaflet's zoom control
                 keyboardPanOffset: 0,
                 fadeAnimation: false, // Disable fade animation to prevent transparency transitions during redraw
                 zoomSnap: 0.2 // Allow fractional zoom levels with 0.25 increments
@@ -1304,26 +1305,6 @@
             this.highlighting.initLayers(this.map, tiles);
             // Connect boundary layer to highlighting for civilization boundary highlighting
             this.highlighting.setBoundaryLayer(this.layers.boundary);
-            // Get highlighting layers for overlay controls
-            const highlightLayers = this.highlighting.getLayers();
-            // Add layer switcher
-            var overlays = {
-                Terrain: this.layers.terrain,
-                Elevation: this.layers.elevation,
-                Features: this.layers.feature,
-                Territory: this.layers.territory,
-                Cities: this.layers.city,
-                Grid: this.layers.grid,
-                Boundaries: this.layers.boundary,
-                Selection: highlightLayers.selection,
-                Events: highlightLayers.events
-            };
-            this.controls = {
-                switcher: L.control.layers({}, overlays, {
-                    autoZIndex: false
-                })
-            };
-            this.controls.switcher.addTo(this.map);
             // Follow the session: every turn change re-renders the map
             if (this.unsubscribeSession) {
                 this.unsubscribeSession();
@@ -1335,17 +1316,26 @@
             // guard the bounds math against missing rows
             var south = north - ((tiles.length ? tiles.length : 1) * 0.3888888889);
             var east = west + ((tiles.length && tiles[0].length ? tiles[0].length : 1) * 2.4285714286);
-            function onMapClick(e) {
-                console.log(e.latlng);
-            }
-            this.map.on('click', onMapClick);
-            // Remove the zoomend redraw - the city layer will handle its own rendering
-            // through the standard tile update mechanism
             var bounds = [[south, west], [north, east]];
             // Store bounds for later use when map needs to be refit
             this.mapBounds = bounds;
             // Don't fit bounds here - let it be done after the replay loads
             // to ensure the container is properly sized
+        }
+        // The layers the layers panel can toggle, with their display labels
+        getToggleableLayers() {
+            const highlightLayers = this.highlighting.getLayers();
+            return {
+                Terrain: this.layers.terrain,
+                Elevation: this.layers.elevation,
+                Features: this.layers.feature,
+                Territory: this.layers.territory,
+                Cities: this.layers.city,
+                Grid: this.layers.grid,
+                Boundaries: this.layers.boundary,
+                Selection: highlightLayers.selection,
+                Events: highlightLayers.events
+            };
         }
         // Update map display for the session's current turn
         renderTurn(turn) {
@@ -1437,6 +1427,13 @@
                     padding: [30, 30, 30, 30],
                     animate: false
                 });
+            }
+        }
+        // Ask Leaflet to re-measure its container, e.g. after a tab change or a
+        // window resize, without moving the place the user is exploring
+        invalidateSize() {
+            if (this.map) {
+                this.map.invalidateSize(false);
             }
         }
     }
@@ -1889,32 +1886,121 @@
     }
 
     /**
-     * event-log.ts
-     * Manages the event log display for game events
-     * Shows filtered messages and events from the replay based on turn and event type
+     * annotations.ts
+     * Civilization annotations supplied through the address bar
+     *
+     * A shared link can label each civilization with who was playing it, for
+     * example "?player0=Qwen&player1=GLM". Player numbering starts at zero, so
+     * player0 annotates the first civilization in the file, player1 the second,
+     * and so on. The annotations appear next to civilization names in the event
+     * log and as a summary line in the header.
      */
-    // External libraries accessed as globals - types defined in globals.d.ts
+    // Matches playerN URL parameters, capturing the civilization id N
+    const playerParamPattern = /^player(\d+)$/;
+    // Longest annotation we accept, so headers and log entries stay readable
+    const maxAnnotationLength = 40;
+    /**
+     * Parse playerN parameters (player0, player1, ...) into a civ id to label map
+     * @param params The URL search parameters to read from
+     * @returns The parsed annotations, empty when none are present
+     */
+    function parseCivAnnotations(params) {
+        const annotations = {};
+        params.forEach((value, key) => {
+            const match = playerParamPattern.exec(key);
+            if (!match) {
+                return;
+            }
+            // URLSearchParams already decodes the value; trim and cap its length
+            const label = value.trim().slice(0, maxAnnotationLength);
+            if (!label) {
+                return;
+            }
+            annotations[Number(match[1])] = label;
+        });
+        return annotations;
+    }
+    /**
+     * Look up the annotation for a civilization id
+     * @param annotations The parsed annotations
+     * @param civId The civilization id to look up
+     * @returns The annotation, or null when the civilization has none
+     */
+    function annotationFor(annotations, civId) {
+        if (civId === undefined || !(civId in annotations)) {
+            return null;
+        }
+        return annotations[civId];
+    }
+    /**
+     * Build the header summary line, for example "Rome: GLM · Egypt: Qwen"
+     * @param civNames Civilization names indexed by civilization id
+     * @param annotations The parsed annotations
+     * @returns The joined line, empty when no civilization is annotated
+     */
+    function formatAnnotationLine(civNames, annotations) {
+        const parts = [];
+        for (let civId = 0; civId < civNames.length; civId++) {
+            const label = annotations[civId];
+            if (label) {
+                parts.push(`${civNames[civId]}: ${label}`);
+            }
+        }
+        return parts.join(' · ');
+    }
+
+    /**
+     * event-log.ts
+     * The event log in the side panel
+     * Shows filtered events from the replay grouped by turn, follows the session,
+     * and shows civilization annotations next to civilization names
+     */
+    // The event types the filter offers, in display order
+    const filterableTypes = [
+        { type: EventType.Message, label: 'Messages', icon: 'fa-comment-dots' },
+        { type: EventType.Strategies, label: 'Strategies', icon: 'fa-chess-knight' },
+        { type: EventType.CityFounded, label: 'New cities', icon: 'fa-city' },
+        { type: EventType.CitiesTransferred, label: 'City transfers', icon: 'fa-right-left' },
+        { type: EventType.CityRazed, label: 'City razings', icon: 'fa-fire' },
+        { type: EventType.PantheonSelected, label: 'Pantheons', icon: 'fa-hands-praying' },
+        { type: EventType.ReligionFounded, label: 'Religions', icon: 'fa-star-and-crescent' },
+        { type: EventType.TilesClaimed, label: 'Tile claims', icon: 'fa-draw-polygon' }
+    ];
+    // Types shown when the log first appears: everything except tile claims,
+    // which are noisy on large maps
+    const defaultTypes = [
+        EventType.Message,
+        EventType.Strategies,
+        EventType.CityFounded,
+        EventType.CitiesTransferred,
+        EventType.CityRazed,
+        EventType.PantheonSelected,
+        EventType.ReligionFounded
+    ];
     /**
      * EventLog class
-     * Manages and displays game events with filtering and turn-based navigation
+     * Renders the session's events and filters them by type
      */
     class EventLog {
-        constructor(session) {
+        constructor(session, annotations = {}) {
             this.types = new Set();
-            // WeakMap for associating DOM elements with their event data
+            // Associations between DOM elements and their event data
             this.elementToEvent = new WeakMap();
             this.eventToElement = new Map();
-            // Track current turn for scrolling optimization
-            this.currentTurn = 0;
-            // Track turn separator elements for scrolling
+            // Turn separator elements by turn, for scrolling
             this.turnSeparators = new Map();
             // Stops following the session
             this.unsubscribe = null;
-            this.logContainer = document.querySelector('.log-container');
-            this.messagesEl = this.logContainer.querySelector('.log-messages');
+            // Closes the filter dropdown on outside clicks
+            this.outsideClickHandler = null;
+            this.messagesEl = document.getElementById('logMessages');
+            this.filterPanel = document.getElementById('filterPanel');
+            this.filterDetails = document.getElementById('eventsFilter');
+            this.filterCount = document.getElementById('filterCount');
             this.events = session.replay.events;
             this.replay = session.replay;
-            this.initializeEventFilter();
+            this.annotations = annotations;
+            this.buildFilter();
             this.renderEvents();
             // Follow the session: every turn change scrolls and activates the log
             this.unsubscribe = session.subscribe((turn) => this.renderTurn(turn));
@@ -1928,38 +2014,67 @@
                 this.unsubscribe();
                 this.unsubscribe = null;
             }
+            if (this.outsideClickHandler) {
+                document.removeEventListener('click', this.outsideClickHandler);
+                this.outsideClickHandler = null;
+            }
             this.clear();
         }
         /**
-         * Initialize event type filtering
+         * Build the filter checkbox for every offered event type
          */
-        initializeEventFilter() {
-            const eventSelect = document.getElementById('event-select');
-            // Bootstrap selectpicker event handling
-            $(eventSelect).on('changed.bs.select', (e) => {
-                const selectedValues = $(e.target).val() || [];
-                console.log('Event filter changed:', selectedValues);
-                this.updateTypeFilter(selectedValues);
+        buildFilter() {
+            filterableTypes.forEach(entry => {
+                const label = document.createElement('label');
+                label.className = 'filter-option';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = defaultTypes.includes(entry.type);
+                checkbox.addEventListener('change', () => {
+                    if (checkbox.checked) {
+                        this.types.add(entry.type);
+                    }
+                    else {
+                        this.types.delete(entry.type);
+                    }
+                    this.updateFilterCount();
+                    this.applyTypeFilter();
+                });
+                const icon = document.createElement('i');
+                icon.className = `fa-solid ${entry.icon}`;
+                icon.setAttribute('aria-hidden', 'true');
+                const text = document.createElement('span');
+                text.textContent = entry.label;
+                label.appendChild(checkbox);
+                label.appendChild(icon);
+                label.appendChild(text);
+                this.filterPanel.appendChild(label);
+                if (checkbox.checked) {
+                    this.types.add(entry.type);
+                }
             });
-            // Set initial filter values
-            const initialValues = $(eventSelect).selectpicker('val') || [];
-            this.updateTypeFilter(initialValues);
+            this.updateFilterCount();
+            // Close the dropdown when clicking anywhere outside it
+            this.outsideClickHandler = (e) => {
+                if (this.filterDetails.open && !this.filterDetails.contains(e.target)) {
+                    this.filterDetails.open = false;
+                }
+            };
+            document.addEventListener('click', this.outsideClickHandler);
         }
         /**
-         * Update the type filter with new values
+         * Refresh the count shown on the filter button
          */
-        updateTypeFilter(types) {
-            this.types.clear();
-            types.forEach(type => this.types.add(Number(type)));
-            console.log('Setting types:', Array.from(this.types));
-            this.applyTypeFilter();
+        updateFilterCount() {
+            this.filterCount.textContent = this.types.size === filterableTypes.length
+                ? 'All types'
+                : `${this.types.size} types`;
         }
         /**
-         * Apply type filter to all message elements
+         * Apply the type filter to all message elements
          */
         applyTypeFilter() {
             const messages = this.messagesEl.querySelectorAll('.message');
-            console.log('Total messages:', messages.length);
             messages.forEach(msg => {
                 const event = this.elementToEvent.get(msg);
                 if (event && this.types.has(event.type)) {
@@ -1988,27 +2103,33 @@
                 const civName = this.replay.getCivName(event.civId);
                 const civColor = this.replay.getCivColor(event.civId);
                 if (civName) {
-                    // Create civ header
                     const civHeader = document.createElement('div');
                     civHeader.className = 'civ-header';
                     if (civColor) {
-                        // Major civ - use colored circle with territory/tile color
+                        // Major civ: colored circle in the territory color
                         const circle = document.createElement('span');
                         circle.className = 'civ-circle';
                         circle.style.backgroundColor = `rgb(${civColor.territory[0]}, ${civColor.territory[1]}, ${civColor.territory[2]})`;
                         civHeader.appendChild(circle);
                     }
                     else {
-                        // Minor civ - use rectangle with default color
+                        // Minor civ: gray rectangle
                         const rect = document.createElement('span');
                         rect.className = 'civ-rectangle';
                         civHeader.appendChild(rect);
                     }
-                    // Create civ name text
                     const civNameEl = document.createElement('span');
                     civNameEl.className = 'civ-name';
                     civNameEl.textContent = civName;
                     civHeader.appendChild(civNameEl);
+                    // URL annotation for this civilization, e.g. "· GLM"
+                    const annotation = annotationFor(this.annotations, event.civId);
+                    if (annotation) {
+                        const annotationEl = document.createElement('span');
+                        annotationEl.className = 'civ-annotation';
+                        annotationEl.textContent = `· ${annotation}`;
+                        civHeader.appendChild(annotationEl);
+                    }
                     msg.appendChild(civHeader);
                 }
             }
@@ -2022,7 +2143,7 @@
                     msg.appendChild(strategyElement);
                 }
                 else if (hasGameMarkup(event.text)) {
-                    // Check if text contains game markup (icons/colors)
+                    // Text contains game markup (icons/colors)
                     const formattedElement = formatGameText(event.text);
                     formattedElement.classList.add('event-text');
                     msg.appendChild(formattedElement);
@@ -2035,10 +2156,10 @@
                     msg.appendChild(eventText);
                 }
             }
-            // Store bidirectional association using WeakMap and Map
+            // Store bidirectional association
             this.elementToEvent.set(msg, event);
             this.eventToElement.set(event, msg);
-            // Apply initial filter
+            // Apply the current filter
             if (!this.types.has(event.type)) {
                 msg.classList.add('hidden');
             }
@@ -2055,16 +2176,15 @@
             return separator;
         }
         /**
-         * Render all events
+         * Render all events grouped by turn
          */
         renderEvents() {
             this.clear();
-            // If no events, return early
             if (this.events.length === 0) {
                 return;
             }
             const fragment = document.createDocumentFragment();
-            // Find the range of turns
+            // Find the range of turns that carry events
             let minTurn = Infinity;
             let maxTurn = -Infinity;
             this.events.forEach(event => {
@@ -2073,11 +2193,11 @@
                 if (event.turn > maxTurn)
                     maxTurn = event.turn;
             });
-            // Handle case where all events were empty and got filtered
+            // Handle the case where all events were empty and got filtered
             if (minTurn === Infinity || maxTurn === -Infinity) {
                 return;
             }
-            // Group events by turn for easier processing
+            // Group events by turn
             const eventsByTurn = new Map();
             this.events.forEach(event => {
                 // Skip empty message events
@@ -2089,13 +2209,11 @@
                 }
                 eventsByTurn.get(event.turn).push(event);
             });
-            // Create turn separators for all turns in range
+            // Create a separator for every turn in range, then its events
             for (let turn = minTurn; turn <= maxTurn; turn++) {
-                // Add turn separator for every turn
                 const separator = this.createTurnSeparator(turn);
                 this.turnSeparators.set(turn, separator);
                 fragment.appendChild(separator);
-                // Add events for this turn if they exist
                 const turnEvents = eventsByTurn.get(turn) || [];
                 turnEvents.forEach(event => {
                     const element = this.renderEvent(event);
@@ -2110,51 +2228,38 @@
          * Clear all events from the log
          */
         clear() {
-            // Clear associations
             this.eventToElement.clear();
             this.turnSeparators.clear();
-            // WeakMap will be garbage collected automatically
+            // The WeakMap garbage collects itself
             this.messagesEl.innerHTML = '';
         }
         /**
-         * Update log display to show events up to specified turn
-         * and scroll to the turn separator for that turn
+         * Update the log for the session's turn: mark past events active and
+         * scroll to the turn separator
          */
         renderTurn(turn) {
             const messages = this.messagesEl.querySelectorAll('.message');
             const separators = this.messagesEl.querySelectorAll('.turn-separator');
             // Update active state for messages
             messages.forEach(msg => {
-                const msgTurn = parseInt(msg.dataset.turn || '0');
-                if (msgTurn <= turn) {
-                    msg.classList.add('active');
-                }
-                else {
-                    msg.classList.remove('active');
-                }
+                const msgTurn = parseInt(msg.dataset.turn || '0', 10);
+                msg.classList.toggle('active', msgTurn <= turn);
             });
             // Update active state for turn separators
             separators.forEach(sep => {
-                const sepTurn = parseInt(sep.dataset.turn || '0');
-                if (sepTurn <= turn) {
-                    sep.classList.add('active');
-                }
-                else {
-                    sep.classList.remove('active');
-                }
+                const sepTurn = parseInt(sep.dataset.turn || '0', 10);
+                sep.classList.toggle('active', sepTurn <= turn);
             });
-            // Scroll to the turn separator if it exists
+            // Scroll to the top when the timeline sits before the first event
             if (turn === 0) {
-                // Scroll to top when at turn 0
                 this.messagesEl.scrollTop = 0;
-                this.currentTurn = turn;
                 return;
             }
-            // Try to get the turn separator for this turn
+            // Otherwise put the turn's separator at the top of the list
             const turnSeparator = this.turnSeparators.get(turn);
-            if (turnSeparator)
+            if (turnSeparator) {
                 this.scrollToElement(turnSeparator);
-            this.currentTurn = turn;
+            }
         }
         /**
          * Scroll to a specific element in the messages container
@@ -2162,18 +2267,19 @@
         scrollToElement(element) {
             const containerRect = this.messagesEl.getBoundingClientRect();
             const elementRect = element.getBoundingClientRect();
-            // Calculate the scroll position to put the element at the top
+            // Calculate the scroll position that puts the element at the top
             const relativeTop = elementRect.top - containerRect.top;
             const scrollOffset = this.messagesEl.scrollTop + relativeTop;
-            // Direct scroll without animation
             this.messagesEl.scrollTop = Math.max(0, scrollOffset);
         }
         /**
-         * Set visible event types based on filter selection
-         * @deprecated Use updateTypeFilter instead
+         * Set visible event types based on a filter selection
          */
         setTypes(types) {
-            this.updateTypeFilter(types);
+            this.types.clear();
+            types.forEach(type => this.types.add(Number(type)));
+            this.updateFilterCount();
+            this.applyTypeFilter();
         }
         /**
          * Get event data for a message element
@@ -2191,164 +2297,240 @@
 
     /**
      * control-bar.ts
-     * UI control bar for replay playback
-     * Manages play/pause, speed control, and turn navigation
-     * The bar drives the game session and follows it back, so turns changed
-     * anywhere stay in sync with the slider
+     * The playback bar under the content area
+     * Holds the transport buttons, a native range input for the timeline, and a
+     * popover with a go-to field and the speed choice. The bar drives the game
+     * session and follows it back, so turns changed anywhere stay in sync
      */
-    // External libraries accessed as globals - types defined in globals.d.ts
+    // Available speeds, from slowest to "as fast as the browser allows"
+    const speedOptions = [
+        { label: '0.5x', interval: 2000, icon: 'fa-hourglass-half' },
+        { label: '1x', interval: 1000, icon: 'fa-person-walking' },
+        { label: '2x', interval: 500, icon: 'fa-person-running' },
+        { label: '4x', interval: 250, icon: 'fa-bolt' },
+        { label: 'Max', interval: 0, icon: 'fa-forward-fast' }
+    ];
+    // Index of the speed the bar starts with (1x)
+    const defaultSpeedIndex = 1;
     /**
      * ControlBar class
-     * @param {Object} config - Configuration with the turn range and the session
+     * @param config - Configuration with the turn range and the session
      */
     class ControlBar {
         constructor(config) {
-            this.initialized = false; // Track if the control bar has been initialized
-            this.keydownHandler = null; // Store keydown handler for cleanup
-            this.playPauseHandler = null; // Store play/pause handler for cleanup
+            this.initialized = false; // Whether the DOM controls are bound
+            this.keydownHandler = null; // Keyboard shortcuts
+            this.outsideClickHandler = null; // Closes the popover
             this.unsubscribe = null; // Stops following the session
-            // Allow constructor to be called without config for initial instance creation
+            // Allow construction without a config; initialize arrives with the session
             if (config) {
                 this.initialize(config);
             }
         }
-        // Initialize or reinitialize the control bar with a new game session
+        /**
+         * Initialize or reinitialize the bar with a new game session
+         */
         initialize(config) {
             this.config = config;
             this.session = config.session;
-            // Stop any existing playback
+            // Stop any running playback and follow the new session
             this.pause();
-            // Follow the session so the slider tracks turns changed elsewhere
             if (this.unsubscribe) {
                 this.unsubscribe();
             }
-            this.unsubscribe = this.session.subscribe((turn) => this.syncSlider(turn));
-            // Only set up event handlers on first initialization
+            this.unsubscribe = this.session.subscribe((turn) => this.syncFromSession(turn));
+            // Bind the DOM controls once; later sessions only refresh the ranges
             if (!this.initialized) {
-                // Play/pause button
-                this.playPauseBtn = document.getElementById('playPause');
-                this.playPauseHandler = this.togglePlay.bind(this);
-                this.playPauseBtn.addEventListener('click', this.playPauseHandler);
-                // Speed slider
-                this.playIntervals = [2000, 1000, 600, 400, 0];
-                this.playInterval = this.playIntervals[2];
-                this.speedSliderEl = document.getElementById('speedSlider');
-                // Note: Bootstrap slider still requires jQuery internally, we'll keep using it through its API
-                $(this.speedSliderEl).slider({
-                    id: 'speedSlider',
-                    min: 0,
-                    max: 4,
-                    value: 2,
-                    tooltip: 'hide',
-                    ticks: [0, 1, 2, 3, 4],
-                    ticks_snap_bounds: 1
-                });
-                this.speedSlider = $(this.speedSliderEl).data().slider;
-                $(this.speedSliderEl).on('change', (e) => this.setSpeed(e.value.newValue));
-                // Turn slider
-                this.turnSliderEl = document.getElementById('turnSlider');
-                $(this.turnSliderEl).slider({
-                    id: 'turnSlider',
-                    min: this.config.start,
-                    max: this.config.end,
-                    value: this.config.start,
-                    tooltip: 'always',
-                    tooltip_position: 'bottom'
-                });
-                this.turnSlider = $(this.turnSliderEl).data().slider;
-                // Listen for playback shortcuts
-                this.keydownHandler = (e) => {
-                    // Prevent handling when no replay is loaded
-                    if (!this.session)
-                        return;
-                    switch (e.keyCode) {
-                        case 32:
-                            this.togglePlay();
-                            return; // space
-                        case 33:
-                            this.requestTurn(this.config.start);
-                            return; // page up
-                        case 34:
-                            this.requestTurn(this.config.end);
-                            return; // page down
-                        case 35:
-                            this.requestTurn(this.config.end);
-                            return; // end
-                        case 36:
-                            this.requestTurn(this.config.start);
-                            return; // home
-                        case 37:
-                            this.step(-1);
-                            return; // left
-                        case 39:
-                            this.step(1);
-                            return; // right
-                        case 38:
-                            this.step(-10);
-                            return; // up
-                        case 40:
-                            this.step(10);
-                            return; // down
-                        case 49:
-                            this.speedSlider.setValue(0, true, true);
-                            return; // 1
-                        case 50:
-                            this.speedSlider.setValue(1, true, true);
-                            return; // 2
-                        case 51:
-                            this.speedSlider.setValue(2, true, true);
-                            return; // 3
-                        case 52:
-                            this.speedSlider.setValue(3, true, true);
-                            return; // 4
-                        case 53:
-                            this.speedSlider.setValue(4, true, true);
-                            return; // 5
-                        default: return;
-                    }
-                };
-                document.addEventListener('keydown', this.keydownHandler);
+                this.bindControls();
                 this.initialized = true;
             }
-            // Update the turn slider range for the newly loaded replay. The slider
-            // library takes one attribute per call.
-            this.turnSlider.setAttribute('min', this.config.start);
-            this.turnSlider.setAttribute('max', this.config.end);
-            // Slider events drive the session
-            $(this.turnSliderEl).off('change').on('change', (e) => {
-                this.requestTurn(e.value.newValue);
-            });
-            // Listen for slide events (fires continuously while dragging)
-            $(this.turnSliderEl).off('slide').on('slide', (e) => {
-                this.requestTurn(e.value);
-            });
-            // Park the slider on the first turn until the session moves it
-            this.turnSlider.setValue(this.config.start, false, false);
+            // Point the range input and the labels at the new turn range
+            this.turnRange.min = String(this.config.start);
+            this.turnRange.max = String(this.config.end);
+            this.turnRange.value = String(this.session.currentTurn);
+            this.gotoInput.min = String(this.config.start);
+            this.gotoInput.max = String(this.config.end);
+            this.updateTurnLabels(this.session.currentTurn);
+            this.hidePopover();
         }
-        // Get current turn number from slider
-        getTurn() {
-            return this.turnSlider.getValue();
+        /**
+         * Bind click, input, and keyboard handlers to the DOM controls
+         */
+        bindControls() {
+            this.firstButton = document.getElementById('firstButton');
+            this.prevButton = document.getElementById('prevButton');
+            this.playPauseButton = document.getElementById('playPauseButton');
+            this.nextButton = document.getElementById('nextButton');
+            this.lastButton = document.getElementById('lastButton');
+            this.turnRange = document.getElementById('turnRange');
+            this.turnButton = document.getElementById('turnButton');
+            this.turnLabelLong = document.getElementById('turnLabelLong');
+            this.turnLabelShort = document.getElementById('turnLabelShort');
+            this.speedChip = document.getElementById('speedChip');
+            this.speedLabel = document.getElementById('speedLabel');
+            this.turnPopover = document.getElementById('turnPopover');
+            this.gotoForm = document.getElementById('gotoForm');
+            this.gotoInput = document.getElementById('gotoInput');
+            this.speedOptionsEl = document.getElementById('speedOptions');
+            // Transport buttons
+            this.firstButton.addEventListener('click', () => this.requestTurn(this.config.start));
+            this.prevButton.addEventListener('click', () => this.step(-1));
+            this.nextButton.addEventListener('click', () => this.step(1));
+            this.lastButton.addEventListener('click', () => this.requestTurn(this.config.end));
+            this.playPauseButton.addEventListener('click', () => this.togglePlay());
+            // The range input drives the session while dragging
+            this.turnRange.addEventListener('input', () => {
+                this.requestTurn(Number(this.turnRange.value));
+            });
+            // Both the turn chip and the speed chip open the popover
+            this.turnButton.addEventListener('click', () => this.togglePopover());
+            this.speedChip.addEventListener('click', () => this.togglePopover());
+            // The go-to form jumps to the entered turn
+            this.gotoForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const target = parseInt(this.gotoInput.value, 10);
+                if (!Number.isNaN(target)) {
+                    this.requestTurn(target);
+                }
+                this.hidePopover();
+            });
+            // Build the speed choices into the popover
+            this.buildSpeedOptions();
+            this.applySpeed(defaultSpeedIndex);
+            // Playback shortcuts, skipped while typing in a form field
+            this.keydownHandler = (e) => {
+                if (!this.session) {
+                    return;
+                }
+                const target = e.target;
+                if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement ||
+                    target instanceof HTMLSelectElement || target.isContentEditable) {
+                    return;
+                }
+                switch (e.keyCode) {
+                    case 32:
+                        e.preventDefault();
+                        this.togglePlay();
+                        return; // space, canceled so a focused button does not also fire
+                    case 33:
+                        this.requestTurn(this.config.start);
+                        return; // page up
+                    case 34:
+                        this.requestTurn(this.config.end);
+                        return; // page down
+                    case 35:
+                        this.requestTurn(this.config.end);
+                        return; // end
+                    case 36:
+                        this.requestTurn(this.config.start);
+                        return; // home
+                    case 37:
+                        this.step(-1);
+                        return; // left
+                    case 39:
+                        this.step(1);
+                        return; // right
+                    case 38:
+                        this.step(-10);
+                        return; // up
+                    case 40:
+                        this.step(10);
+                        return; // down
+                    case 49:
+                        this.applySpeed(0);
+                        return; // 1
+                    case 50:
+                        this.applySpeed(1);
+                        return; // 2
+                    case 51:
+                        this.applySpeed(2);
+                        return; // 3
+                    case 52:
+                        this.applySpeed(3);
+                        return; // 4
+                    case 53:
+                        this.applySpeed(4);
+                        return; // 5
+                    default: return;
+                }
+            };
+            document.addEventListener('keydown', this.keydownHandler);
+            // Close the popover when clicking anywhere outside it or its chips
+            this.outsideClickHandler = (e) => {
+                if (!this.turnPopover.hidden && !this.turnPopover.contains(e.target) &&
+                    !this.turnButton.contains(e.target) && !this.speedChip.contains(e.target)) {
+                    this.hidePopover();
+                }
+            };
+            document.addEventListener('click', this.outsideClickHandler);
+            // Escape closes the popover
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && !this.turnPopover.hidden) {
+                    this.hidePopover();
+                }
+            });
         }
-        // Move the session to a turn; its notification updates the slider and the views
+        /**
+         * Build one radio choice per speed option into the popover
+         */
+        buildSpeedOptions() {
+            speedOptions.forEach((option, index) => {
+                const label = document.createElement('label');
+                label.className = 'speed-option';
+                const radio = document.createElement('input');
+                radio.type = 'radio';
+                radio.name = 'playbackSpeed';
+                radio.value = String(index);
+                radio.addEventListener('change', () => this.applySpeed(index));
+                const icon = document.createElement('i');
+                icon.className = `fa-solid ${option.icon}`;
+                icon.setAttribute('aria-hidden', 'true');
+                const text = document.createElement('span');
+                text.textContent = option.label;
+                label.appendChild(radio);
+                label.appendChild(icon);
+                label.appendChild(text);
+                this.speedOptionsEl.appendChild(label);
+            });
+        }
+        /**
+         * Move the session to a turn; its notification updates the bar and the views
+         */
         requestTurn(turn) {
-            if (!this.session)
+            if (!this.session) {
                 return;
+            }
             this.session.setTurn(turn);
         }
-        // Track a turn that changed elsewhere, without re-triggering slider events
-        syncSlider(turn) {
-            if (this.turnSlider && this.getTurn() !== turn) {
-                this.turnSlider.setValue(turn, false, false);
+        /**
+         * Track a turn that changed elsewhere, without re-triggering the range input
+         */
+        syncFromSession(turn) {
+            if (String(turn) !== this.turnRange.value) {
+                this.turnRange.value = String(turn);
+            }
+            this.updateTurnLabels(turn);
+            // Stop playback when the timeline reaches the last turn
+            if (this.playTimer && turn >= this.config.end) {
+                this.pause();
             }
         }
-        // Step forward/backward by specified number of turns
+        /**
+         * Refresh the turn chips, long form on wide screens and bare number on phones
+         */
+        updateTurnLabels(turn) {
+            this.turnLabelLong.textContent = `Turn ${turn} / ${this.config.end}`;
+            this.turnLabelShort.textContent = String(turn);
+        }
+        /**
+         * Step forward or backward by a number of turns, clamped to the range
+         */
         step(step) {
-            if (!this.session)
+            if (!this.session) {
                 return;
-            if (step === undefined) {
-                step = 1;
             }
-            const target = this.getTurn() + step;
+            const amount = step === undefined ? 1 : step;
+            const target = this.session.currentTurn + amount;
             if (target < this.config.start) {
                 this.requestTurn(this.config.start);
             }
@@ -2359,66 +2541,191 @@
                 this.requestTurn(target);
             }
         }
-        // Start automatic playback
+        /**
+         * Start automatic playback
+         */
         play() {
-            if (this.playTimer) {
+            if (this.playTimer || !this.session) {
                 return;
+            }
+            // Playback that starts at the last turn restarts from the beginning
+            if (this.session.currentTurn >= this.config.end) {
+                this.requestTurn(this.config.start);
             }
             this.playTimer = setInterval(() => {
                 this.step();
             }, this.playInterval);
+            this.updatePlayButton();
         }
-        // Pause automatic playback
+        /**
+         * Pause automatic playback
+         */
         pause() {
             if (!this.playTimer) {
                 return;
             }
             clearInterval(this.playTimer);
             this.playTimer = null;
+            this.updatePlayButton();
         }
-        // Toggle between play and pause states
+        /**
+         * Toggle between play and pause states
+         */
         togglePlay() {
-            const icon = this.playPauseBtn.querySelector('i');
             if (this.playTimer) {
                 this.pause();
-                icon.classList.remove('fa-pause');
-                icon.classList.add('fa-play');
             }
             else {
                 this.play();
-                icon.classList.remove('fa-play');
-                icon.classList.add('fa-pause');
             }
         }
-        // Set playback speed (0-4 scale)
-        setSpeed(speed) {
-            speed = speed || 0;
-            this.playInterval = this.playIntervals[Math.max(0, Math.min(Math.round(speed), this.playIntervals.length - 1))];
+        /**
+         * Point the play button's icon and label at the current playback state
+         */
+        updatePlayButton() {
+            if (!this.playPauseButton) {
+                return;
+            }
+            const icon = this.playPauseButton.querySelector('i');
+            const playing = this.playTimer !== null;
+            if (playing) {
+                icon.className = 'fa-solid fa-pause';
+                this.playPauseButton.setAttribute('aria-label', 'Pause');
+            }
+            else {
+                icon.className = 'fa-solid fa-play';
+                this.playPauseButton.setAttribute('aria-label', 'Play');
+            }
+            document.body.classList.toggle('playing', playing);
+        }
+        /**
+         * Apply a speed option by index, refreshing the radios, the chip, and a running timer
+         */
+        applySpeed(index) {
+            const clamped = Math.max(0, Math.min(Math.round(index), speedOptions.length - 1));
+            this.speedIndex = clamped;
+            this.playInterval = speedOptions[clamped].interval;
+            this.speedLabel.textContent = speedOptions[clamped].label;
+            // Keep the radios in the popover in sync, also when set via keyboard
+            const radios = this.speedOptionsEl.querySelectorAll('input[name="playbackSpeed"]');
+            radios.forEach(radio => {
+                radio.checked = Number(radio.value) === clamped;
+            });
+            // A running timer picks up the new interval
             if (this.playTimer) {
-                this.pause();
+                clearInterval(this.playTimer);
+                this.playTimer = null;
                 this.play();
             }
         }
-        // Clear the control bar (stop playback and stop following the session)
+        /**
+         * Show or hide the turn and speed popover
+         */
+        togglePopover() {
+            if (this.turnPopover.hidden) {
+                this.turnPopover.hidden = false;
+                this.turnButton.setAttribute('aria-expanded', 'true');
+                this.speedChip.setAttribute('aria-expanded', 'true');
+                this.gotoInput.value = String(this.session ? this.session.currentTurn : this.config.start);
+                this.gotoInput.focus();
+            }
+            else {
+                this.hidePopover();
+            }
+        }
+        /**
+         * Hide the popover and drop its open state from the chips
+         */
+        hidePopover() {
+            if (!this.initialized) {
+                return;
+            }
+            this.turnPopover.hidden = true;
+            this.turnButton.setAttribute('aria-expanded', 'false');
+            this.speedChip.setAttribute('aria-expanded', 'false');
+        }
+        /**
+         * Clear the bar: stop playback and stop following the session
+         */
         clear() {
-            var _a;
-            // Stop playback timer if running
             if (this.playTimer) {
                 clearInterval(this.playTimer);
                 this.playTimer = null;
             }
-            // Stop following the session
             if (this.unsubscribe) {
                 this.unsubscribe();
                 this.unsubscribe = null;
             }
             this.session = null;
-            // Reset play/pause button to play icon
-            const icon = (_a = this.playPauseBtn) === null || _a === void 0 ? void 0 : _a.querySelector('i');
-            if (icon) {
-                icon.classList.remove('fa-pause');
-                icon.classList.add('fa-play');
+            this.hidePopover();
+            this.updatePlayButton();
+        }
+    }
+
+    /**
+     * layers-control.ts
+     * The map's layer picker
+     * A button on the map opens a dropdown panel with one checkbox per
+     * toggleable layer. Checking a box adds the layer to the map, unchecking
+     * removes it. Replaces Leaflet's built-in layers control so the picker
+     * matches the rest of the interface.
+     */
+    /**
+     * LayersControl class
+     * Builds and drives the layer checkbox panel
+     */
+    class LayersControl {
+        constructor(map, layers) {
+            this.outsideClickHandler = null; // Closes the panel
+            this.map = map;
+            this.layers = layers;
+            this.panel = document.getElementById('layersPanel');
+            this.details = document.getElementById('layersControl');
+            this.buildPanel();
+            // Close the panel when clicking anywhere outside it
+            this.outsideClickHandler = (e) => {
+                if (this.details.open && !this.details.contains(e.target)) {
+                    this.details.open = false;
+                }
+            };
+            document.addEventListener('click', this.outsideClickHandler);
+        }
+        /**
+         * Build one checkbox row per layer into the panel
+         */
+        buildPanel() {
+            this.layers.forEach(entry => {
+                const label = document.createElement('label');
+                label.className = 'layer-option';
+                // Layers start on the map, so their boxes start checked
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = entry.layer._map !== undefined && entry.layer._map !== null;
+                checkbox.addEventListener('change', () => {
+                    if (checkbox.checked) {
+                        entry.layer.addTo(this.map);
+                    }
+                    else {
+                        this.map.removeLayer(entry.layer);
+                    }
+                });
+                const text = document.createElement('span');
+                text.textContent = entry.label;
+                label.appendChild(checkbox);
+                label.appendChild(text);
+                this.panel.appendChild(label);
+            });
+        }
+        /**
+         * Tear the control down when its session is discarded
+         */
+        destroy() {
+            if (this.outsideClickHandler) {
+                document.removeEventListener('click', this.outsideClickHandler);
+                this.outsideClickHandler = null;
             }
+            this.panel.innerHTML = '';
+            this.details.open = false;
         }
     }
 
@@ -4984,47 +5291,131 @@
     }
 
     /**
-     * replay-viewer.ts
-     * UI component for the replay viewer application
-     * Manages user interactions and file handling, and connects the game session
-     * to the map, the event log, and the playback controls
+     * throttle.ts
+     * Utility function to throttle function execution
+     * Prevents a function from being called more than once within a specified time period
      */
     /**
-     * ReplayViewer UI component
-     * Handles user interactions and connects the loaded game session to the visualization components
+     * Creates a throttled version of a function that limits execution frequency
+     * @param func - The function to throttle
+     * @param delay - The minimum delay in milliseconds between executions
+     * @returns A throttled version of the function
+     */
+    function throttle(func, delay) {
+        let timeoutId = null;
+        let lastExecutionTime = 0;
+        let pendingArgs = null;
+        return function (...args) {
+            const currentTime = Date.now();
+            const timeSinceLastExecution = currentTime - lastExecutionTime;
+            const context = this;
+            // Clear any existing timeout
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+            // If enough time has passed, execute immediately
+            if (timeSinceLastExecution >= delay) {
+                lastExecutionTime = currentTime;
+                func.apply(context, args);
+            }
+            else {
+                // Otherwise, store the args and schedule execution
+                pendingArgs = args;
+                const remainingDelay = delay - timeSinceLastExecution;
+                timeoutId = setTimeout(() => {
+                    if (pendingArgs !== null) {
+                        lastExecutionTime = Date.now();
+                        func.apply(context, pendingArgs);
+                        pendingArgs = null;
+                    }
+                    timeoutId = null;
+                }, remainingDelay);
+            }
+        };
+    }
+
+    /**
+     * replay-viewer.ts
+     * Top-level UI component for the replay viewer
+     * Owns file opening (dialog, drag and drop, shared links, bundled examples),
+     * the loading and error feedback, the header summary, the destination tabs,
+     * and the address bar state. Connects the loaded game session to the map,
+     * the event log, the layers panel, and the playback bar.
+     */
+    // The example games offered in the empty state
+    const exampleGames = [
+        { label: 'Game 1', file: 'examples/1.Civ5Replay', kind: 'replay' },
+        { label: 'Game 2', file: 'examples/2.Civ5Replay', kind: 'replay' },
+        { label: 'Game 3', file: 'examples/3.Civ5Replay', kind: 'replay' },
+        { label: 'Game 4', file: 'examples/4.Civ5Save', kind: 'save' },
+        { label: 'Game 5', file: 'examples/5.Civ5Save', kind: 'save' }
+    ];
+    // How long an error banner stays on screen before dismissing itself
+    const errorBannerTimeoutMs = 10000;
+    // How often the address bar is refreshed while the turn changes
+    const urlSyncThrottleMs = 400;
+    /**
+     * ReplayViewer class
+     * Handles user interactions and connects the loaded game session to the
+     * visualization components
      */
     class ReplayViewer {
         constructor() {
-            this.session = null; // Game session for the loaded replay
+            this.session = null; // Game session for the loaded game
             this.eventLog = null; // Event log UI component
-            this.controlBar = null; // Playback control UI component
+            this.layersControl = null; // Map layers panel
             // UI state
-            this.fileUrl = null;
-            this.initialTurn = null;
-            this.isLoading = false;
-            this.initialize();
-            // Create control bar instance once (will be reinitialized with each session)
-            this.controlBar = new ControlBar();
-        }
-        /**
-         * Initialize the UI component
-         */
-        initialize() {
-            // Initialize map visualization
+            this.fileUrl = null; // file parameter from the address bar, kept for shared links
+            this.fileLabel = null; // Display name of the loaded file
+            this.initialTurn = null; // turn parameter, applied once the session exists
+            this.view = 'map'; // Selected destination tab
+            this.annotations = {}; // playerN labels from the address bar
+            this.isLoading = false; // A file is being read or parsed
+            this.errorTimeout = null; // Auto-dismiss timer for the error banner
+            this.unsubscribeTurnSync = null; // Stops URL syncing
             this.map = new ReplayMap();
-            // Setup file handling (drag-and-drop and click-to-open)
-            this.setupFileHandling();
-            // Setup window resize handler
-            this.setupResizeHandler();
-            // Check for URL parameters
+            this.controlBar = new ControlBar();
+            this.emptyState = document.getElementById('emptyState');
+            this.loadingOverlay = document.getElementById('loadingOverlay');
+            this.loadingText = document.getElementById('loadingText');
+            this.errorBanner = document.getElementById('errorBanner');
+            this.errorText = document.getElementById('errorText');
+            this.gameSummary = document.getElementById('gameSummary');
+            this.annotationLine = document.getElementById('annotationLine');
+            this.fileInput = document.getElementById('fileInput');
+            this.syncUrlState = throttle(() => this.writeUrlState(), urlSyncThrottleMs);
+            this.setupOpenControls();
+            this.setupDragAndDrop();
+            this.setupTabs();
+            this.setupMapButtons();
+            this.setupErrorBanner();
+            this.buildExampleButtons();
             this.handleUrlParameters();
         }
         /**
-         * Setup file handling (drag-and-drop and click-to-open)
+         * Wire the Open buttons and the hidden file input
          */
-        setupFileHandling() {
+        setupOpenControls() {
+            const openButtons = [document.getElementById('openButton'), document.getElementById('emptyOpenButton')];
+            openButtons.forEach(button => {
+                button.addEventListener('click', () => this.fileInput.click());
+            });
+            this.fileInput.addEventListener('change', () => {
+                const file = this.fileInput.files && this.fileInput.files[0];
+                if (file) {
+                    this.loadFile(file);
+                }
+                // Let the same file be picked again later
+                this.fileInput.value = '';
+            });
+        }
+        /**
+         * Wire drag and drop on the whole page
+         */
+        setupDragAndDrop() {
             const dropZone = document.body;
-            // Prevent default drag behaviors
+            // Prevent the browser from navigating away for any drag
             const preventDefaults = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -5041,7 +5432,6 @@
                     this.loadFile(files[0]);
                 }
             };
-            // Register drag-and-drop event listeners
             ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
                 dropZone.addEventListener(eventName, preventDefaults, false);
             });
@@ -5052,91 +5442,174 @@
                 dropZone.addEventListener(eventName, unhighlight, false);
             });
             dropZone.addEventListener('drop', handleDrop, false);
-            // Setup click-to-open file dialog
-            dropZone.addEventListener('click', (e) => {
-                // Only trigger on body background clicks
-                if (e.target === dropZone) {
-                    this.openFileDialog();
-                }
+        }
+        /**
+         * Wire the destination tabs shown on narrow screens
+         */
+        setupTabs() {
+            const tabs = document.querySelectorAll('.view-tab');
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    this.setView(tab.dataset.view);
+                });
             });
         }
         /**
-         * Open file selection dialog
+         * Wire the zoom and fit buttons that sit on the map
          */
-        openFileDialog() {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = '.Civ5Replay,.Civ5Save';
-            input.onchange = (e) => {
-                const target = e.target;
-                if (target.files && target.files.length > 0) {
-                    this.loadFile(target.files[0]);
-                }
-            };
-            input.click();
+        setupMapButtons() {
+            document.getElementById('zoomInButton').addEventListener('click', () => this.map.map.zoomIn());
+            document.getElementById('zoomOutButton').addEventListener('click', () => this.map.map.zoomOut());
+            document.getElementById('fitButton').addEventListener('click', () => this.map.fitMap());
         }
         /**
-         * Setup window resize handler to refit map
+         * Wire the error banner's dismiss button and its auto-hide timer
          */
-        setupResizeHandler() {
-            let resizeTimeout;
-            window.addEventListener('resize', () => {
-                // Debounce resize events
-                clearTimeout(resizeTimeout);
-                resizeTimeout = window.setTimeout(() => {
-                    // Only refit if we have a loaded session
-                    if (this.hasReplay()) {
-                        this.map.fitMap();
-                    }
-                }, 250);
+        setupErrorBanner() {
+            document.getElementById('errorDismiss').addEventListener('click', () => this.hideError());
+        }
+        /**
+         * Build one button per bundled example game into the empty state
+         */
+        buildExampleButtons() {
+            const container = document.getElementById('exampleButtons');
+            exampleGames.forEach(example => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'action-button example-button';
+                const icon = document.createElement('i');
+                icon.className = example.kind === 'save' ? 'fa-solid fa-floppy-disk' : 'fa-solid fa-file-lines';
+                icon.setAttribute('aria-hidden', 'true');
+                const label = document.createElement('span');
+                label.textContent = example.label;
+                const kind = document.createElement('span');
+                kind.className = 'example-kind';
+                kind.textContent = example.kind;
+                button.appendChild(icon);
+                button.appendChild(label);
+                button.appendChild(kind);
+                button.addEventListener('click', () => this.loadFromUrl(example.file, example.label));
+                container.appendChild(button);
             });
         }
         /**
-         * Handle URL parameters for file loading
+         * Read the address bar: file, turn, view, and playerN annotations
          */
         handleUrlParameters() {
             const urlParams = new URLSearchParams(window.location.search);
             this.fileUrl = urlParams.get('file');
-            this.initialTurn = urlParams.get('turn');
+            this.annotations = parseCivAnnotations(urlParams);
+            const turnParam = urlParams.get('turn');
+            this.initialTurn = turnParam !== null ? parseInt(turnParam, 10) : null;
+            const viewParam = urlParams.get('view');
+            this.setView(viewParam === 'events' ? 'events' : 'map');
             if (this.fileUrl) {
-                this.loadFromUrl(this.fileUrl);
+                this.loadFromUrl(this.fileUrl, this.labelFromFileReference(this.fileUrl));
             }
         }
         /**
-         * Load a replay file
+         * Derive a display label from a file name or URL, e.g. "4.Civ5Save"
+         * becomes "Game 4" and "my-game.Civ5Replay" becomes "my-game"
+         */
+        labelFromFileReference(reference) {
+            // Keep only the part after the last slash
+            const fileName = reference.split('/').pop() || reference;
+            // Drop the file extension
+            const base = fileName.replace(/\.(Civ5Replay|Civ5Save)$/i, '');
+            // Plain numbers are the bundled example games
+            if (/^\d+$/.test(base)) {
+                return `Game ${base}`;
+            }
+            return base || fileName;
+        }
+        /**
+         * Switch the destination tab and let the address bar know
+         */
+        setView(view) {
+            this.view = view;
+            document.body.dataset.view = view;
+            // Mark the matching tab active
+            document.querySelectorAll('.view-tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.view === view);
+            });
+            // The map needs a size refresh when it becomes visible again
+            if (view === 'map' && this.hasReplay()) {
+                requestAnimationFrame(() => this.map.invalidateSize());
+            }
+            this.syncUrlState();
+        }
+        /**
+         * Write the current turn, destination, and file into the address bar so a
+         * copied link lands where the user is looking. The playerN parameters are
+         * kept exactly as the sharer wrote them.
+         */
+        writeUrlState() {
+            const params = new URLSearchParams(window.location.search);
+            // A locally opened file cannot be shared, so the stale parameter goes
+            if (this.fileUrl) {
+                params.set('file', this.fileUrl);
+            }
+            else {
+                params.delete('file');
+            }
+            if (this.session) {
+                params.set('turn', String(this.session.currentTurn));
+            }
+            else if (this.initialTurn !== null && !Number.isNaN(this.initialTurn)) {
+                params.set('turn', String(this.initialTurn));
+            }
+            else {
+                params.delete('turn');
+            }
+            params.set('view', this.view);
+            const query = params.toString();
+            const url = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+            window.history.replaceState(null, '', url);
+        }
+        /**
+         * Load a replay file from the user's disk
          */
         loadFile(file) {
             if (this.isLoading)
                 return;
             this.isLoading = true;
+            this.fileUrl = null; // A local file has no shareable URL
+            this.fileLabel = this.labelFromFileReference(file.name);
+            this.showLoading(this.fileLabel);
             const reader = new FileReader();
             reader.onloadend = (e) => {
                 var _a;
                 const result = (_a = e.target) === null || _a === void 0 ? void 0 : _a.result;
                 if (result) {
-                    void this.processReplayData(result, file.size);
+                    void this.processReplayData(result, result.byteLength);
                 }
-                this.isLoading = false;
+                else {
+                    this.isLoading = false;
+                    this.hideLoading();
+                    this.showError('Failed to read the file.');
+                }
             };
             reader.onerror = (e) => {
                 var _a;
                 console.error('Error reading file:', e);
-                this.showError('Failed to read file: ' + ((_a = e.target) === null || _a === void 0 ? void 0 : _a.error));
                 this.isLoading = false;
+                this.hideLoading();
+                this.showError('Failed to read file: ' + ((_a = e.target) === null || _a === void 0 ? void 0 : _a.error));
             };
             reader.readAsArrayBuffer(file);
         }
         /**
-         * Load replay from URL
+         * Load a replay file from a URL
          */
-        loadFromUrl(fileUrl) {
+        loadFromUrl(fileUrl, label) {
             if (this.isLoading)
                 return;
             this.isLoading = true;
+            this.fileUrl = fileUrl;
+            this.fileLabel = label || this.labelFromFileReference(fileUrl);
+            this.showLoading(this.fileLabel);
             const xhr = new XMLHttpRequest();
-            // Use the URL directly
-            const url = fileUrl;
-            xhr.open('GET', url, true);
+            xhr.open('GET', fileUrl, true);
             xhr.responseType = 'arraybuffer';
             xhr.onload = (e) => {
                 const target = e.target;
@@ -5144,18 +5617,20 @@
                     void this.processReplayData(target.response, target.response.byteLength);
                 }
                 else {
+                    this.isLoading = false;
+                    this.hideLoading();
                     this.showError(`Failed to load file: HTTP ${target.status}`);
                 }
-                this.isLoading = false;
             };
             xhr.onerror = () => {
-                this.showError('Failed to load file from URL');
                 this.isLoading = false;
+                this.hideLoading();
+                this.showError('Failed to load file from URL');
             };
             xhr.send();
         }
         /**
-         * Process loaded replay data
+         * Parse the loaded data and build the session around it
          * Save files parse asynchronously because the compressed body has to be
          * inflated first, so the loading paths fire and forget this method and
          * rely on its own error handling
@@ -5164,21 +5639,23 @@
          */
         async processReplayData(data, size) {
             try {
-                // Clean up previous session
+                // Clean up the previous session
                 this.cleanup();
                 // Parse the file and build the session that owns it
                 const replay = new Replay();
                 await replay.loadFromFile(data, size);
                 this.session = new GameSession(replay);
-                // Initialize UI components
+                // Initialize the UI components around the session
                 this.initializeUIComponents();
-                // Set initial turn, which the session passes to every view
-                const initialTurn = this.initialTurn
-                    ? parseInt(this.initialTurn) || replay.startTurn
+                // Apply the turn the link asked for, or the replay's first turn
+                const initialTurn = this.initialTurn !== null && !Number.isNaN(this.initialTurn)
+                    ? this.initialTurn
                     : replay.startTurn;
                 this.session.setTurn(initialTurn);
-                // Fit map to container after everything is loaded
-                // Use setTimeout to ensure DOM has updated
+                // Show the loaded game and hide the empty state
+                this.updateHeader();
+                this.updateEmptyState();
+                // Fit the map once everything has settled in the DOM
                 setTimeout(() => {
                     this.map.fitMap();
                 }, 100);
@@ -5186,39 +5663,86 @@
             catch (error) {
                 console.error('Error processing replay:', error);
                 this.showError('Failed to process replay file: ' + error.message);
+                this.updateEmptyState();
+            }
+            finally {
+                this.isLoading = false;
+                this.hideLoading();
             }
         }
         /**
-         * Initialize UI components with the game session
+         * Initialize the UI components with the game session
          */
         initializeUIComponents() {
             if (!this.session)
                 return;
-            // Initialize event log
-            this.eventLog = new EventLog(this.session);
-            // Initialize map layers
+            // The event log, with the address bar annotations
+            this.eventLog = new EventLog(this.session, this.annotations);
+            // Map layers and the layers panel that toggles them
             this.map.initLayers(this.session);
-            // Fit map immediately after layers are initialized
-            this.map.fitMap();
-            // Reinitialize control bar with the new session (reuses existing instance)
+            this.layersControl = new LayersControl(this.map.map, Object.entries(this.map.getToggleableLayers())
+                .map(([label, layer]) => ({ label, layer })));
+            // Reinitialize the control bar with the new session (reuses the instance)
             this.controlBar.initialize({
                 start: this.session.startTurn,
                 end: this.session.endTurn,
                 session: this.session
             });
+            // Keep the address bar's turn in sync while exploring
+            this.unsubscribeTurnSync = this.session.subscribe(() => this.syncUrlState());
         }
         /**
-         * Clean up previous session and UI components
+         * Fill the header with the loaded game's summary and annotation line
+         */
+        updateHeader() {
+            if (!this.session) {
+                this.gameSummary.hidden = true;
+                this.annotationLine.hidden = true;
+                return;
+            }
+            const replay = this.session.replay;
+            const summaryParts = [this.fileLabel || 'Loaded game'];
+            if (replay.gameSpeed) {
+                summaryParts.push(replay.gameSpeed);
+            }
+            if (replay.worldSize) {
+                summaryParts.push(replay.worldSize);
+            }
+            this.gameSummary.textContent = summaryParts.join(' · ');
+            this.gameSummary.hidden = false;
+            const civNames = replay.civs.map(civ => civ.name);
+            const annotationText = formatAnnotationLine(civNames, this.annotations);
+            this.annotationLine.textContent = annotationText;
+            this.annotationLine.hidden = !annotationText;
+        }
+        /**
+         * Show the empty state only while no game is loaded
+         */
+        updateEmptyState() {
+            this.emptyState.hidden = this.session !== null;
+        }
+        /**
+         * Clean up the previous session and its UI components
          */
         cleanup() {
-            // Clean up event log
+            // Stop following the old session's turns
+            if (this.unsubscribeTurnSync) {
+                this.unsubscribeTurnSync();
+                this.unsubscribeTurnSync = null;
+            }
+            // Clean up the event log
             if (this.eventLog) {
                 this.eventLog.destroy();
                 this.eventLog = null;
             }
-            // Clean up map layers and controls
+            // Clean up the layers panel
+            if (this.layersControl) {
+                this.layersControl.destroy();
+                this.layersControl = null;
+            }
+            // Clean up map layers: detach from the session, reset turn tracking,
+            // and remove every layer so the next session re-adds them
             if (this.map && this.map.map) {
-                // Detach the map from the session and reset its turn tracking state
                 this.map.resetTurnState();
                 if (this.map.layers) {
                     Object.values(this.map.layers).forEach(layer => {
@@ -5229,38 +5753,61 @@
                         this.map.map.removeLayer(layer);
                     });
                 }
-                if (this.map.controls) {
-                    Object.values(this.map.controls).forEach(control => {
-                        this.map.map.removeControl(control);
-                    });
-                }
             }
-            // Clean up control bar (but don't null it - we'll reuse the instance)
+            // Detach the control bar from the session
             this.controlBar.clear();
-            // Clean up the session
+            // Discard the session
             this.session = null;
         }
         /**
-         * Show error message to user
+         * Show the loading overlay with a label for what is loading
          */
-        showError(message) {
-            // Simple alert for now, could be replaced with better UI
-            alert(message);
+        showLoading(label) {
+            this.loadingText.textContent = `Loading ${label}…`;
+            this.loadingOverlay.hidden = false;
         }
         /**
-         * Get current replay data
+         * Hide the loading overlay
+         */
+        hideLoading() {
+            this.loadingOverlay.hidden = true;
+        }
+        /**
+         * Show an error message in the banner, replacing the old alert dialogs
+         */
+        showError(message) {
+            this.errorText.textContent = message;
+            this.errorBanner.hidden = false;
+            // Auto-hide after a while so the banner never lingers unnoticed
+            if (this.errorTimeout) {
+                clearTimeout(this.errorTimeout);
+            }
+            this.errorTimeout = window.setTimeout(() => this.hideError(), errorBannerTimeoutMs);
+        }
+        /**
+         * Hide the error banner
+         */
+        hideError() {
+            this.errorBanner.hidden = true;
+            if (this.errorTimeout) {
+                clearTimeout(this.errorTimeout);
+                this.errorTimeout = null;
+            }
+        }
+        /**
+         * Get the current replay data
          */
         getReplay() {
             return this.session ? this.session.replay : null;
         }
         /**
-         * Check if a replay is loaded
+         * Check whether a game is loaded
          */
         hasReplay() {
             return this.session !== null;
         }
         /**
-         * Get loading state
+         * Get the loading state
          */
         isLoadingFile() {
             return this.isLoading;
@@ -5270,42 +5817,11 @@
     /**
      * main.ts
      * Entry point for the Civilization V replay viewer application
-     * Initializes UI components and creates the main ReplayViewer instance
+     * Creates the replay viewer and exposes the app classes on window for
+     * console debugging
      */
-    // External libraries accessed as globals - types defined in globals.d.ts
-    // Init event selectpicker
-    // Note: Bootstrap components require jQuery, so we keep it for vendor libraries only
-    $('#event-select').selectpicker({
-        width: 275,
-        noneSelectedText: 'No event types selected',
-        countSelectedText: function (numSelected, numTotal) {
-            return (numSelected == 1) ? '{0} item selected' : '{0} event types selected';
-        }
-    });
-    $('#event-select').selectpicker('val', [
-        EventType.Message,
-        EventType.Strategies,
-        EventType.CityFounded,
-        EventType.CitiesTransferred,
-        EventType.CityRazed,
-        EventType.PantheonSelected,
-        EventType.ReligionFounded
-    ]);
-    // Init the sliders to get the styling
-    $('#speedSlider').slider({
-        id: 'speedSlider',
-        min: 0,
-        max: 0,
-        value: 0,
-        tooltip: 'hide'
-    });
-    $('#turnSlider').slider({
-        id: 'turnSlider',
-        min: 0,
-        max: 0,
-        value: 0,
-        tooltip: 'hide'
-    });
+    // External libraries (Lodash, Leaflet) are loaded as script tags by index.html
+    // and typed in globals.d.ts
     // Create the replay viewer instance
     window.replayViewer = new ReplayViewer();
     // Export classes to window for backward compatibility

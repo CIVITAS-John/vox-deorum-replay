@@ -11,7 +11,7 @@ import { GridLayer } from './grid-layer';
 import { BoundaryLayer } from './boundary-layer';
 import { MapHighlighting } from './map-highlighting';
 import { CivColors } from '../utils/civ-colors';
-import { MapLayer, MapControl, HexData } from './types';
+import { MapLayer, HexData } from './types';
 import { GameEvent, TileType, FeatureType, ElevationType, TurnState } from '../replay/types';
 import { getTileTypeName, getFeatureName, getElevationName } from './utils/enum-names';
 import { GameSession } from '../replay/session';
@@ -27,7 +27,6 @@ export class ReplayMap {
 	turn: number;                         // Current turn being displayed
 	turnState: TurnState | undefined;     // Current turn's tile state, from the session
 	layers: Record<string, MapLayer>;    // Map visualization layers by name
-	controls: Record<string, MapControl>; // Map UI controls by name
 	session: GameSession | null;         // Game session that owns the turn and the per-turn state
 	mapBounds: number[][];               // Stored bounds for refitting the map
 	highlighting: MapHighlighting;       // Highlighting module instance
@@ -37,6 +36,7 @@ export class ReplayMap {
 	constructor() {
 		this.map = L.map(document.querySelector('.map'), {
 			attributionControl: false,
+			zoomControl: false,   // The map buttons in the interface replace Leaflet's zoom control
 			keyboardPanOffset: 0,
 			fadeAnimation: false,  // Disable fade animation to prevent transparency transitions during redraw
 			zoomSnap: 0.2          // Allow fractional zoom levels with 0.25 increments
@@ -166,30 +166,6 @@ export class ReplayMap {
 		// Connect boundary layer to highlighting for civilization boundary highlighting
 		this.highlighting.setBoundaryLayer(this.layers.boundary);
 
-		// Get highlighting layers for overlay controls
-		const highlightLayers = this.highlighting.getLayers();
-
-		// Add layer switcher
-		var overlays = {
-			Terrain: this.layers.terrain,
-			Elevation: this.layers.elevation,
-			Features: this.layers.feature,
-			Territory: this.layers.territory,
-			Cities: this.layers.city,
-			Grid: this.layers.grid,
-			Boundaries: this.layers.boundary,
-			Selection: highlightLayers.selection,
-			Events: highlightLayers.events
-		};
-
-		this.controls = {
-			switcher: L.control.layers({}, overlays, {
-				autoZIndex: false
-			})
-		};
-
-		this.controls.switcher.addTo(this.map);
-
 		// Follow the session: every turn change re-renders the map
 		if (this.unsubscribeSession) {
 			this.unsubscribeSession();
@@ -203,21 +179,28 @@ export class ReplayMap {
 		var south = north - ((tiles.length ? tiles.length : 1) * 0.3888888889);
 		var east = west + ((tiles.length && tiles[0].length ? tiles[0].length : 1) * 2.4285714286);
 
-		function onMapClick(e: any) {
-			console.log(e.latlng);
-		}
-
-		this.map.on('click', onMapClick);
-
-		// Remove the zoomend redraw - the city layer will handle its own rendering
-		// through the standard tile update mechanism
-
 		var bounds = [[south, west], [north, east]];
 		// Store bounds for later use when map needs to be refit
 		this.mapBounds = bounds;
 
 		// Don't fit bounds here - let it be done after the replay loads
 		// to ensure the container is properly sized
+	}
+
+	// The layers the layers panel can toggle, with their display labels
+	getToggleableLayers() {
+		const highlightLayers = this.highlighting.getLayers();
+		return {
+			Terrain: this.layers.terrain,
+			Elevation: this.layers.elevation,
+			Features: this.layers.feature,
+			Territory: this.layers.territory,
+			Cities: this.layers.city,
+			Grid: this.layers.grid,
+			Boundaries: this.layers.boundary,
+			Selection: highlightLayers.selection,
+			Events: highlightLayers.events
+		};
 	}
 
 
@@ -332,6 +315,14 @@ export class ReplayMap {
 				padding: [30, 30, 30, 30],
 				animate: false
 			});
+		}
+	}
+
+	// Ask Leaflet to re-measure its container, e.g. after a tab change or a
+	// window resize, without moving the place the user is exploring
+	invalidateSize() {
+		if (this.map) {
+			this.map.invalidateSize(false);
 		}
 	}
 }
