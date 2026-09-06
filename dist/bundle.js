@@ -5722,7 +5722,7 @@
             }
             if (replay.worldSize) {
                 this.gameSummary.appendChild(document.createTextNode(' · '));
-                this.gameSummary.appendChild(this.createSummaryItem('fa-map', prettifyEnumValue(replay.worldSize) + ' Speed'));
+                this.gameSummary.appendChild(this.createSummaryItem('fa-map', prettifyEnumValue(replay.worldSize) + ' Map'));
             }
             this.gameSummary.hidden = false;
             const civNames = replay.civs.map(civ => civ.name);

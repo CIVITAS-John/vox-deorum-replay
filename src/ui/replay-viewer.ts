@@ -485,7 +485,7 @@ export class ReplayViewer {
 
 		if (replay.worldSize) {
 			this.gameSummary.appendChild(document.createTextNode(' · '));
-			this.gameSummary.appendChild(this.createSummaryItem('fa-map', prettifyEnumValue(replay.worldSize) + ' Speed'));
+			this.gameSummary.appendChild(this.createSummaryItem('fa-map', prettifyEnumValue(replay.worldSize) + ' Map'));
 		}
 
 		this.gameSummary.hidden = false;
