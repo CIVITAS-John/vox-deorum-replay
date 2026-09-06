@@ -22,7 +22,7 @@ Snapshot details appear only while the timeline sits on the save's last turn and
 - **Plain TypeScript and plain CSS, no framework.** jQuery, Bootstrap 3, bootstrap-slider, and selectpicker leave in Stage 2 together with the layout they hold up.
 - **Leaflet stays** until Stage 4 produces a measured reason to replace it.
 - **Vitest covers core logic**, meaning the session model, parsers, and statistics selectors. The UI is reviewed by hand on the examples. Each stage lists its minimal coverage.
-- **Shared links carry more state.** The `file` and `turn` parameters grow to include the destination, the highlighted civilization, and the chosen measure, so a link lands where the sender was looking.
+- **Shared links carry more state.** The `file` and `turn` parameters grow to include the destination, and the chosen measure, so a link lands where the sender was looking.
 
 ## Stage 1: Refactor the core into a session model
 
@@ -58,15 +58,15 @@ Work in this stage:
 
 **Goal:** make opening and exploring a game comfortable on desktop, tablet, and phone.
 
-Rebuild `index.html` and `assets/main.css` around a compact header, the three destination tabs, a side panel that becomes a bottom sheet on phones, and a persistent one-row timeline. Use native controls where they fit (a range input for the timeline, a details element for filters) and small custom ones where they do not. Add an obvious Open file action, a welcoming empty state, and visible loading and error feedback in place of the current alert dialogs.
+Rebuild `index.html` and `assets/main.css` around a compact header, a persistent one-row timeline, and an events side panel beside the map on larger screens. On phones, the three destinations become tabs that take the full content area, and map details open in a bottom sheet. Use native controls where they fit (a range input for the timeline, a details element for filters) and small custom ones where they do not. Add an obvious Open file action, a welcoming empty state, and visible loading and error feedback in place of the current alert dialogs.
 
 Desktop layout:
 
 ```text
 +-----------------------------------------------------------------------------+
-| Vox Deorum Replay    Game 4 · Rome · Standard · Small   [Open] [Statistics] |
+| Vox Deorum Replay    Game 4 · Standard · Small               [Open] [Stats] |
 +-----------------------------------------------------+-----------------------+
-| [Layers v]  [Highlight: none v]                     | Events     [7 types v]|
+| [Layers v]                                          | Events     [7 types v]|
 |                                                     |-----------------------|
 |                                                     |                       |
 |                        MAP                          | T180  Rome founded    |
@@ -76,7 +76,7 @@ Desktop layout:
 |                                                     | T179  Rome adopted    |
 |                                            [+] [-]  |       Tradition       |
 +-----------------------------------------------------+-----------------------+
-| [|<] [<] [ Play ] [>]   o============o-----------------  Turn 180 / 320  1x  |
+| [|<] [<] [ Play ] [>]   o============o-----------------  Turn 180 / 320  1x |
 +-----------------------------------------------------------------------------+
 ```
 
@@ -87,7 +87,7 @@ Phone layout, portrait:
 | Vox Deorum Replay      [Open] |
 | [ Map ] [Events] [Statistics] |
 +-------------------------------+
-| [Layers]         [Highlight]  |
+| [Layers]                      |
 |                               |
 |                               |
 |              MAP              |
@@ -99,24 +99,24 @@ Phone layout, portrait:
 +-------------------------------+
 ```
 
-Tapping on the play button switches between Pause/Play, rotating. Tapping the turn number opens a small popover with a go-to field and the speed choice, so the timeline stays one row. Events and Statistics replace the map area when their tab is chosen. On tablets and in landscape, the side panel shows only while enough map space remains. Resizing preserves the place the user is exploring.
+The play button switches between Play and Pause. Tapping the turn number opens a small popover with a go-to field and the speed choice, so the timeline stays one row. On phones, the destination tabs give Map, Events, and Statistics the full content area. On larger screens, Events stays in the side panel beside the map, and the Statistics button in the header opens the statistics view in place of the map. On tablets and in landscape, the side panel shows only while enough map space remains. Resizing preserves the place the user is exploring.
 
 Empty state, shown before a file is loaded and reachable again from Open file:
 
 ```text
 +------------------------------------------------+
-|                Vox Deorum Replay               |
+|               Vox Deorum Replay                |
 |                                                |
 |                [Open file icon]                |
-|     Drop a .Civ5Replay or .Civ5Save here       |
+|      Drop a .Civ5Replay or .Civ5Save here      |
 |                                                |
-|    ---------------------------------------     |
-|[Example 1]  [Example 2] [Example 3] [ Example 4 ]|
+|  --------------------------------------------  |
+|  [Game 1] [Game 2] [Game 3] [Game 4] [Game 5]  |
 |                                                |
 +------------------------------------------------+
 ```
 
-Show a loading indicator while we process the save, including from the URL.
+The examples are the bundled games; where a save is bundled as well, the button offers both files. Show a loading indicator while we process the save, including from the URL.
 
 Support touch panning and zooming, large tap targets, keyboard navigation, visible focus, and labels that do not rely on color alone. Essential information is available by tap or selection rather than hover.
 
@@ -159,7 +159,7 @@ Establish one visual treatment for terrain, hills, mountains, forests, natural w
 
 ```text
 +-----------------------------------------------------+
-| [Layers v]                                   [Fit]  |
+| [Layers v]                                          |
 | +------------------+                                |
 | | [x] Terrain      |      ^^  ^                     |
 | | [x] Rivers       |     ^  ^  \                    |
@@ -188,24 +188,24 @@ The 29 datasets already parsed and tested come first. Confirm each one's name, u
 
 ```text
 +-----------------------------------------------------------------------------+
-| [ Map ]  [ Events ]  [ Statistics ]                                          |
-| Snapshot at turn 320                [ Overview ]  [ Trends ]  [ Compare ]    |
+| Vox Deorum Replay    Game 4 · Standard · Small               [Open] [Stats] |
+| Turn 320                            [ Overview ]  [ Trends ]  [ Compare ]   |
 +-----------------------------------------------------------------------------+
-| Civilization    Score   Cities   Population   Gold    Techs                  |
-| Rome             1240       9         71      1820       48                  |
-| Egypt             980       7         55       640       44                  |
-| Songhai           610       4         30       n/a       39   incomplete     |
-|                                                                              |
-| Measure [Score v]             Civilizations [x] Rome  [x] Egypt  [ ] Songhai |
-|                                                                              |
-| 1240 |                                           ______ Rome                 |
-|      |                                __________/                            |
-|      |                     __________/         .......... Egypt              |
-|  600 |           _________/      ..............                              |
-|      |   _______/    ............                                            |
-|    0 +------------------------------------------------------------ Turn      |
-|      0         80        160       240       320                             |
-|                                            [View turn 240 on map]            |
+| Civilization    Score   Cities   Population   Gold    Techs                 |
+| Rome             1240       9         71      1820       48                 |
+| Egypt             980       7         55       640       44                 |
+| Songhai           610       4         30       n/a       39   incomplete    |
+|                                                                             |
+| Measure [Score v]            Civilizations [x] Rome  [x] Egypt  [ ] Songhai |
+|                                                                             |
+| 1240 |                                           ______ Rome                |
+|      |                                __________/                           |
+|      |                     __________/         .......... Egypt             |
+|  600 |           _________/      ..............                             |
+|      |   _______/    ............                                           |
+|    0 +------------------------------------------------------------ Turn     |
+|      0         80        160       240       320                            |
+|                                            [View turn 240 on map]           |
 +-----------------------------------------------------------------------------+
 ```
 
@@ -223,15 +223,14 @@ Parser-dependent measures follow as separate increments. Candidates include econ
 
 **Goal:** let users understand a position through the map, using the inventory from Stage 3.
 
-Introduce tile and city inspection, civilization highlighting, and a compact legend. Begin with terrain, rivers, and event-derived city and ownership information, which work at every turn. Add snapshot fields such as resources, improvements, routes, and city population as separate layers that follow the snapshot rule.
+Introduce tile and city inspection, and a compact legend. Begin with terrain, rivers, and event-derived city and ownership information, which work at every turn. Add snapshot fields such as resources, improvements, routes, and city population as separate layers that follow the snapshot rule.
 
 Desktop, inspecting a city at the save's last turn:
 
 ```text
 +-----------------------------------------------------+-----------------------+
-| [Layers v]  [Highlight: Rome v]                     | Events      Inspect   |
+| [Layers v]                                          | Antium           [x]  |
 |                                                     |-----------------------|
-|                                                     | Antium                |
 |                    MAP                              | Rome, founded T112    |
 |              selected city (*)                      |                       |
 |                                                     | Grassland, hills      |
@@ -245,7 +244,7 @@ Desktop, inspecting a city at the save's last turn:
 +-----------------------------------------------------+-----------------------+
 ```
 
-The same panel at turn 180 keeps the top block and replaces the snapshot block with one line: "Snapshot details are available at turn 320."
+The side panel shows the event list until a tile or city is selected; the close control returns to the events. The same panel at turn 180 keeps the top block and replaces the snapshot block with one line: "Snapshot details are available at turn 320."
 
 Phone, the same inspection as a bottom sheet:
 
