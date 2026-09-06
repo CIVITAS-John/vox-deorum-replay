@@ -134,7 +134,6 @@ a:hover {
 	border: 1px solid var(--border-gold);
 	border-radius: 6px;
 	cursor: pointer;
-	margin: 16px 0;
 	font-family: var(--font-body);
 	line-height: 1.2;
 	transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
@@ -238,7 +237,7 @@ summary::-webkit-details-marker {
 	align-items: center;
 	gap: 14px;
 	min-height: var(--header-height);
-	padding: 8px 14px;
+	padding: 0 14px;
 	border-bottom: 1px solid var(--border-faint);
 	background: linear-gradient(180deg, #16241f, #0e1916);
 }
@@ -877,6 +876,10 @@ summary::-webkit-details-marker {
 		var(--bg);
 }
 
+.empty-state .action-button {
+	margin: 16px 0;
+}
+
 .empty-card {
 	max-width: 600px;
 	width: calc(100% - 32px);
@@ -1073,13 +1076,20 @@ body.drag-over::after {
 	body[data-view="events"] .events-panel {
 		display: flex;
 	}
+
+	/* While the Events tab is active the map steps aside completely, its
+	   floating controls included. Visibility keeps the element's size, so
+	   Leaflet's container stays valid for the switch back. */
+	body[data-view="events"] .map-panel {
+		visibility: hidden;
+	}
 }
 
 /* Phone-sized tweaks: compact header, tighter timeline */
 @media (max-width: 640px) {
 	.app-header {
 		gap: 10px;
-		padding: 8px 10px;
+		padding: 0 8px;
 	}
 
 	.brand h1 {
