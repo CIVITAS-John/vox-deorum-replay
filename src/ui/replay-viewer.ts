@@ -8,8 +8,8 @@
 import { ReplayMap } from '../map/replay-map';
 import { EventLog } from './event-log';
 import { ControlBar } from './control-bar';
-import { Replay } from '../core/replay';
-import { GameSession } from '../core/session';
+import { Replay } from '../replay/replay';
+import { GameSession } from '../replay/session';
 
 /**
  * ReplayViewer UI component

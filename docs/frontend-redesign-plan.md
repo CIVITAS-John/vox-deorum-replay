@@ -26,7 +26,7 @@ Snapshot details appear only while the timeline sits on the save's last turn and
 
 ## Stage 1: Refactor the core into a session model
 
-Status: implemented. The session model lives in `src/core/session.ts`, the compact ownership timeline in `src/core/ownership.ts`, and the map, the event log, and the timeline all follow the session through subscriptions. Turn-state folding no longer happens in the renderer, and the datasets are typed as one series of turn and value pairs per civilization.
+Status: implemented. The session model lives in `src/replay/session.ts`, the compact ownership timeline in `src/replay/ownership.ts`, and the map, the event log, and the timeline all follow the session through subscriptions. Turn-state folding no longer happens in the renderer, and the datasets are typed as one series of turn and value pairs per civilization.
 
 **Goal:** give Stage 2 a clean baseline. The UI stays as it is.
 
@@ -34,7 +34,7 @@ Today the turn-by-turn ownership of tiles is computed inside the map class in `s
 
 ```mermaid
 flowchart LR
-  File[Replay or save file] --> Parsers[Parsers in src/core]
+  File[Replay or save file] --> Parsers[Parsers in src/parsers]
   Parsers --> Replay[Replay data hub]
   Replay --> Session[Game session: turn, selection, per-turn state]
   Session --> Map[Map renderer]
@@ -47,7 +47,7 @@ Work in this stage:
 
 - Move per-turn ownership out of the renderer and store it compactly, as a list of ownership changes per tile rather than a full copy of the map per turn. Large maps on phones depend on this.
 - Give every piece of data a kind, history or snapshot, at the Replay level so later views never guess.
-- Fix the datasets typing in `src/core/replay.ts`: the stored shape is one series of turn and value pairs per civilization for each dataset, and the declared type says something else.
+- Fix the datasets typing in `src/replay/replay.ts`: the stored shape is one series of turn and value pairs per civilization for each dataset, and the declared type says something else.
 - Keep file opening, drag and drop, shared links, starting turn links, playback shortcuts, event filters, and event-to-map interactions working. The viewer, the Replay hub, the parsers, the event and strategy parsers, the text formatter, and the civilization colors stay.
 
 **Tests:** per-turn ownership from the session model checked against the example replays for a founded city, a tile claim, a city transfer, and a razing. The existing parser tests keep passing.
@@ -131,7 +131,7 @@ Support touch panning and zooming, large tap targets, keyboard navigation, visib
 
 **Goal:** know what the files can tell us before designing map layers and statistics around guesses.
 
-The save parser in `src/core/save-parser.ts` currently stops reading each plot record after terrain, feature, and river ids, even though `docs/save-format.md` documents where owner, improvement, resource, and route sit. The map header's wrap flags and the game prelude's winning turn are read and discarded. The per-player sections holding cities, units, and diplomacy are not read at all. Datasets from saves are attributed to civilizations by heuristics whose diagnostics never reach the interface.
+The save parser in `src/parsers/save-parser.ts` currently stops reading each plot record after terrain, feature, and river ids, even though `docs/save-format.md` documents where owner, improvement, resource, and route sit. The map header's wrap flags and the game prelude's winning turn are read and discarded. The per-player sections holding cities, units, and diplomacy are not read at all. Datasets from saves are attributed to civilizations by heuristics whose diagnostics never reach the interface.
 
 Work in this stage:
 

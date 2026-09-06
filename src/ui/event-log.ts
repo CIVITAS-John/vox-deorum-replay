@@ -4,9 +4,9 @@
  * Shows filtered messages and events from the replay based on turn and event type
  */
 
-import { GameEvent, EventType } from '../types/replay.types';
-import { Replay } from '../core/replay';
-import { GameSession } from '../core/session';
+import { GameEvent, EventType } from '../replay/types';
+import { Replay } from '../replay/replay';
+import { GameSession } from '../replay/session';
 import { parseStrategyEvent, renderStrategyEvent } from '../utils/strategy-parser';
 import { formatGameText, hasGameMarkup } from '../utils/text-formatter';
 

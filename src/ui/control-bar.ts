@@ -6,8 +6,8 @@
  * anywhere stay in sync with the slider
  */
 
-import { ControlBarConfig } from '../types/ui.types';
-import { GameSession } from '../core/session';
+import { ControlBarConfig } from './types';
+import { GameSession } from '../replay/session';
 
 // External libraries accessed as globals - types defined in globals.d.ts
 

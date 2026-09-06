@@ -16,6 +16,6 @@
     "declaration": false,
     "sourceMap": true
   },
-  "include": ["src/**/*", "src/types/globals.d.ts"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

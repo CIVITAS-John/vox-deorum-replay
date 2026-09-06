@@ -6,8 +6,8 @@
 
 import { SelectionLayer } from './selection-layer';
 import { EventsLayer } from './events-layer';
-import { MapLayer } from '../types/map.types';
-import { GameEvent, EventType, Tile } from '../types/replay.types';
+import { MapLayer } from './types';
+import { GameEvent, EventType, Tile } from '../replay/types';
 
 /**
  * MapHighlighting class

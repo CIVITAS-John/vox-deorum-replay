@@ -8,7 +8,7 @@
 
 import { Replay } from './replay';
 import { OwnershipTimeline } from './ownership';
-import { TurnState } from '../types/replay.types';
+import { TurnState } from './types';
 
 // Notified with the new turn and its materialized tile state on every change
 export type SessionListener = (turn: number, state: TurnState) => void;

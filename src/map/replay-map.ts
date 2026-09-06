@@ -11,10 +11,10 @@ import { GridLayer } from './grid-layer';
 import { BoundaryLayer } from './boundary-layer';
 import { MapHighlighting } from './map-highlighting';
 import { CivColors } from '../utils/civ-colors';
-import { MapLayer, MapControl, HexData } from '../types/map.types';
-import { GameEvent, TileType, FeatureType, ElevationType, TurnState } from '../types/replay.types';
+import { MapLayer, MapControl, HexData } from './types';
+import { GameEvent, TileType, FeatureType, ElevationType, TurnState } from '../replay/types';
 import { getTileTypeName, getFeatureName, getElevationName } from '../utils/enum-names';
-import { GameSession } from '../core/session';
+import { GameSession } from '../replay/session';
 
 // External libraries accessed as globals - types defined in globals.d.ts
 

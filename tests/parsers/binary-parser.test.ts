@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { BinaryParser } from '../../src/core/binary-parser';
+import { BinaryParser } from '../../src/parsers/binary-parser';
 
 /**
  * Encode a number as a 32-bit little-endian integer

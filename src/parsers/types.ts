@@ -1,5 +1,5 @@
 /**
- * parser.types.ts
+ * types.ts
  * Type definitions for the binary parser
  */
 

@@ -1,6 +1,6 @@
 # Save file format notes
 
-These notes describe what this repo learned about Civilization V save files (Vox Populi and Vox Deorum mod sets) and how the parser in `src/core/save-parser.ts` reads them. They are written for developers; players do not need any of this. The layout statements below were cross checked against the game DLL source that lives next to this repo, mainly `CvPlot.cpp`, `CvMap.cpp`, `CvSerialize.h`, and the FireWorks serialization headers, and every claim is locked in by the regression tests in `tests/core/save-parser.test.ts`.
+These notes describe what this repo learned about Civilization V save files (Vox Populi and Vox Deorum mod sets) and how the parser in `src/parsers/save-parser.ts` reads them. They are written for developers; players do not need any of this. The layout statements below were cross checked against the game DLL source that lives next to this repo, mainly `CvPlot.cpp`, `CvMap.cpp`, `CvSerialize.h`, and the FireWorks serialization headers, and every claim is locked in by the regression tests in `tests/parsers/save-parser.test.ts`.
 
 ## The two file types
 
@@ -13,7 +13,7 @@ The save starts with a small uncompressed part: an engine header and the whole p
 
 The writer does not write one plain zlib stream. It slices its deflate stream into 64KB chunks and appends a four byte little endian size word after every chunk. The last chunk is followed by nothing, but a word holding the final chunk size is placed before it, so a size word appears between every pair of chunks. Reading those words as compressed data corrupts the stream in periodic patches, which is what the very first version of the inflater did.
 
-`src/core/inflate.ts` validates and strips the chunk words before inflating. A payload without valid chunk words is inflated as a plain stream, so other zlib inputs keep working. Two quirks survived into the fixtures: the final size word can disagree with the actual trailing bytes by a few bytes (the stream still ends cleanly), and the writer terminates the stream with a sync flush, so the inflater appends a final empty block before decoding.
+`src/utils/inflate.ts` validates and strips the chunk words before inflating. A payload without valid chunk words is inflated as a plain stream, so other zlib inputs keep working. Two quirks survived into the fixtures: the final size word can disagree with the actual trailing bytes by a few bytes (the stream still ends cleanly), and the writer terminates the stream with a sync flush, so the inflater appends a final empty block before decoding.
 
 ## Decompressed body layout
 
@@ -56,7 +56,7 @@ Replay files store no river data. The parser therefore attaches the river id arr
 
 ## How the parser reads the terrain
 
-`extractMapTerrain` in `src/core/save-parser.ts` decodes records structurally, no scanning or heuristics: it reads the exact layout above and stops the moment any count word looks implausible.
+`extractMapTerrain` in `src/parsers/save-parser.ts` decodes records structurally, no scanning or heuristics: it reads the exact layout above and stops the moment any count word looks implausible.
 
 The first record sits behind the resource tables, whose size depends on the mod set. The parser tries every possible table size from the largest down and accepts the first candidate that decodes as a plausible terrain head and chains cleanly across the whole map. Scanning downward matters: table bytes can masquerade as a record head when a resource count happens to mimic a river count and shifts the field base onto the real record, but such an alias always sits before the true start, so the deepest candidate that chains is the real first record.
 

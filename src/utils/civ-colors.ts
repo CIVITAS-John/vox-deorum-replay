@@ -8,7 +8,7 @@
 
 type RGB = [number, number, number];
 
-interface CivColor {
+export interface CivColor {
   city: RGB;
   territory: RGB;
 }
@@ -58,3 +58,10 @@ export const CivColors: Record<string, CivColor> = {
   'The Shoshone': { city: [24, 239, 206], territory: [73, 58, 45] },
   'The Zulus': { city: [106, 49, 24], territory: [255, 231, 213] }
 };
+
+/**
+ * Look up the color pair of a civilization by name
+ */
+export function getCivColors(civName: string): CivColor | null {
+  return CivColors[civName] || null;
+}

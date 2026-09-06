@@ -7,8 +7,8 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { BaseParser } from '../../src/core/base-parser';
-import { FileConfig } from '../../src/types';
+import { BaseParser } from '../../src/parsers/base-parser';
+import { FileConfig } from '../../src/parsers/types';
 
 /**
  * Toy schema exercising every schema feature: fixed strings, ints, junk

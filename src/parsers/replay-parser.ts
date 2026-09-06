@@ -5,7 +5,7 @@
  */
 
 import { BaseParser } from './base-parser';
-import { FileConfig } from '../types';
+import { FileConfig } from './types';
 
 /**
  * Default file configuration for Vox Populi replay files

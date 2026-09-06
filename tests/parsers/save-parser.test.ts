@@ -19,10 +19,10 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { SaveParser, isSaveFile, extractMapTerrain } from '../../src/core/save-parser';
-import { inflateZlib } from '../../src/core/inflate';
-import { ReplayParser } from '../../src/core/replay-parser';
-import { Replay } from '../../src/core/replay';
+import { SaveParser, isSaveFile, extractMapTerrain } from '../../src/parsers/save-parser';
+import { inflateZlib } from '../../src/utils/inflate';
+import { ReplayParser } from '../../src/parsers/replay-parser';
+import { Replay } from '../../src/replay/replay';
 
 /**
  * Load an example file from the examples directory as a standalone ArrayBuffer

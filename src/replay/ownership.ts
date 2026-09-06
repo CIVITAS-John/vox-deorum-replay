@@ -6,7 +6,8 @@
  * change recorded at or before that turn
  */
 
-import { GameEvent, EventType, TurnState, TileStateInfo } from '../types/replay.types';
+import { GameEvent, EventType, TurnState, TileStateInfo } from './types';
+import { lastAtOrBefore } from '../utils/arrays';
 
 // Resolves a civilization id to its name, as the Replay hub provides it
 export type CivNameResolver = (civId?: number) => string | null;
@@ -60,7 +61,7 @@ export class OwnershipTimeline {
 
     const state: TurnState = {};
     for (const [key, changes] of this.changesByTile) {
-      const change = this.lastChangeAtOrBefore(changes, turn);
+      const change = lastAtOrBefore(changes, turn);
       if (change === undefined) {
         continue;
       }
@@ -197,26 +198,5 @@ export class OwnershipTimeline {
           break;
       }
     }
-  }
-
-  /**
-   * Binary search for the last change recorded at or before the turn
-   */
-  private lastChangeAtOrBefore(changes: TileChange[], turn: number): TileChange | undefined {
-    let low = 0;
-    let high = changes.length - 1;
-    let found: TileChange | undefined;
-
-    while (low <= high) {
-      const mid = (low + high) >> 1;
-      if (changes[mid].turn <= turn) {
-        found = changes[mid];
-        low = mid + 1;
-      } else {
-        high = mid - 1;
-      }
-    }
-
-    return found;
   }
 }

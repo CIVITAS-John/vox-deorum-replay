@@ -9,7 +9,7 @@ import {
   EventType,
   City,
   Tile
-} from '../types';
+} from './types';
 import { Replay } from './replay';
 
 /**

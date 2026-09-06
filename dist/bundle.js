@@ -307,6 +307,12 @@
         'The Shoshone': { city: [24, 239, 206], territory: [73, 58, 45] },
         'The Zulus': { city: [106, 49, 24], territory: [255, 231, 213] }
     };
+    /**
+     * Look up the color pair of a civilization by name
+     */
+    function getCivColors(civName) {
+        return CivColors[civName] || null;
+    }
 
     /**
      * hex-border-utils.ts
@@ -1064,7 +1070,7 @@
     }
 
     /**
-     * replay.types.ts
+      * types.ts
      * Type definitions for replay data structures
      */
     // Event type enum for better type safety
@@ -4486,6 +4492,89 @@
     }
 
     /**
+     * arrays.ts
+     * Array helpers shared across the app
+     */
+    /**
+     * Split an array into fixed-size chunks, with the last chunk taking the remainder
+     */
+    function chunk(array, size) {
+        const result = [];
+        for (let i = 0; i < array.length; i += size) {
+            result.push(array.slice(i, i + size));
+        }
+        return result;
+    }
+    /**
+     * Binary search for the last item whose turn is at or before the given turn
+     * The items must be sorted by turn
+     */
+    function lastAtOrBefore(items, turn) {
+        let low = 0;
+        let high = items.length - 1;
+        let found;
+        while (low <= high) {
+            const mid = (low + high) >> 1;
+            if (items[mid].turn <= turn) {
+                found = items[mid];
+                low = mid + 1;
+            }
+            else {
+                high = mid - 1;
+            }
+        }
+        return found;
+    }
+
+    /**
+     * replay-data.ts
+     * Shapes raw parser output into the structures the Replay hub stores
+     */
+    /**
+     * Index the per-civilization dataset tables by dataset name
+     * Each dataset becomes one series of turn and value pairs per civilization
+     */
+    function indexDatasets(datasets, datasetValues) {
+        if (!datasets || !datasetValues) {
+            return {};
+        }
+        const indexed = {};
+        datasets.forEach((dataset, index) => {
+            indexed[dataset.key] = datasetValues.map((civData) => civData[index] || []);
+        });
+        return indexed;
+    }
+    /**
+     * Convert raw parsed tiles into the hex grid: enum-typed tiles chunked into
+     * rows of mapWidth and stamped with their grid coordinates
+     */
+    function buildTileGrid(tiles, mapWidth) {
+        const processed = tiles.map((tile) => {
+            var _a, _b;
+            const converted = {
+                x: 0, // Filled in below, once the row structure exists
+                y: 0,
+                elevation: ((_a = tile.elevationId) !== null && _a !== void 0 ? _a : ElevationType.AboveSeaLevel),
+                type: tile.type,
+                feature: ((_b = tile.featureId) !== null && _b !== void 0 ? _b : FeatureType.NoFeature)
+            };
+            // Copy any additional raw properties
+            Object.keys(tile).forEach(key => {
+                converted[key] = tile[key];
+            });
+            return converted;
+        });
+        const rows = chunk(processed, mapWidth);
+        for (let y = 0; y < rows.length; y++) {
+            for (let x = 0; x < rows[y].length; x++) {
+                rows[y][x].x = x;
+                rows[y][x].y = y;
+            }
+        }
+        return rows;
+    }
+
+    /**
      * replay.ts
      * Data hub for Civilization V (Vox Populi) replay files
      * Manages parsed replay data and provides utility functions for data access
@@ -4580,29 +4669,12 @@
             this.mods = rawData.mods || [];
             // Store civilizations
             this.civs = rawData.civs || [];
-            // Process datasets
-            this.processDatasets(rawData.datasets, rawData.datasetValues);
+            // Index the datasets by name
+            this.datasets = indexDatasets(rawData.datasets, rawData.datasetValues);
             // Process events
             this.processEvents(rawData.events || []);
-            // Process tiles
-            this.processTiles(rawData.tiles || []);
-        }
-        /**
-         * Process dataset values by civ id and dataset name
-         * Each dataset ends up as one series of turn and value pairs per civilization
-         */
-        processDatasets(datasets, datasetValues) {
-            if (!datasets || !datasetValues)
-                return;
-            const datasetNames = datasets.map(d => d.key);
-            const processedDatasets = datasetNames.map((_key, index) => {
-                return datasetValues.map((civData) => civData[index] || []);
-            });
-            // Create object from key-value pairs (ES5 compatible)
-            this.datasets = {};
-            datasetNames.forEach((name, i) => {
-                this.datasets[name] = processedDatasets[i];
-            });
+            // Build the tile grid
+            this.tiles = buildTileGrid(rawData.tiles || [], this.mapWidth);
         }
         /**
          * Process game events and add human-readable information
@@ -4611,47 +4683,6 @@
             const eventParser = new EventParser(this);
             this.events = eventParser.processEvents(events);
             this.cities = eventParser.getCities();
-        }
-        /**
-         * Process tiles and convert IDs to enums
-         */
-        processTiles(tiles) {
-            if (!tiles || tiles.length === 0)
-                return;
-            // Convert raw tile data to use enums
-            const processedTiles = tiles.map((tile) => {
-                var _a, _b;
-                const processed = {
-                    x: 0, // Will be set later
-                    y: 0, // Will be set later
-                    elevation: ((_a = tile.elevationId) !== null && _a !== void 0 ? _a : ElevationType.AboveSeaLevel),
-                    type: tile.type,
-                    feature: ((_b = tile.featureId) !== null && _b !== void 0 ? _b : FeatureType.NoFeature)
-                };
-                // Copy any additional raw properties
-                Object.keys(tile).forEach(key => {
-                    processed[key] = tile[key];
-                });
-                return processed;
-            });
-            // Chunk into 2D array and add coordinates
-            this.tiles = this.chunk(processedTiles, this.mapWidth);
-            for (let y = 0; y < this.tiles.length; y++) {
-                for (let x = 0; x < this.tiles[y].length; x++) {
-                    this.tiles[y][x].x = x;
-                    this.tiles[y][x].y = y;
-                }
-            }
-        }
-        /**
-         * Utility function to chunk an array into a 2D array
-         */
-        chunk(array, size) {
-            const result = [];
-            for (let i = 0; i < array.length; i += size) {
-                result.push(array.slice(i, i + size));
-            }
-            return result;
         }
         // ========== UTILITY FUNCTIONS ==========
         /**
@@ -4667,17 +4698,13 @@
          * Get civilization color from ID or name
          */
         getCivColor(civIdOrName) {
-            let civName = null;
-            if (typeof civIdOrName === 'number') {
-                civName = this.getCivName(civIdOrName);
-            }
-            else {
-                civName = civIdOrName;
-            }
-            if (!civName || !CivColors[civName]) {
+            const civName = typeof civIdOrName === 'number'
+                ? this.getCivName(civIdOrName)
+                : civIdOrName;
+            if (!civName) {
                 return null;
             }
-            return CivColors[civName];
+            return getCivColors(civName);
         }
         /**
          * Get city at specific coordinates
@@ -4754,7 +4781,7 @@
             }
             const state = {};
             for (const [key, changes] of this.changesByTile) {
-                const change = this.lastChangeAtOrBefore(changes, turn);
+                const change = lastAtOrBefore(changes, turn);
                 if (change === undefined) {
                     continue;
                 }
@@ -4880,25 +4907,6 @@
                     }
                 }
             }
-        }
-        /**
-         * Binary search for the last change recorded at or before the turn
-         */
-        lastChangeAtOrBefore(changes, turn) {
-            let low = 0;
-            let high = changes.length - 1;
-            let found;
-            while (low <= high) {
-                const mid = (low + high) >> 1;
-                if (changes[mid].turn <= turn) {
-                    found = changes[mid];
-                    low = mid + 1;
-                }
-                else {
-                    high = mid - 1;
-                }
-            }
-            return found;
         }
     }
 

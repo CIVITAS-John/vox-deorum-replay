@@ -9,9 +9,9 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Replay } from '../../src/core/replay';
-import { GameSession } from '../../src/core/session';
-import { GameEvent, EventType, TurnState } from '../../src/types/replay.types';
+import { Replay } from '../../src/replay/replay';
+import { GameSession } from '../../src/replay/session';
+import { GameEvent, EventType, TurnState } from '../../src/replay/types';
 
 /**
  * Load an example file from the examples directory as a standalone ArrayBuffer

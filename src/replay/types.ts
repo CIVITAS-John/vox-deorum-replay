@@ -1,5 +1,5 @@
 /**
- * replay.types.ts
+  * types.ts
  * Type definitions for replay data structures
  */
 

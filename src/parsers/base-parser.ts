@@ -7,7 +7,7 @@
  */
 
 import { BinaryParser } from './binary-parser';
-import { FileConfig, ItemConfig, ParserConfig } from '../types';
+import { FileConfig, ItemConfig, ParserConfig } from './types';
 
 export abstract class BaseParser {
   protected parser: BinaryParser;   // Low-level reader over the file buffer

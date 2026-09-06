@@ -1,9 +1,9 @@
 /**
- * map.types.ts
+ * types.ts
  * Type definitions for map-related structures
  */
 
-import { TurnState } from './replay.types';
+import { TurnState } from '../replay/types';
 
 // Hex layer configuration
 export interface HexLayerConfig {

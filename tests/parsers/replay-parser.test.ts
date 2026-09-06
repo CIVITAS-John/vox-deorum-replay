@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi, type MockInstance } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { ReplayParser } from '../../src/core/replay-parser';
+import { ReplayParser } from '../../src/parsers/replay-parser';
 
 /**
  * Load an example file from the examples directory as a standalone ArrayBuffer

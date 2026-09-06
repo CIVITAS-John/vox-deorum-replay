@@ -1,9 +1,9 @@
 /**
- * ui.types.ts
+ * types.ts
  * Type definitions for UI components
  */
 
-import { GameSession } from '../core/session';
+import { GameSession } from '../replay/session';
 
 // Control bar configuration
 export interface ControlBarConfig {

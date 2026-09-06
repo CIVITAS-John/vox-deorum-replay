@@ -9,7 +9,7 @@ import { ReplayMap } from './map/replay-map';
 import { HexLayer } from './map/hex-layer';
 import { ControlBar } from './ui/control-bar';
 import { EventLog } from './ui/event-log';
-import { EventType } from './types';
+import { EventType } from './replay/types';
 
 // External libraries accessed as globals - types defined in globals.d.ts
 
