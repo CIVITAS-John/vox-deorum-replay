@@ -93,6 +93,23 @@ export function edgeCorners(tile: HexCoordinate, direction: HexDirection): [Worl
 }
 
 /**
+ * Offset both endpoints of an edge toward a hex center by a world distance.
+ * Borders and highlight outlines use this to keep every stroke inside its
+ * own hexagon, leaving the shared edge itself free for the feature that
+ * belongs to both sides, such as a river.
+ */
+export function insetEdgeToward(points: [WorldPoint, WorldPoint], center: WorldPoint, distance: number): [WorldPoint, WorldPoint] {
+	const midpoint = { x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2 };
+	const length = Math.hypot(center.x - midpoint.x, center.y - midpoint.y) || 1;
+	const x = (center.x - midpoint.x) / length * distance;
+	const y = (center.y - midpoint.y) / length * distance;
+	return [
+		{ x: points[0].x + x, y: points[0].y + y },
+		{ x: points[1].x + x, y: points[1].y + y }
+	];
+}
+
+/**
  * Look up a neighbor using the map's staggered rows and optional horizontal wrap.
  */
 export function neighborFor(tile: HexCoordinate, direction: HexDirection, options: MapGeometryOptions): HexCoordinate | null {

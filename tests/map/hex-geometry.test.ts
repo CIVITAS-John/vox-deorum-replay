@@ -6,8 +6,10 @@ import { describe, expect, it } from 'vitest';
 import {
 	buildRiverEdges,
 	directions,
+	edgeCorners,
 	hexCenter,
 	hexWidth,
+	insetEdgeToward,
 	neighborFor,
 	nextMapLod,
 	oppositeDirection,
@@ -80,5 +82,32 @@ describe('hex geometry', () => {
 		expect(nextMapLod(25, 'local')).toBe('local');
 		expect(nextMapLod(23, 'local')).toBe('regional');
 		expect(nextMapLod(8, 'local')).toBe('world');
+	});
+});
+
+describe('edge insets', () => {
+	it('moves every hex edge toward its center by the requested distance', () => {
+		const tile = { x: 2, y: 2 };
+		const center = hexCenter(tile);
+		for (const direction of directions) {
+			const edge = edgeCorners(tile, direction);
+			const inset = insetEdgeToward(edge, center, 0.25);
+			const before = { x: (edge[0].x + edge[1].x) / 2, y: (edge[0].y + edge[1].y) / 2 };
+			const after = { x: (inset[0].x + inset[1].x) / 2, y: (inset[0].y + inset[1].y) / 2 };
+			expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeCloseTo(0.25);
+			expect(Math.hypot(inset[0].x - inset[1].x, inset[0].y - inset[1].y)).toBeCloseTo(Math.hypot(edge[0].x - edge[1].x, edge[0].y - edge[1].y));
+			const total = Math.hypot(center.x - before.x, center.y - before.y);
+			expect(Math.hypot(center.x - after.x, center.y - after.y)).toBeCloseTo(total - 0.25);
+		}
+	});
+
+	it('lands an edge on the hex center when the distance equals the apothem', () => {
+		const tile = { x: 1, y: 3 };
+		const center = hexCenter(tile);
+		const edge = edgeCorners(tile, 'NW');
+		const apothem = Math.hypot(center.x - (edge[0].x + edge[1].x) / 2, center.y - (edge[0].y + edge[1].y) / 2);
+		const inset = insetEdgeToward(edge, center, apothem);
+		expect((inset[0].x + inset[1].x) / 2).toBeCloseTo(center.x);
+		expect((inset[0].y + inset[1].y) / 2).toBeCloseTo(center.y);
 	});
 });

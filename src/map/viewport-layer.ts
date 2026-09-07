@@ -15,6 +15,7 @@ import {
 	hexCorners,
 	hexRadius,
 	hexWidth,
+	insetEdgeToward,
 	MapGeometryOptions,
 	MapLod,
 	neighborFor,
@@ -542,12 +543,17 @@ export class ViewportLayer extends L.Layer {
 	}
 
 	/**
-	 * Draw precomputed outward border segments using their owner's territory color.
+	 * Draw precomputed outward border segments using their owner's territory
+	 * color. Every segment is inset into its owner's hexagon by half the line
+	 * width, so both sides of a shared frontier stay visible side by side and
+	 * no stroke crosses a hexagon boundary. Segments that follow a river keep
+	 * the wider inset that leaves the water visible between the two stripes.
 	 */
 	private drawBorders(): void {
 		if (!this.context || !this.layers.borders.visible) return;
+		const borderWidth = this.lod === 'world' ? 1 : 2;
 		this.context.save();
-		this.context.lineWidth = this.lod === 'world' ? 1 : 2;
+		this.context.lineWidth = borderWidth;
 		this.context.lineCap = 'round';
 		for (const segments of this.borderCache.values()) {
 			for (const segment of segments) {
@@ -555,7 +561,8 @@ export class ViewportLayer extends L.Layer {
 					? [255, 235, 59]
 					: CivColors[segment.owner]?.territory || [120, 120, 120];
 				this.context.strokeStyle = `rgb(${color.join(',')})`;
-				this.strokeSegment(segment.river ? this.offsetRiverBorder(segment) : segment.points);
+				const inset = segment.river ? this.riverWidth() / 2 + 1.5 : borderWidth / 2;
+				this.strokeSegment(insetEdgeToward(segment.points, hexCenter(segment.tile), inset / this.worldScale()));
 			}
 		}
 		this.context.restore();
@@ -622,24 +629,45 @@ export class ViewportLayer extends L.Layer {
 
 	/**
 	 * Draw current-turn events and the selected plot above all map content.
+	 * Each highlighted group is drawn as one region: only the edges facing
+	 * unhighlighted neighbors are stroked, and each stroke is inset into the
+	 * highlighted hexagon, so the outline hugs the inside of the region and
+	 * never doubles up or bleeds into neighboring plots.
 	 */
 	private drawHighlights(): void {
 		if (!this.context) return;
-		if (this.layers.events.visible) {
-			this.context.save();
-			this.context.strokeStyle = '#ffeb3b';
-			this.context.lineWidth = this.lod === 'world' ? 0.8 : 3;
-			this.context.setLineDash(this.lod === 'world' ? [1.5, 1.5] : [5, 4]);
-			for (const key of this.eventHexes) this.drawKeyHex(key, () => this.context!.stroke());
-			this.context.restore();
+		if (this.layers.events.visible && this.eventHexes.size > 0) {
+			this.drawHighlightRegion(this.eventHexes, this.lod === 'world' ? 0.8 : 3, this.lod === 'world' ? [1.5, 1.5] : [5, 4]);
 		}
 		if (this.layers.selection.visible && this.selectedHex) {
-			this.context.save();
-			this.context.strokeStyle = '#ffeb3b';
-			this.context.lineWidth = this.lod === 'world' ? 1 : 3;
-			this.drawKeyHex(this.selectedHex, () => this.context!.stroke());
-			this.context.restore();
+			this.drawHighlightRegion(new Set([this.selectedHex]), this.lod === 'world' ? 1 : 3, []);
 		}
+	}
+
+	/**
+	 * Outline the boundary of a set of highlighted hexes with one shared style.
+	 * Edges shared with another highlighted hex are skipped so interior cell
+	 * boundaries disappear and the group reads as a single outlined shape.
+	 */
+	private drawHighlightRegion(keys: Set<string>, width: number, dash: number[]): void {
+		if (!this.context) return;
+		this.context.save();
+		this.context.strokeStyle = '#ffeb3b';
+		this.context.lineWidth = width;
+		this.context.setLineDash(dash);
+		this.context.lineCap = 'round';
+		for (const key of keys) {
+			const [x, y] = key.split(',').map(Number);
+			const tile = this.tiles[y]?.[x];
+			if (!tile) continue;
+			for (const direction of directions) {
+				const neighbor = neighborFor(tile, direction, this.geometry);
+				if (neighbor && keys.has(tileKey(neighbor))) continue;
+				const inset = width / 2 / this.worldScale();
+				this.strokeSegment(insetEdgeToward(edgeCorners(tile, direction), hexCenter(tile), inset));
+			}
+		}
+		this.context.restore();
 	}
 
 	/**
@@ -741,32 +769,6 @@ export class ViewportLayer extends L.Layer {
 		this.context.moveTo(first.x, first.y);
 		this.context.lineTo(second.x, second.y);
 		this.context.stroke();
-	}
-
-	/**
-	 * Offset a political edge toward its owner by a few screen pixels so a
-	 * river shared with that border remains visible between the two strokes.
-	 */
-	private offsetRiverBorder(segment: BorderSegment): [WorldPoint, WorldPoint] {
-		const center = hexCenter(segment.tile);
-		const midpoint = { x: (segment.points[0].x + segment.points[1].x) / 2, y: (segment.points[0].y + segment.points[1].y) / 2 };
-		const length = Math.hypot(center.x - midpoint.x, center.y - midpoint.y) || 1;
-		const distance = (this.riverWidth() / 2 + 1.5) / this.worldScale();
-		const x = (center.x - midpoint.x) / length * distance;
-		const y = (center.y - midpoint.y) / length * distance;
-		return [
-			{ x: segment.points[0].x + x, y: segment.points[0].y + y },
-			{ x: segment.points[1].x + x, y: segment.points[1].y + y }
-		];
-	}
-
-	/**
-	 * Draw a key-addressed hex when it exists in the loaded grid.
-	 */
-	private drawKeyHex(key: string, draw: () => void): void {
-		const [x, y] = key.split(',').map(Number);
-		const tile = this.tiles[y]?.[x];
-		if (tile) this.drawHex(tile, draw);
 	}
 
 	/**

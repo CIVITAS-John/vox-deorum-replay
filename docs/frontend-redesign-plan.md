@@ -171,7 +171,7 @@ Provisional targets are a 95th-percentile frame time below 16.7 ms on desktop an
 
 The viewport canvas composites cached geography and current overlays. It is sized to the visible container rather than to the entire map at maximum zoom. Cap the backing pixel ratio at 2 initially and include the backing store in the memory budget.
 
-Zoom buttons use half-level steps and wheel zoom has gentler sensitivity. The existing viewport bitmap follows Leaflet's animated camera transition, then redraws at the settled scale. Rivers widen continuously with projected hex width, from 0.8 px at world scale to a maximum of 8 px close up. Political borders move inward enough to keep the wider water stroke visible.
+Zoom buttons use half-level steps and wheel zoom has gentler sensitivity. The existing viewport bitmap follows Leaflet's animated camera transition, then redraws at the settled scale. Rivers widen continuously with projected hex width, from 0.8 px at world scale to a maximum of 8 px close up, and remain one centered stroke across each shared edge. Political borders draw inside each owner's hexagons, so both civilizations' colors appear side by side along a shared frontier; where a border follows a river, each owner's stripe hugs its own bank and the water stays visible between them. Event and selection highlights outline the highlighted region inside its own hexes, skipping edges between highlighted cells, so a multi-tile event reads as one single-width outlined shape.
 
 ```mermaid
 flowchart LR
@@ -218,7 +218,7 @@ The source set uses high-resolution PNGs. All seven ground images are opaque and
 
 ### Rivers, wrapping, and layer scope
 
-Read river ids in the parser's direction order, NE, E, SE, SW, W, NW, and map them through the shared hex geometry. Deduplicate paired records for each shared edge and retain edges supplied by only one plot. Example 4 has six such records around plot (57,11), giving 533 drawable edges from 1060 directed records; `docs/save-format.md` records the finding. Draw connected strokes with round joins and keep junctions and coast endpoints intact. When borders follow a river, offset the political stroke toward the owning tile enough to leave the water visible.
+Read river ids in the parser's direction order, NE, E, SE, SW, W, NW, and map them through the shared hex geometry. Deduplicate paired records for each shared edge and retain edges supplied by only one plot. Example 4 has six such records around plot (57,11), giving 533 drawable edges from 1060 directed records; `docs/save-format.md` records the finding. Draw connected strokes with round joins and keep junctions and coast endpoints intact. When borders follow a river, offset each owner's political stroke toward its own tile enough to leave the water visible.
 
 Use the map's wrap flags for neighbor lookup even before wrapped panning is enabled. Canonical edge keys must handle the horizontal seam, while drawing places seam segments at the appropriate map edges. Optional horizontal panning repeats visible world copies and normalizes selection to the original tile; it must not duplicate cities or ownership in the session. Replay files without wrap metadata retain bounded panning.
 
