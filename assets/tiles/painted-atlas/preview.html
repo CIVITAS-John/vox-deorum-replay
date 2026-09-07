@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Painted atlas texture review</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px; color: #243d3c; background: #f1ecdf; font: 16px/1.5 system-ui, sans-serif; }
+    main { max-width: 1100px; margin: auto; }
+    h1, h2 { font-family: Georgia, serif; }
+    label { display: inline-flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 0 24px 12px 0; }
+    input { accent-color: #365e59; }
+    #scene { position: relative; height: 430px; overflow: hidden; background: #e2ddce; border: 1px solid #b4b5a4; }
+    .hex { position: absolute; clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); background-size: 100% 100%; }
+    .hex img, .tint { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .hex img { object-fit: contain; }
+    .tint { background: #9e5160; }
+    .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 16px; }
+    figure { margin: 0; padding: 10px; background: #fffaf0; border: 1px solid #d7d1bf; }
+    figure img { width: 100%; aspect-ratio: 1; object-fit: contain; background: repeating-conic-gradient(#e6e6df 0% 25%, #fafaf4 0% 50%) 0 / 20px 20px; }
+    .swatches { display: flex; align-items: center; gap: 16px; min-height: 42px; }
+    .swatches img { flex: none; }
+    a { color: #245d59; }
+    .note { color: #57635c; }
+    @media (max-width: 500px) { body { padding: 14px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Painted atlas texture review</h1>
+    <p>Source art for Stage 4. The sample below shows hex clipping, repeated tiles, feature combinations, and territory tint. It is an art preview, not the proposed renderer or a performance benchmark.</p>
+    <p>Relief uses one hill or mountain per tile. Oasis and marsh leave more ground visible, and flood plains add a light fertile accent. Coast uses a muted aquatic blue-green.</p>
+    <label>Hex width <input id="size" type="range" min="8" max="96" value="24"> <output id="sizeValue">24 px</output></label>
+    <label>Territory tint <input id="opacity" type="range" min="0" max="60" value="20"> <output id="opacityValue">20%</output></label>
+    <p id="detail" aria-live="polite"></p>
+    <div id="scene" role="img" aria-label="Sample terrain hexes with hills, forests, mountains, and water"></div>
+    <p class="note">Below 10 px, the sample uses flat colors. All relief and features are visible from 10 px onward. Larger sizes preserve the same features with sharper painted shapes. Rivers, borders, labels, and transition hysteresis belong to renderer implementation.</p>
+    <h2>Textures on terrain</h2>
+    <p>Features are shown over ground to review their blending. Small samples show each feature at 16 and 24 px. Click the large image to inspect its original transparent source.</p>
+    <div class="gallery" id="gallery"></div>
+  </main>
+  <script>
+    const ground = ['GRASSLAND', 'PLAINS', 'DESERT', 'TUNDRA', 'SNOW', 'COAST', 'OCEAN'];
+    const overlays = ['HILLS', 'MOUNTAIN', 'FOREST', 'JUNGLE', 'ICE', 'MARSH', 'OASIS', 'FLOOD_PLAINS', 'ATOLL', 'NATURAL_WONDER'];
+    const colors = ['#899758', '#b5a675', '#ddbf87', '#969b86', '#e4e8e1', '#80a8a5', '#426e83'];
+    const featureGround = { HILLS: 'PLAINS', MOUNTAIN: 'TUNDRA', FOREST: 'GRASSLAND', JUNGLE: 'GRASSLAND', ICE: 'COAST', MARSH: 'GRASSLAND', OASIS: 'DESERT', FLOOD_PLAINS: 'DESERT', ATOLL: 'COAST', NATURAL_WONDER: 'PLAINS' };
+    const scene = document.getElementById('scene');
+    const sizeInput = document.getElementById('size');
+    const opacityInput = document.getElementById('opacity');
+
+    // Give source filenames readable captions.
+    function labelFor(name) {
+      return name.toLowerCase().replaceAll('_', ' ');
+    }
+
+    // Composite feature previews over ground while preserving links to original sources.
+    function buildGallery() {
+      for (const name of [...ground, ...overlays]) {
+        const card = document.createElement('figure');
+        const link = document.createElement('a');
+        link.href = name + '.png';
+        const image = document.createElement('img');
+        image.src = link.href;
+        image.alt = labelFor(name);
+        image.loading = 'lazy';
+        if (featureGround[name]) {
+          image.style.backgroundImage = `url(${featureGround[name]}.png)`;
+          image.style.backgroundSize = '100% 100%';
+        }
+        link.append(image);
+        const caption = document.createElement('figcaption');
+        caption.textContent = labelFor(name);
+        card.append(link, caption);
+        if (featureGround[name]) {
+          const swatches = document.createElement('div');
+          swatches.className = 'swatches';
+          for (const width of [16, 24]) {
+            const small = image.cloneNode();
+            small.style.width = width + 'px';
+            small.alt = labelFor(name) + ' at ' + width + ' px';
+            swatches.append(small);
+          }
+          card.append(swatches);
+        }
+        document.getElementById('gallery').append(card);
+      }
+    }
+
+    // Compose a fixed sample of terrain so scale and tint can be compared.
+    function drawSample() {
+      const width = Number(sizeInput.value);
+      const height = width * 2 / Math.sqrt(3);
+      const tint = Number(opacityInput.value) / 100;
+      document.getElementById('sizeValue').value = width + ' px';
+      document.getElementById('opacityValue').value = Math.round(tint * 100) + '%';
+      document.getElementById('detail').textContent = width < 10 ? 'World detail: flat terrain palette' : width < 28 ? 'Regional detail: all relief and features' : 'Local detail: all relief and features';
+      scene.style.height = Math.min(430, height * 7) + 'px';
+      scene.replaceChildren();
+      for (let row = 0; row < 9; row++) {
+        for (let col = 0; col < 19; col++) {
+          const type = Math.min(6, Math.floor(col / 3));
+          const tile = document.createElement('div');
+          tile.className = 'hex';
+          tile.style.cssText = `width:${width + 0.4}px;height:${height + 0.4}px;left:${col * width + (row % 2) * width / 2}px;top:${row * height * 0.75}px;background-color:${colors[type]}`;
+          if (width >= 10) tile.style.backgroundImage = `url(${ground[type]}.png)`;
+          const features = [];
+          if (type < 4 && row % 3 === 1) features.push('HILLS');
+          if (type < 4 && row === 5) features.push('MOUNTAIN');
+          if (width >= 10) {
+            if (type === 0 && row % 2 === 1 && row !== 5) features.push('FOREST');
+            if (type === 0 && row === 2) features.push('JUNGLE');
+            if (type === 1 && row === 2) features.push('MARSH');
+            if (type === 2 && row === 2) features.push('OASIS');
+            if (type === 2 && row === 3) features.push('FLOOD_PLAINS');
+            if (type === 5 && row < 2) features.push('ICE');
+            if (type === 5 && row === 3) features.push('ATOLL');
+            if (type < 3 && row === 6) features.push('NATURAL_WONDER');
+          }
+          if (width >= 10) {
+            for (const name of features) {
+              const image = document.createElement('img');
+              image.src = name + '.png';
+              image.alt = '';
+              tile.append(image);
+            }
+          }
+          if (row >= 4 && type < 5) {
+            const fill = document.createElement('div');
+            fill.className = 'tint';
+            fill.style.opacity = String(tint);
+            tile.append(fill);
+          }
+          scene.append(tile);
+        }
+      }
+    }
+
+    sizeInput.addEventListener('input', drawSample);
+    opacityInput.addEventListener('input', drawSample);
+    buildGallery();
+    drawSample();
+  </script>
+</body>
+</html>

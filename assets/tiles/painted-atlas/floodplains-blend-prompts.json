@@ -1,0 +1,28 @@
+{
+  "asset": "assets/tiles/painted-atlas/FLOOD_PLAINS.png",
+  "generated_by": "built-in image_gen",
+  "mode": "built-in image_gen edit",
+  "references": [
+    { "role": "edit target", "asset": "FLOOD_PLAINS.png" },
+    { "role": "supporting style reference", "asset": "DESERT.png" }
+  ],
+  "prompts": [
+    {
+      "purpose": "sparse floodplain regeneration",
+      "text": "Use case: precise-object-edit\nAsset type: transparent 2D painted terrain overlay tile for a low-detail regional strategy game atlas\nInput images: Image 1 is the edit target, the current FLOOD_PLAINS transparent overlay; Image 2 is a supporting style reference, the DESERT painted terrain tile\nPrimary request: regenerate the floodplain overlay as a subtle addition over the desert terrain. Keep a square canvas and the same overall atlas-ready scale and painterly watercolor texture.\nSubject: only a few broad, irregular muted sage and silt-green watercolor washes that suggest damp floodplain ground. Use sparse regional patches with plenty of open transparent space so the desert ground clearly shows through.\nStyle/medium: low-detail hand-painted watercolor wash matching the soft mineral texture and restrained detail of the desert reference, suitable for a 16 to 24 pixel game region read.\nComposition/framing: square tile, sparse asymmetrical placement, several connected but gentle washes with smoothly feathered edges. No hard cutout silhouettes.\nLighting/mood: subdued natural pigment.\nColor palette: quiet muted sage, desaturated olive, pale gray-green, and a little cool silt brown. Keep all colors translucent and subdued.\nMaterials/textures: watery pigment blooms and soft grain, low opacity interiors, softly fading alpha edges, natural overlapping washes.\nTransparency: real transparent PNG alpha outside the painted washes, with distributed semitransparent alpha throughout the washes. Do not fake transparency with white or checkerboard pixels.\nConstraints: change the floodplain artwork only; preserve square dimensions and transparent overlay intent; most of the canvas must remain transparent; the desert texture must remain visually dominant when composited beneath it.\nAvoid: opaque yellow or tan patches, solid filled islands, cutout sticker edges, white fringe, checkerboard artifacts, uniform haze, dense coverage, river, stream, path, road, coastline, labels, symbols, text, border, frame, watermark."
+    },
+    {
+      "purpose": "RGBA transparency correction",
+      "text": "Use case: background-extraction\nAsset type: transparent 2D painted floodplain overlay tile for a game terrain atlas\nPrimary request: recreate this sparse muted floodplain watercolor overlay with genuine transparent RGBA output.\nComposition/framing: square canvas, sparse regional washes with large open transparent areas. Keep the same broad arrangement and low-detail atlas scale.\nStyle/medium: soft hand-painted watercolor matching a desert terrain tile, subtle sage and silt-green washes, gentle pigment grain.\nTransparency: this is the critical requirement. The PNG must contain a real alpha channel. Pixels outside all washes must be alpha 0, and wash interiors must use many semitransparent alpha values across smooth feathered edges. Preserve translucent paint rather than flattening it.\nConstraints: most of the square remains fully transparent; the washes are a subtle addition so underlying desert remains dominant; preserve soft low-contrast colors.\nAvoid: any checkerboard pattern baked into pixels, white background, opaque background, binary cutout alpha, hard sticker edges, opaque yellow or tan islands, river, stream, path, road, labels, text, border, watermark."
+    }
+  ],
+  "selected_output": "C:/Users/John Chen/.codex/generated_images/01a079c1-27f7-7431-a25a-755097cefde4/exec-f213638a-e9e2-4749-9041-72df46bc811a.png",
+  "validation": {
+    "mode": "RGBA",
+    "size": [1254, 1254],
+    "alpha_zero": 1030785,
+    "alpha_semitransparent": 541730,
+    "alpha_opaque": 1,
+    "alpha_distribution": "validated with read-only PIL statistics"
+  }
+}

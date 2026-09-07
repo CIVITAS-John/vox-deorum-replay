@@ -1,0 +1,14 @@
+{
+  "asset": "MOUNTAIN.png",
+  "mode": "built-in image_gen generate",
+  "source": "C:/Users/John Chen/.codex/generated_images/01a079bb-3e8a-7052-b976-16e7fdd247dc/exec-0608dc8c-218d-4ae3-bf13-926c8e373b97.png",
+  "prompts": [
+    "Use case: stylized-concept\nAsset type: square game map tile, readable at 16px and 24px\nPrimary request: one simple mountain peak viewed from an elevated map angle, broad soft painted shape, clearly volumetric rather than a side-on silhouette\nScene/backdrop: genuinely transparent background with no background color, no checkerboard, no border\nSubject: a single broad gray mountain peak centered in the canvas, with one small ivory snow cap and a broad darker shadow plane; feathered foothill edges fade softly into transparency\nStyle/medium: soft hand-painted game atlas illustration, clean readable shapes, restrained detail\nComposition/framing: square canvas, one centered mountain only, generous transparent margins, elevated oblique overhead angle so the top and slopes are visible\nLighting/mood: gentle diffuse light, soft painted shading\nColor palette: cool medium gray rock, darker gray shadow plane, small warm ivory snow cap\nMaterials/textures: broad smooth brushwork, subtle paper-like painted texture, no hard outlines\nConstraints: output must preserve real RGBA transparency around the mountain; only one mountain; optimized to remain legible when downscaled to 16px and 24px\nAvoid: side-on triangular silhouette, multiple peaks, trees, buildings, clouds, sun, text, symbols, black or white background, checkerboard preview baked into pixels, frame, border, photorealism, sharp vector geometry, excessive detail"
+  ],
+  "validation": {
+    "size": [1254, 1254],
+    "mode": "RGBA",
+    "alpha_min": 0,
+    "alpha_max": 255
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "asset": "MARSH.png",
+  "mode": "built-in image_gen",
+  "prompt": "Generate a transparent PNG game-map marsh overlay. REAL alpha-channel transparency, no background color and no checkerboard. One small simple irregular wetland wash centered on a square canvas covering about 65 percent of the width. View from above. Muted moss-green and olive painted shapes, a little dark dusty blue-green shallow water and just two simple broad reed brush marks. Soft flat gouache, very low detail. Crucial: the outer paint washes fade gradually to alpha zero, with genuinely semitransparent green edges and partly transparent inner washes so separate grassland terrain shows through. NO white or cream edge pigment, no pale halo, no sand shore, no hard cutout rim, no painted background, no square ground tile, no tiny details or stippling, no text. Keep the feature quiet and integrated with olive-green terrain, not a distinct island.",
+  "selectedOutput": "exec-07bd2411-d2fb-47f4-b0b7-0f2c755ea141.png",
+  "validation": {
+    "mode": "RGBA",
+    "size": [
+      1254,
+      1254
+    ],
+    "alphaRange": [
+      0,
+      254
+    ],
+    "partialAlphaPixels": 400076
+  }
+}

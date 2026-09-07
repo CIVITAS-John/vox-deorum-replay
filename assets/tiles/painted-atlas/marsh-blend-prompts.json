@@ -1,0 +1,19 @@
+{
+  "asset": "MARSH.png",
+  "mode": "built-in image_gen",
+  "status": "failed-alpha-validation",
+  "reference": "GRASSLAND.png",
+  "candidates": [
+    {
+      "path": "C:/Users/John Chen/.codex/generated_images/01a079c1-6559-7321-ac6f-151e0895e83f/exec-236ba4a9-d8ec-4a99-a47a-e06f7cbdce00.png",
+      "status": "failed-alpha-validation",
+      "reason": "RGB PNG, PNG color type 2, no alpha channel"
+    },
+    {
+      "path": "C:/Users/John Chen/.codex/generated_images/01a079c1-6559-7321-ac6f-151e0895e83f/exec-7173e686-dd7e-4257-9d86-dfe29973f7d8.png",
+      "prompt": "Remove the white background. Output a transparent PNG with a real alpha channel. Preserve the marsh paint, softly feather edge transparency without any white rim. Do not paint a checkerboard.",
+      "status": "failed-alpha-validation",
+      "reason": "RGB PNG, PNG color type 2, no alpha channel"
+    }
+  ]
+}

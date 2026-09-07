@@ -1,0 +1,17 @@
+{
+  "asset": "OASIS.png",
+  "mode": "built-in image_gen generation",
+  "source": "C:/Users/John Chen/.codex/generated_images/01a07950-b781-7731-8dd1-21d911e97176/exec-8d409733-2afe-419e-a2bc-8ea68a93582d.png",
+  "selected_output": "C:/Users/John Chen/.codex/generated_images/01a079b8-0435-7693-80ce-65409e7ae4c1/exec-b4641e07-8827-496c-ae2f-8a4435283b8e.png",
+  "prompts": [
+    "Use case: background-extraction; Asset type: painted map tile feature for a game atlas; transform the oasis into a clean square transparent PNG asset, keep the soft hand-painted oasis look with broad watercolor shapes, turquoise pool, pale sand shoreline, muted sage-green vegetation, and only a few minimal palms; make the complete oasis centered and occupying about 70% of the square tile width with generous transparent margin; no checkerboard baked into pixels.",
+    "Use case: background-extraction; Asset type: final painted game map tile; preserve the centered compact oasis artwork as a soft painted map feature, regenerate the canvas as a true RGBA transparent PNG, and keep actual transparent pixels with alpha 0 outside the oasis silhouette; no checkerboard, black, white, glow, vignette, shadow, text, or extra objects.",
+    "Create a single square transparent PNG asset for a painted strategy map tile. A small centered oasis occupies about 70% of the canvas width, leaving about 15% fully transparent margin on both sides and generous transparent padding above and below. Use soft broad watercolor shapes only: one subdued dusty blue-green pool, muted sandy beige shore softly blended into a muted sage green fringe, and exactly two tiny minimal palm silhouettes. The water is dark and desaturated like a muted painted coast, never vivid cyan or turquoise. No bright white shoreline halo. Keep the feature simple and low detail, with gentle painted edges and no rocks. The entire surrounding canvas must be genuinely transparent alpha, not white, black, or checkerboard. No background, no glow, no shadow, no border, no text, no extra plants or objects. Output true RGBA PNG."
+  ],
+  "validation": {
+    "size": [1254, 1254],
+    "mode": "RGBA",
+    "alpha_min": 0,
+    "alpha_max": 255
+  }
+}
