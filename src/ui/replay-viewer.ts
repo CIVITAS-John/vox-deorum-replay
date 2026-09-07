@@ -571,20 +571,10 @@ export class ReplayViewer {
 			this.layersControl = null;
 		}
 
-		// Clean up map layers: detach from the session, reset turn tracking,
-		// and remove every layer so the next session re-adds them
+		// Clean up the one-canvas map renderer before the next session creates it
 		if (this.map && this.map.map) {
 			this.map.resetTurnState();
-
-			if (this.map.layers) {
-				Object.values(this.map.layers).forEach(layer => {
-					// Clear tile cache if the layer has this method
-					if (layer.clearCache) {
-						layer.clearCache();
-					}
-					this.map.map.removeLayer(layer);
-				});
-			}
+			this.map.removeRenderer();
 		}
 
 		// Detach the control bar from the session

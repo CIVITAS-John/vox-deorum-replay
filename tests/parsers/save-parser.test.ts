@@ -322,11 +322,8 @@ describe('SaveParser on examples/4.Civ5Save', () => {
   });
 
   it('agrees with the event-derived ownership at the save turn', () => {
-    // The strongest cross check available: every plot the save calls owned,
-    // the ownership folded from the event log agrees on, owner by owner.
-    // The fold cannot see tile releases (the game emits them as claim
-    // events with no civilization), so plots released by a razing keep a
-    // stale owner in the fold: five tiles around Rapa Nui, razed at turn 308
+    // Ownership agrees on every plot, including the five tiles released
+    // around Rapa Nui when it was razed at turn 308.
     const ownership = new OwnershipTimeline(hub.events, civId => hub.getCivName(civId));
     const state = ownership.stateAt(hub.endTurn);
 
@@ -348,7 +345,7 @@ describe('SaveParser on examples/4.Civ5Save', () => {
     }
     expect(owned).toBe(2740);
     expect(agreed).toBe(2740);
-    expect(stale).toBe(5);
+    expect(stale).toBe(0);
   });
 
   it('marks city plots that match the founded, captured, and razed events', () => {
@@ -427,10 +424,9 @@ describe('SaveParser on examples/4.Civ5Save', () => {
     const replay = new Replay();
     await replay.loadFromFile(file, file.byteLength);
 
-    // The event processor skips tile claim events that belong to no civ:
-    // three unattributed claims from the game itself plus three barbarian
-    // claims that the replay file would have misattributed to Arabia
-    expect(replay.events).toHaveLength(2796);
+    // Unattributed and barbarian claims remain available to clear previous
+    // ownership without removing cities that have not been razed.
+    expect(replay.events).toHaveLength(2802);
     expect(replay.civs).toHaveLength(24);
     expect(replay.getCivName(0)).toBe('Arabia');
     expect(replay.getCivName(23)).toBe('Bratislava');
@@ -567,10 +563,8 @@ describe('SaveParser on examples/5.Civ5Save', () => {
   });
 
   it('agrees with the event-derived ownership at the save turn', () => {
-    // Same picture as the finished game: every owned plot agrees with the
-    // event fold. The fifteen stale tiles belong to Belo Horizonte, founded
-    // by Brazil at turn 330 and razed by Arabia at turn 365, whose released
-    // tiles the fold cannot see
+    // Ownership agrees on every plot, including the fifteen tiles released
+    // around Belo Horizonte when Arabia razed it at turn 365.
     const ownership = new OwnershipTimeline(hub.events, civId => hub.getCivName(civId));
     const state = ownership.stateAt(hub.endTurn);
 
@@ -592,7 +586,7 @@ describe('SaveParser on examples/5.Civ5Save', () => {
     }
     expect(owned).toBe(2526);
     expect(agreed).toBe(2526);
-    expect(stale).toBe(15);
+    expect(stale).toBe(0);
   });
 
   it('marks city plots that match the founded, captured, and razed events', () => {

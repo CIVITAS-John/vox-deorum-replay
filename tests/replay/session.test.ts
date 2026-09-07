@@ -22,11 +22,10 @@ function loadExample(name: string): ArrayBuffer {
 }
 
 /**
- * The turn-state folding the map renderer used to perform: one full copy of
- * the tile state per turn, rebuilt from the events. Kept here as the
- * reference the compact session model has to match.
+ * A full-copy reference fold, including ownership releases that preserve
+ * cities until a separate razing event removes them.
  */
-function legacyTurnStates(events: GameEvent[], getCivName: (civId?: number) => string | null): TurnState[] {
+function referenceTurnStates(events: GameEvent[], getCivName: (civId?: number) => string | null): TurnState[] {
   const states: TurnState[] = [];
   const byTurn = new Map<number, GameEvent[]>();
   for (const event of events) {
@@ -50,7 +49,12 @@ function legacyTurnStates(events: GameEvent[], getCivName: (civId?: number) => s
             const key = [tile.x, tile.y].join(',');
             state[key] = state[key] || {};
             const civName = getCivName(event.civId);
-            if (civName) { state[key].owner = civName; } else { delete state[key]; }
+            if (civName) {
+              state[key].owner = civName;
+            } else {
+              delete state[key].owner;
+              if (!state[key].city) delete state[key];
+            }
           }
           break;
         case EventType.CitiesTransferred:
@@ -63,7 +67,10 @@ function legacyTurnStates(events: GameEvent[], getCivName: (civId?: number) => s
           break;
         case EventType.CityRazed: {
           const key = [event.x, event.y].join(',');
-          if (state[key]) { delete state[key].city; }
+          if (state[key]) {
+            delete state[key].city;
+            if (!state[key].owner) delete state[key];
+          }
           break;
         }
       }
@@ -114,20 +121,20 @@ describe('GameSession ownership on examples/4.Civ5Replay', () => {
   });
 
   it('tracks a razing', () => {
-    // Denmark razed Gondar at (56,29) on turn 284: the city goes, the owner
-    // stays, and a new city can be founded on the tile later
+    // Denmark razed Gondar and released its tile at turn 284. A new city
+    // was founded on the same tile later.
     expect(session.stateAt(283)['56,29']).toEqual({ owner: 'Denmark', city: 'Gondar' });
-    expect(session.stateAt(284)['56,29']).toEqual({ owner: 'Denmark' });
+    expect(session.stateAt(284)['56,29']).toBeUndefined();
     expect(session.stateAt(484)['56,29']).toEqual({ owner: 'Denmark', city: 'Helluland' });
   });
 
-  it('matches the previous renderer-side algorithm on sampled turns', () => {
-    const legacy = legacyTurnStates(session.replay.events, (id) => session.replay.getCivName(id));
+  it('matches the full-copy reference fold on sampled turns', () => {
+    const legacy = referenceTurnStates(session.replay.events, (id) => session.replay.getCivName(id));
     for (const turn of [0, 1, 60, 114, 115, 240, 283, 284, 400, 484]) {
       expect(session.stateAt(turn)).toEqual(legacy[turn]);
     }
-    // The final state covers 2745 tiles on this map
-    expect(Object.keys(session.stateAt(484))).toHaveLength(2745);
+    // The final state excludes the five tiles released around Rapa Nui.
+    expect(Object.keys(session.stateAt(484))).toHaveLength(2740);
   });
 
   it('stores ownership compactly instead of one map copy per turn', () => {
@@ -140,13 +147,13 @@ describe('GameSession ownership on examples/4.Civ5Replay', () => {
 });
 
 describe('GameSession ownership on examples/1.Civ5Replay', () => {
-  it('matches the previous renderer-side algorithm at every turn', async () => {
+  it('matches the full-copy reference fold at every turn', async () => {
     const buffer = loadExample('1.Civ5Replay');
     const replay = new Replay();
     await replay.loadFromFile(buffer, buffer.byteLength);
     const session = new GameSession(replay);
 
-    const legacy = legacyTurnStates(replay.events, (id) => replay.getCivName(id));
+    const legacy = referenceTurnStates(replay.events, (id) => replay.getCivName(id));
     for (let turn = 0; turn <= replay.endTurn; turn++) {
       expect(session.stateAt(turn)).toEqual(legacy[turn]);
     }

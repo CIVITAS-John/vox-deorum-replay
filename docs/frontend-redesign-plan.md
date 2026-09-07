@@ -6,7 +6,7 @@ Status: draft for revision. This document keeps the stages, mockups, and open de
 
 Make the map the center of the experience, with a clear timeline, useful inspection, and a separate space for statistics. Keep some Civilization character through restrained colors and typography, while giving controls and content room to breathe.
 
-The current viewer combines a map, playback controls, and an event log. It opens replay and save files and already reads 29 statistics datasets per civilization. Save files also carry river edges, which are not yet drawn. Everything richer (plot ownership from the save, city details, economy, diplomacy) needs parser work first, and part of that work is finding out whether the save holds any history for it or only the final snapshot.
+The current viewer combines a map, playback controls, and an event log. It opens replay and save files and already reads 29 statistics datasets per civilization. Save files also carry river edges, which Stage 4 now draws. Everything richer (plot ownership from the save, city details, economy, diplomacy) needs parser work first, and part of that work is finding out whether the save holds any history for it or only the final snapshot.
 
 The application has three destinations: **Map**, **Events**, and **Statistics**. On larger screens, events and inspection sit beside the map. On phones, each destination gets the full content area, and map details open in a bottom sheet. Changing destinations preserves the selected turn and civilization.
 
@@ -20,7 +20,7 @@ Snapshot details appear only while the timeline sits on the save's last turn and
 ### Technology decisions
 
 - **Plain TypeScript and plain CSS, no framework.** jQuery, Bootstrap 3, bootstrap-slider, and selectpicker leave in Stage 2 together with the layout they hold up.
-- **Leaflet stays** until Stage 4 produces a measured reason to replace it.
+- **Stage 4 replaces the canvas tile renderer.** The implementation keeps Leaflet for navigation and uses one viewport canvas with cached geography. Desktop browser profiling compares it with the original renderer; physical phone validation remains open.
 - **Vitest covers core logic**, meaning the session model, parsers, and statistics selectors. The UI is reviewed by hand on the examples. Each stage lists its minimal coverage.
 - **Shared links carry more state.** The `file` and `turn` parameters grow to include the destination, and the chosen measure, so a link lands where the sender was looking.
 
@@ -130,7 +130,7 @@ Support touch panning and zooming, large tap targets, keyboard navigation, visib
 
 ## Stage 3: Explore and expand the parsers
 
-Status: implemented. The save parser reads the full map header, and the example maps wrap horizontally, which Stage 4 needs for wrapped panning. Plot records now carry the snapshot fields (owner, resource, improvement, route, city flag, owning city pair), and the validation was stronger than hoped: on both example saves, every plot the save calls owned agrees with the event-derived ownership owner by owner, the owned plot count matches the header, and the city flags land exactly on the founded-and-not-razed cities. The only disagreement is tiles released by a razed city: the game emits those releases as claim events with no civilization, the event processor drops them, and the fold keeps a stale owner on five tiles in the finished game and fifteen in the mid game save. Feeding release events into the fold is left to the map rendering stages. The victory block is read from the game prelude and a result counts as reliable only when the event log confirms it with a victory message at the winning turn, so the finished example reports a reliable cultural win at turn 484 while the mid game save reports no result. Because some saves are taken one turn before the game is won and can never prove their result, a `winner` address bar parameter can assert it externally: it names the civilization by number or by a `playerN` label, applies only when the file has no proven result of its own, and the header shows it as coming from the link. Per civilization dataset diagnostics (attached, damaged entries) now flow through the Replay hub so statistics can label uncertain series. The per player sections were surveyed in the game DLL source: city records, diplomacy, and everything else there hold current values and single turn stamps only, so no per-player field earns the decode effort for now. The findings are recorded in `docs/save-format.md`, and the data inventory below lets Stages 4 to 6 name their layers and measures from it.
+Status: implemented. The save parser reads the full map header, and the example maps wrap horizontally, which Stage 4 needs for wrapped panning. Plot records now carry the snapshot fields (owner, resource, improvement, route, city flag, owning city pair), and the validation was stronger than hoped: on both example saves, every plot the save calls owned agrees with the event-derived ownership owner by owner, the owned plot count matches the header, and the city flags land exactly on the founded-and-not-razed cities. The event processor preserves ownership releases, which arrive as claims without a known civilization. The ownership fold clears the owner while keeping a city until its razing event. Both example saves agree with the fold on every plot, including the five released tiles around Rapa Nui and the fifteen around Belo Horizonte. The victory block is read from the game prelude and a result counts as reliable only when the event log confirms it with a victory message at the winning turn, so the finished example reports a reliable cultural win at turn 484 while the mid game save reports no result. Because some saves are taken one turn before the game is won and can never prove their result, a `winner` address bar parameter can assert it externally: it names the civilization by number or by a `playerN` label, applies only when the file has no proven result of its own, and the header shows it as coming from the link. Per civilization dataset diagnostics (attached, damaged entries) now flow through the Replay hub so statistics can label uncertain series. The per player sections were surveyed in the game DLL source: city records, diplomacy, and everything else there hold current values and single turn stamps only, so no per-player field earns the decode effort for now. The findings are recorded in `docs/save-format.md`, and the data inventory below lets Stages 4 to 6 name their layers and measures from it.
 
 **Goal:** know what the files can tell us before designing map layers and statistics around guesses.
 
@@ -153,36 +153,93 @@ Work in this stage:
 
 ## Stage 4: Improve the 2D map renderer and add rivers
 
-**Goal:** a clearer, smoother map that can carry more detail later.
+Status: the viewport renderer, cached geography, zoom detail, rivers, ownership releases, and layer controls are implemented using the original textures. The 15 painted source textures are ready for review, including simple single-landform relief, smaller wetlands and oases, subtle flood plains, and an aquatic blue-green coast. Switching the application to that art awaits explicit approval. Physical phone performance and touch navigation still need validation, and optional wrapped panning remains open.
 
-Measure playback frame time and memory on the largest example on a phone first, then decide whether Leaflet's canvas tiles stay or a single canvas replaces them. Keep the map two-dimensional.
+**Goal:** smooth exploration and playback, with geography and territory readable at world scale and painted detail revealed as the user zooms in.
 
-Draw rivers along the correct hex edges at every turn when the file supplies them. Each hex draws its own river edges, so continuity across the horizontal seam needs no special case, and the wrap flag from Stage 3 allows optional wrapped panning later. Make junctions and coast connections readable and keep rivers distinguishable from borders. For replay files the layer list explains "Rivers are available from save files."
+### Baseline and performance targets
 
-Establish one visual treatment for terrain, hills, mountains, forests, natural wonders, cities, and borders. At a distant zoom, emphasize geography and territory. Reveal labels and detail as the user zooms in.
+The original renderer created nine Leaflet canvas tile layers, including selection and events. Each turn redrew territory, cities, grid, boundaries, and event highlights through separate visible-hex loops. Boundary drawing created neighbor maps and edge sets for each hex, and terrain drawing looked up images in the DOM. Terrain itself was already static between turns.
 
-```text
-+-----------------------------------------------------+
-| [Layers v]                                          |
-| +------------------+                                |
-| | [x] Terrain      |      ^^  ^                     |
-| | [x] Rivers       |     ^  ^  \                    |
-| | [x] Borders      |          ~~\_                  |
-| | [x] Cities       |     :::::   ~~\   * Antium     |
-| | [ ] Hex grid     |     :Rome:     ~~\___          |
-| | [ ] Resources    |     :::::        ~~~~~ coast   |
-| +------------------+                                |
-| ^ mountain  ~ river  * city  ::: territory          |
-+-----------------------------------------------------+
+Profile the existing renderer before implementation. Identify the largest example by plot count, then compare the same file, turns, viewport, and device with the replacement. Record pan and pinch frame times, playback and timeline scrub latency, draw time separately from session and event-list work, live canvas count, and estimated canvas and decoded-image bytes. Capture a cold load and a warm run. Review desktop and an actual phone, recording device, browser, viewport, and pixel ratio; desktop phone emulation alone cannot establish phone performance.
+
+Provisional targets are a 95th-percentile frame time below 16.7 ms on desktop and 33 ms on the test phone during continuous interaction, with the latest scrubbed turn visible within 100 ms after input settles. Aim for a renderer-owned working set below 64 MiB on the phone. These are acceptance targets, not current results; keep parser and event-list memory separate and record whole-page memory where the browser supports it.
+
+### Renderer design
+
+`src/map/replay-map.ts` keeps Leaflet for navigation, zoom controls, and resize behavior. `src/map/viewport-layer.ts` draws the map into one viewport canvas using the shared flat hex coordinates in `src/map/hex-geometry.ts`. Fit bounds, event positions, and selection use those coordinates too. `src/map/renderer-support.ts` coalesces animation-frame requests and maintains a 32 MiB raster cache. Static geography uses 12 by 12 tile chunks, quantized raster scales, and a soft 4 ms cache-building budget per frame.
+
+The viewport canvas composites cached geography and current overlays. It is sized to the visible container rather than to the entire map at maximum zoom. Cap the backing pixel ratio at 2 initially and include the backing store in the memory budget.
+
+```mermaid
+flowchart LR
+  Tiles[Fixed terrain and river data] --> Geometry[Hex centers, neighbors, and shared edges]
+  Geometry --> Cache[Bounded geography chunk cache by LOD]
+  Session[Session turn state] --> Overlays[Ownership, borders, cities, and event highlights]
+  Camera[Leaflet camera and layer visibility] --> Frame[One scheduled canvas frame]
+  Cache --> Frame
+  Overlays --> Frame
 ```
 
-The sketch shows visual priority only. The real map follows hex edges. Layers that Stage 3 marks as snapshot only, such as resources, stay off by default and follow the snapshot rule from the overall direction.
+- Precompute hex centers, neighbors, and river edges once per file. Keep image references in a loaded asset table. Preindex events by turn, and keep a city list so label drawing does not scan every plot.
+- Cache terrain, relief, and features in world-space chunks at discrete detail levels. Cull chunks outside the viewport and evict least recently used chunks within a byte budget. Include scale and visible geography layers in cache identity. A turn change never rebuilds geography.
+- Coalesce camera, turn, and selection updates into one animation-frame request. Draw the latest requested state, with no backlog of obsolete scrub frames. Reuse the state passed to the session subscriber. Measure state materialization separately before changing the ownership model.
+- Compare the previous and next ownership state, including removed entries. Update border geometry for changed tiles and their neighbors. Initially repaint visible dynamic overlays in one pass; add dirty regions only if measurements justify the complexity.
+- While panning or pinching, reuse cached chunks at the current scale. Build missing detail within a small frame budget and retain the simpler representation until it is ready. No synchronous rebuild of every visible texture on each gesture event.
+- Release caches, image references, listeners, and pending frames when replacing a file. Verify repeated file opening reaches a stable working set.
 
-**Tests:** river edge geometry for the six directions and the seam, checked in Vitest against the example save.
+`ReplayMap` remains the viewer's entry point. Its internal layer objects become rendering flags, and `src/ui/layers-control.ts` uses visibility callbacks instead of adding or removing Leaflet layers. Preserve fit, zoom, highlighting, playback, file reload, and resize behavior through that interface. WebGL, workers, and replacing Leaflet navigation are follow-up options only if the measured canvas implementation misses the targets.
 
-**Ready to move on when:** rivers are continuous and correctly placed, borders and cities remain legible, and the largest example is comfortable to explore on desktop and phone.
+### Painted style and zoom detail
 
-**Decision to revisit:** terrain style, textured tiles or a cleaner illustrated look. Compare small visual samples before committing to an asset refresh.
+Use muted watercolor or gouache ground textures with distinct terrain colors and restrained grain. Relief and features use simple painted shapes with soft, partly transparent transitions into the ground. Forests and jungles read as connected canopy masses, hills as one broad rounded landform, and mountains as one simple peak. Oasis and marsh are smaller patches, while flood plains provide a light fertile accent. Avoid fine leaves, rock cracks, grass blades, dense grain, and hard outlines. Every feature must remain recognizable at regional scale, including ice, marshes, oases, and flood plains. Reduce the current 60% land territory fill; start review around 20% on land and 10% on water, with civilization-colored borders carrying ownership. Draw rivers after the fill so their color stays stable. Keep line widths and city markers legible in screen pixels.
+
+LOD uses projected hex width in CSS pixels, so a phone and a desktop at the same visible scale receive the same detail. These thresholds are starting values for visual review. Add roughly 15% hysteresis at transitions to prevent repeated switching near a threshold.
+
+| Hex width | Terrain and features | Rivers, territory, and cities |
+|---|---|---|
+| Below 10 px: world | Flat terrain palette, no raster texture or individual trees | Territory fills and simplified borders, thin connected river paths, small city dots, no names |
+| 10 to 28 px: regional | Cached painted ground with all relief and feature overlays, using broad simple shapes that blend into terrain | Full river topology, borders, city dots; selected city name only |
+| 28 px and above: local | The same complete relief and feature coverage at higher texture resolution, preserving the simple painted treatment | Clear rivers and city names with collision filtering; selected names take priority |
+
+Hex grid is off by default and appears only at regional or local detail when enabled. At world scale, simplify river and border paths in screen space while retaining junctions, endpoints, shared boundaries, and wrap seams. LOD changes appearance only; it never changes ownership, tile selection, or the current turn.
+
+Place labels after geography and lines, with a quiet halo and stable priority during zoom. Keep event highlights and selection distinct from rivers and political borders. Natural wonders initially use a consistent marker visible from regional scale when their feature id is known; individual wonder illustrations are separate work.
+
+### Texture assets
+
+Store the generated source PNGs and exact generation prompts under `assets/tiles/painted-atlas/`. Open `assets/tiles/painted-atlas/preview.html` to inspect the source images and compare hex size and territory tint in a small art sample. This preview is separate from the renderer and does not measure performance. Implement the renderer using the existing textures in `assets/tiles/`. Switching the application to the painted set requires the user's explicit approval of that art. The painted set contains seven opaque ground textures (grassland, plains, desert, tundra, snow, coast, ocean) and eight transparent overlays (hills, mountain, forest, jungle, ice, marsh, oasis, flood plains).
+
+Ground images fill a square and are clipped by renderer geometry. Relief uses one broad hill or mountain per tile, with soft transparent margins that blend into the ground. Oasis and marsh occupy about three quarters of the tile width, and marsh reads as one simple wetland patch. Flood plains add a sparse translucent fertile accent that leaves most ground exposed. Review every overlay on suitable terrain at 16 and 24 px, including hill and forest combinations. Coast is muted aquatic blue-green shallow water without a baked shoreline; adjacency determines the actual coast. Rivers, hex outlines, territory, cities, and labels are never baked into textures. Flood plains also leave the river to the edge renderer.
+
+The source set uses 1254 by 1254 px PNGs, about 31 MiB compressed in total. All seven ground images are opaque and all eight overlays have alpha transparency. Coast uses a muted aquatic blue-green, with ocean kept deeper and darker. Treat these as source art. Before runtime integration, review repeated neighboring tiles, hex clipping, forest-on-hill combinations, and readability beneath territory fills. Generate compact 64, 128, and 256 px runtime variants from the accepted sources during implementation, with no texture sampling at world LOD. Load only required variants and account for decoded pixel memory, not just compressed file size. A generated seamless-looking image still needs a repetition check before it is called seamless.
+
+### Rivers, wrapping, and layer scope
+
+Read river ids in the parser's direction order, NE, E, SE, SW, W, NW, and map them through the shared hex geometry. Deduplicate paired records for each shared edge and retain edges supplied by only one plot. Example 4 has six such records around plot (57,11), giving 533 drawable edges from 1060 directed records; `docs/save-format.md` records the finding. Draw connected strokes with round joins and keep junctions and coast endpoints intact. When borders follow a river, offset the political stroke toward the owning tile enough to leave the water visible.
+
+Use the map's wrap flags for neighbor lookup even before wrapped panning is enabled. Canonical edge keys must handle the horizontal seam, while drawing places seam segments at the appropriate map edges. Optional horizontal panning repeats visible world copies and normalizes selection to the original tile; it must not duplicate cities or ownership in the session. Replay files without wrap metadata retain bounded panning.
+
+The layer picker offers terrain, relief, features, rivers, territory, borders, cities, grid, selection, and events. Rivers are on by default for saves. Replay files show a disabled river option with "Rivers are available from save files." Resource, improvement, and route overlays remain in Stage 6, following the snapshot rule.
+
+Ownership-release handling is implemented in `src/replay/event-parser.ts` and `src/replay/ownership.ts`. Claims without a known civilization clear the previous owner while preserving any city until a separate razing event. Regression checks confirm ownership and city flags against both example saves.
+
+### Delivery and validation
+
+The browser build and all 117 Vitest tests pass. Headless Chrome opened both bundled saves and example 4's replay without runtime exceptions. Layer changes, resizing, and reopening Game 5 retained one correctly sized viewport canvas. A cold zoom to 40 px entered local detail, displayed city labels, and finished cache warming within the two-second observation window. Desktop and 390 px phone layouts were inspected in screenshots; this does not establish physical phone performance.
+
+The desktop comparison used example 5's 79 by 53 map (4187 plots, tied for the largest bundled map), a 1440 by 1000 viewport at pixel ratio 1, and 60 consecutive turn changes at each requested hex width. The latency below measures a turn update through the next animation-frame callback, including session and UI work. It is not isolated renderer draw time or a pan/pinch frame benchmark.
+
+| Requested hex width | Original p95 turn-to-frame latency | New p95 turn-to-frame latency | Original / new live canvases |
+|---|---|---|---|
+| 12 px | 213.1 ms | 20.1 ms | 171 / 1 |
+| 30 px | 148.7 ms | 20.0 ms | 230 / 1 |
+
+The new synchronous turn-update p95 was 4.8 ms and 6.0 ms respectively. These measurements show a substantial improvement in turn responsiveness. They do not prove the provisional 16.7 ms desktop interaction target, physical phone target, or whole-page memory target. Still review continuous touch navigation, repeated file-opening memory, and accepted art on a physical phone before closing this stage.
+
+**Tests:** use Vitest for all six river directions, odd and even rows, paired edges, the horizontal seam, and the example-save river ids. Cover coordinate round trips and picking, LOD thresholds and hysteresis, border changes after release or capture, and cache invalidation for turn, zoom, and layer changes. Run the existing suite and browser build without changing test scripts. Review gesture continuity, texture repetition, label collisions, reload memory, and the measured frame targets by hand.
+
+**Ready to move on when:** measurements show smooth navigation and playback on the recorded desktop and phone, rivers and borders are correct, world-scale geography is readable, and local painted detail stays clear beneath overlays. Record the measured results here before marking Stage 4 complete.
 
 ## Stage 5: Introduce statistics
 
@@ -285,7 +342,7 @@ Known at every turn, from both file types:
 | Event log: foundings, claims, captures, razings, victory and other messages | read |
 | Datasets, 29 per civilization: score, city count, population, techs, gold, science, culture, tourism, military might, land, policies, happiness, workers, worked and improved tiles, maintenance | read |
 | Terrain per plot: elevation, type, feature | read |
-| Ownership and city list folded from the events (stale on tiles a razed city released) | read |
+| Ownership and city list folded from the events, including ownership releases | read |
 
 Known at every turn, from save files only, because the map fixes them at generation:
 

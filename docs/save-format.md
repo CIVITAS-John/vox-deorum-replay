@@ -66,9 +66,9 @@ Beyond the terrain, the parser reads the snapshot fields of each record: the own
 
 Each plot stores six river ids, one per hex edge, in the direction order NE, E, SE, SW, W, NW. A value of -1 means the edge has no river; any other value is the id of the river that crosses that edge, indexing the river list stored behind the plot array.
 
-Two facts make the data trustworthy: every river edge separates two plots, and both plots store the same id for it from their own side, so the per direction edge counts pair up (NE with SW, E with W, SE with NW). The example maps carry 64 rivers across 479 plots and 1060 river edges.
+The example maps carry 64 river ids across 479 plots and 1060 directed edge records. Opposite-direction totals agree (NE with SW, E with W, SE with NW), but those totals do not prove every neighboring plot stores a duplicate. Geometry checks on example 4 find 1054 records paired with matching neighbors and six river-id-15 records facing plot (57,11) whose opposite records are absent. Deduplicating the supplied records gives 533 drawable edges. The renderer keeps an edge supplied by either plot, including these six unpaired records.
 
-Replay files store no river data. The parser therefore attaches the river id array to every tile it reads from a save (`rivers` on the tile objects), and the tests verify the pairing invariant instead of a replay comparison. Rendering the rivers on the map is Stage 4 of the frontend redesign plan.
+Replay files store no river data. The parser attaches the river id array to every tile it reads from a save (`rivers` on the tile objects). Tests check direction totals, neighboring geometry, the known unpaired records, and horizontal seam segments. `src/map/hex-geometry.ts` builds the shared edges, and `src/map/viewport-layer.ts` draws them at every turn.
 
 ## How the parser reads the terrain
 
@@ -101,7 +101,7 @@ For both example games the save parser output matches the replay file exactly:
 The snapshot fields, which replay files do not carry, are checked against invariants and against the event log at the save's turn:
 
 - The map header's owned plot count equals the number of plot records with an owner: 2740 in the finished game, 2526 in the mid game save.
-- Every plot the save calls owned, the ownership folded from the event log agrees on, owner by owner, in both games. The fold keeps stale owners on the tiles a razed city released (five tiles around razed Rapa Nui in the finished game, fifteen around razed Belo Horizonte in the mid game save): the game emits those releases as claim events with no civilization, which the event processor drops. The save's plot owners are the truth there, and feeding release events into the fold is left for the map rendering stages.
+- Ownership folded from the event log agrees with every plot in both saves, including five tiles released around Rapa Nui and fifteen around Belo Horizonte. The event processor preserves claims without a known civilization so the fold can clear previous ownership. These events do not remove a city; a separate razing event does that.
 - The city flags land exactly on the cities the event fold keeps alive, coordinate for coordinate (79 and 82 cities), and every city plot's owning city belongs to the plot owner.
 - The victory block of the finished game (winning turn 484, winner team 6, cultural victory) matches the victory message in the event log at the same turn; the mid game save reports no result.
 

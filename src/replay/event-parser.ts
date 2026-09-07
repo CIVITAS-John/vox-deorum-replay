@@ -53,7 +53,6 @@ export class EventParser {
       } else if (event.type === EventType.CitiesTransferred) {
         this.processCitiesTransferredEvent(event);
       } else if (event.type === EventType.TilesClaimed) {
-        if (this.replay.getCivName(event.civId) === null) return;
         this.processTilesClaimedEvent(event);
       } else if (event.type === EventType.Message) {
         this.processMessageEvent(event);
@@ -136,7 +135,8 @@ export class EventParser {
     if (!event.tiles) return;
 
     const tileCount = event.tiles.length;
-    event.text = `Claimed ${tileCount} tile${tileCount > 1 ? 's' : ''}.`;
+    const action = this.replay.getCivName(event.civId) === null ? 'Released' : 'Claimed';
+    event.text = `${action} ${tileCount} tile${tileCount > 1 ? 's' : ''}.`;
   }
 
   /**

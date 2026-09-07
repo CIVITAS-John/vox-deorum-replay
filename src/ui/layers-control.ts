@@ -2,17 +2,17 @@
  * layers-control.ts
  * The map's layer picker
  * A button on the map opens a dropdown panel with one checkbox per
- * toggleable layer. Checking a box adds the layer to the map, unchecking
- * removes it. Replaces Leaflet's built-in layers control so the picker
+ * toggleable layer. Checking a box changes a renderer visibility flag.
+ * Replaces Leaflet's built-in layers control so the picker
  * matches the rest of the interface.
  */
 
-import { MapLayer } from '../map/types';
+import { RendererLayer } from '../map/viewport-layer';
 
 // One row in the panel: the layer and its label
 export interface ToggleableLayer {
 	label: string;
-	layer: MapLayer;
+	layer: RendererLayer;
 }
 
 /**
@@ -51,20 +51,18 @@ export class LayersControl {
 			const label = document.createElement('label');
 			label.className = 'layer-option';
 
-			// Layers start on the map, so their boxes start checked
+			// Renderer flags start visible unless the map configuration disables them
 			const checkbox = document.createElement('input');
 			checkbox.type = 'checkbox';
-			checkbox.checked = entry.layer._map !== undefined && entry.layer._map !== null;
+			checkbox.checked = entry.layer.visible;
+			checkbox.disabled = Boolean(entry.layer.disabled);
+			if (entry.layer.disabledReason) label.title = entry.layer.disabledReason;
 			checkbox.addEventListener('change', () => {
-				if (checkbox.checked) {
-					entry.layer.addTo(this.map);
-				} else {
-					this.map.removeLayer(entry.layer);
-				}
+				entry.layer.setVisible(checkbox.checked);
 			});
 
 			const text = document.createElement('span');
-			text.textContent = entry.label;
+			text.textContent = entry.layer.disabledReason ? `${entry.label} (${entry.layer.disabledReason})` : entry.label;
 
 			label.appendChild(checkbox);
 			label.appendChild(text);

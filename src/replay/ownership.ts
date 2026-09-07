@@ -153,8 +153,10 @@ export class OwnershipTimeline {
               current.set(key, entry);
               record(key, event.turn);
             } else if (current.has(key)) {
-              // A claim by an unknown civilization releases the tile
-              current.delete(key);
+              // Clear ownership without erasing a city that has not been razed.
+              const entry = current.get(key)!;
+              delete entry.owner;
+              if (!entry.city) current.delete(key);
               record(key, event.turn);
             }
           }
