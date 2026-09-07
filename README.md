@@ -30,7 +30,8 @@ Parameter   | Meaning
 `file`       | Full URL of a hosted `.Civ5Replay` or `.Civ5Save` file to load on open
 `turn`       | Starting turn, kept in sync as you move through the timeline
 `view`       | Which destination is active: `map` (default) or `events`
-`player0` … `playerN` | Annotation for a civilization, see below
+`player0` … `playerN` | Annotation for a civilization, see "Annotating Civilizations" below
+`winner`     | The winning civilization, for files that cannot prove the result, see "Sharing the Winner" below
 
 ### Annotating Civilizations
 
@@ -38,7 +39,18 @@ When sharing a game between LLMs or specific players, you can label each civiliz
 ```
 https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/1.Civ5Replay&player0=Qwen&player1=GLM
 ```
-The annotations appear in the header ("Rome: Qwen · Egypt: GLM") and next to civilization names in the event log.
+The annotations appear in the header ("Rome: Qwen · Egypt: GLM") and next to civilization names in the event log. They are display labels only: they rename civilizations in the interface but change no data.
+
+### Sharing the Winner
+
+The viewer presents a winner only when it can trust the result. A finished save proves it on its own: the file's header and its event log agree, and the header line shows the winner without any parameters.
+
+A save taken before the game was won, for example one turn before the end, carries no proof of the result, so the viewer shows no winner on its own. The `winner` parameter lets the sharer pass the result externally. It accepts the civilization number, numbered like the annotations above, or one of the annotation labels:
+```
+https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/5.Civ5Save&player0=Qwen&player1=GLM&winner=GLM
+https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/5.Civ5Save&winner=1
+```
+Both links name the second civilization in the file.
 
 The project is built on Alex Webb's [civ5replayer](https://github.com/aiwebb/civ5replay).
 

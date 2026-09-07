@@ -1894,6 +1894,10 @@
      * player0 annotates the first civilization in the file, player1 the second,
      * and so on. The annotations appear next to civilization names in the event
      * log and as a summary line in the header.
+     *
+     * The same family carries the winner parameter, which asserts who won a
+     * game whose file cannot prove the result, for example a save taken one
+     * turn before the game was won.
      */
     // Matches playerN URL parameters, capturing the civilization id N
     const playerParamPattern = /^player(\d+)$/;
@@ -1947,6 +1951,40 @@
             }
         }
         return parts.join(' · ');
+    }
+    /**
+     * Resolve the winner parameter to a civilization id
+     * A plain number is the civilization index, numbered like the playerN
+     * parameters (player0 annotates civilization 0, so winner=0 names the same
+     * civilization). Anything else is matched against those annotations, so
+     * "winner=GLM" names the civilization that a playerN parameter labeled GLM
+     * @param raw The winner parameter value, null when the link carries none
+     * @param annotations The parsed playerN annotations
+     * @param civCount The number of civilizations in the loaded file
+     * @returns The civilization id, or -1 when the parameter is absent or names
+     * no civilization of the loaded file
+     */
+    function resolveWinnerCivId(raw, annotations, civCount) {
+        if (raw === null) {
+            return -1;
+        }
+        const value = raw.trim().slice(0, maxAnnotationLength);
+        if (!value) {
+            return -1;
+        }
+        // A plain number addresses the civilization directly
+        if (/^\d+$/.test(value)) {
+            const civId = parseInt(value, 10);
+            return civId >= 0 && civId < civCount ? civId : -1;
+        }
+        // Anything else must be one of the playerN labels
+        for (const civId of Object.keys(annotations)) {
+            const id = Number(civId);
+            if (id < civCount && annotations[id] === value) {
+                return id;
+            }
+        }
+        return -1;
     }
 
     /**
@@ -3400,6 +3438,12 @@
      * replay parser produces so the rest of the application cannot tell the
      * difference.
      *
+     * Beyond the replay content, the parser reads the save-only snapshot data
+     * that sits at known offsets: the victory result from the game section
+     * prelude, the map header (wrap flags and map-wide counts) in front of the
+     * plot records, and the per plot snapshot fields (owner, resource,
+     * improvement, route, city flag, owning city) inside each plot record.
+     *
      * Layout of a save, top to bottom:
      * - An uncompressed engine header (shared front half with replay files)
      * - The uncompressed CvPreGame section (slot setup and game options)
@@ -3441,12 +3485,24 @@
     const PLOT_RIVER_COUNT_OFFSET = 17;
     /** A plot holds one river id per hex direction and the list stays short */
     const PLOT_MAX_RIVERS = 64;
+    /** Offset of the owner byte behind the river id list */
+    const PLOT_OWNER_OFFSET = 7;
     /** Offset of the plot type byte behind the river id list */
     const PLOT_PLOT_TYPE_OFFSET = 8;
     /** Offset of the terrain type byte behind the river id list */
     const PLOT_TERRAIN_OFFSET = 9;
     /** Offset of the feature word behind the river id list, stored as a full enum */
     const PLOT_FEATURE_OFFSET = 10;
+    /** Offset of the resource word behind the river id list, stored as a full enum */
+    const PLOT_RESOURCE_OFFSET = 14;
+    /** Offset of the improvement word behind the river id list, stored as a full enum */
+    const PLOT_IMPROVEMENT_OFFSET = 18;
+    /** Offset of the route byte behind the river id list */
+    const PLOT_ROUTE_OFFSET = 30;
+    /** Offset of the city flag byte behind the river id list */
+    const PLOT_IS_CITY_OFFSET = 38;
+    /** Offset of the owning city pair behind the river id list: owner then city id, both int32 */
+    const PLOT_OWNING_CITY_OFFSET = 39;
     /**
      * Distance from the end of the river id list to the river crossing byte of
      * the record tail: the packed flag word, the counter and enum fields, the
@@ -3482,9 +3538,16 @@
         }
         // Behind the river id list every field sits at a fixed offset
         const base = s + 21 + riverCount * 4;
+        const owner = view.getInt8(base + PLOT_OWNER_OFFSET);
         const plotType = view.getInt8(base + PLOT_PLOT_TYPE_OFFSET);
         const terrain = view.getInt8(base + PLOT_TERRAIN_OFFSET);
         const feature = view.getInt32(base + PLOT_FEATURE_OFFSET, true);
+        const resource = view.getInt32(base + PLOT_RESOURCE_OFFSET, true);
+        const improvement = view.getInt32(base + PLOT_IMPROVEMENT_OFFSET, true);
+        const route = view.getInt8(base + PLOT_ROUTE_OFFSET);
+        const isCity = body[base + PLOT_IS_CITY_OFFSET];
+        const owningCityOwner = view.getInt32(base + PLOT_OWNING_CITY_OFFSET, true);
+        const owningCityId = view.getInt32(base + PLOT_OWNING_CITY_OFFSET + 4, true);
         // The counted tail pieces. Script data exists only behind a flag byte,
         // the other pieces always carry their count word
         let p = base + PLOT_TAIL_START;
@@ -3546,7 +3609,7 @@
         p += PLOT_CLOSING_FIELDS_SIZE;
         if (p > body.length)
             return null;
-        return { end: p, plotType, terrain, feature, rivers };
+        return { end: p, plotType, terrain, feature, rivers, owner, resource, improvement, route, isCity, owningCityOwner, owningCityId };
     }
     /**
      * Extract the map terrain by decoding the plot records of the map section.
@@ -3583,7 +3646,14 @@
                     elevation: record.plotType,
                     type: record.terrain,
                     feature: record.feature,
-                    rivers: record.rivers
+                    rivers: record.rivers,
+                    owner: record.owner,
+                    resource: record.resource,
+                    improvement: record.improvement,
+                    route: record.route,
+                    isCity: record.isCity,
+                    owningCityOwner: record.owningCityOwner,
+                    owningCityId: record.owningCityId
                 };
                 if (record.rivers.some(id => id >= 0))
                     walkStats.riverPlots++;
@@ -3972,13 +4042,15 @@
             const civs = this.buildCivList(header, civSlots);
             const slotToIndex = new Map();
             civSlots.forEach((slot, index) => slotToIndex.set(slot, index));
+            // The victory result needs the event log and the slot mapping
+            const victory = this.buildVictoryInfo(prelude, eventList.messages, slotToIndex);
             // Stage 7: replay data clusters, one per player slot in slot order
             const clusters = this.scanClusters(state, eventList.endPos, endTurn);
             const citySeries = this.predictCityCounts(eventList.messages, civSlots, endTurn);
             const deaths = this.analyzeDeaths(eventList.messages, civSlots);
             const clusterBySlot = this.assignClusters(clusters, civSlots, citySeries, deaths, endTurn);
-            // Stage 8: map dimensions and terrain, then assemble the output shape
-            const mapDims = this.readMapDimensions(state, eventList.messages);
+            // Stage 8: the map section header, then assemble the output shape
+            const mapDims = this.readMapSection(state, eventList.messages);
             // Stage 9: decode the plot records for terrain when the map section was found
             let terrain = null;
             if (mapDims.mapPos >= 0 && mapDims.width > 0 && mapDims.height > 0) {
@@ -3999,7 +4071,7 @@
                 this.diagnostics.terrainCoverage = 0;
                 this.diagnostics.terrainGatePassed = false;
             }
-            return this.assembleRawData(header, prelude, civs, civSlots, slotToIndex, eventList.messages, clusters, clusterBySlot, mapDims, terrain);
+            return this.assembleRawData(header, prelude, victory, civs, civSlots, slotToIndex, eventList.messages, clusters, clusterBySlot, mapDims, terrain);
         }
         /**
          * Read and inflate the compressed body that follows the pregame section
@@ -4017,8 +4089,10 @@
         }
         /**
          * Parse the fixed prelude of the game section: save version, data hash,
-         * version string, then the first game fields including the turn counters
-         * and the start year
+         * version string, then the game fields including the turn counters, the
+         * start year, and the victory result. Every field up to the victory block
+         * has a fixed size, so the read is one straight walk following
+         * CvGame::Serialize in the game DLL
          * @param state Reader over the decompressed game state
          * @param headerTurn The game turn from the engine header, for cross checking
          */
@@ -4029,13 +4103,72 @@
             state.getInt32(); // End turn messages sent
             const elapsedGameTurns = state.getInt32();
             const startTurn = state.getInt32();
-            state.getInt32(); // Winning turn
+            const winningTurn = state.getInt32();
             const startYear = state.getInt32();
+            // Turn estimates, slice counters, and score counters up to the civ counts
+            for (let i = 0; i < 28; i++) {
+                state.getInt32();
+            }
+            // Six bools: score dirty, circumnavigated, and friends
+            for (let i = 0; i < 6; i++) {
+                state.getInt8();
+            }
+            state.getInt32(); // Observer UI override player
+            // Five bools: tuner, saved once, tutorial, and friends
+            for (let i = 0; i < 5; i++) {
+                state.getInt8();
+            }
+            // Advisor messages viewed: a counted set of hashes
+            const advisorMessages = state.getInt32();
+            if (advisorMessages < 0 || advisorMessages > 100000) {
+                throw new Error(`Implausible advisor message count ${advisorMessages} in the game prelude`);
+            }
+            state.getBytes(advisorMessages * 4);
+            state.getInt32(); // Handicap
+            state.getInt32(); // Pause player
+            state.getInt32(); // AI auto play return player
+            state.getInt32(); // Best land unit
+            const winnerTeam = state.getInt32();
+            const victoryType = state.getInt32();
+            const gameState = state.getInt32();
             const endTurn = elapsedGameTurns;
             if (endTurn !== headerTurn) {
                 console.warn(`Save turn mismatch: header says ${headerTurn}, game section says ${endTurn}`);
             }
-            return { startTurn, endTurn, startYear };
+            return { startTurn, endTurn, startYear, winningTurn, winnerTeam, victoryType, gameState };
+        }
+        /**
+         * Build the victory result from the prelude fields and the event log
+         * A result counts as reliable only when the header claims a winner and the
+         * event log carries the matching victory message at the winning turn; the
+         * winner civilization comes from that message, whose slot is mapped to the
+         * dense civ index
+         * @param prelude The parsed game prelude
+         * @param messages The raw event log, with original player slots
+         * @param slotToIndex Mapping from player slots to dense civ indices
+         */
+        buildVictoryInfo(prelude, messages, slotToIndex) {
+            var _a;
+            // The header claims a winner when the winning turn is past the start and
+            // the victory fields are set; m_iWinningTurn stays 0 until someone wins
+            const claimed = prelude.winningTurn > 0 && prelude.victoryType >= 0 &&
+                prelude.winnerTeam >= 0 && prelude.gameState !== 0;
+            // The event log must confirm the claim with a victory message at the
+            // winning turn, which also names the winning civilization
+            const victoryEvent = claimed
+                ? messages.find(m => m.turn === prelude.winningTurn && m.civId >= 0 && m.text.includes(' has won a '))
+                : undefined;
+            const winnerSlot = victoryEvent ? victoryEvent.civId : -1;
+            const winnerCivId = winnerSlot >= 0 ? ((_a = slotToIndex.get(winnerSlot)) !== null && _a !== void 0 ? _a : -1) : -1;
+            return {
+                winningTurn: claimed ? prelude.winningTurn : -1,
+                winnerTeam: prelude.winnerTeam,
+                victoryType: prelude.victoryType,
+                gameState: prelude.gameState,
+                winnerCivId,
+                reliable: victoryEvent !== undefined && winnerCivId >= 0,
+                source: 'file'
+            };
         }
         /**
          * Locate and parse the replay event list
@@ -4525,16 +4658,17 @@
             return comparable >= 30 ? matches / comparable : -1;
         }
         /**
-         * Read the map dimensions
-         * The map section follows the embedded savegame database directly, but its
-         * fields can carry corrupted high bytes, so both dimensions are masked to
-         * their low sixteen bits. When the landmark does not validate, the event
-         * coordinates provide a fallback estimate. The section position is returned
-         * alongside the dimensions so the terrain walker can start from there
+         * Read the map section: dimensions from the grid header right after the
+         * savegame database, plus the rest of the header (land and owned plot
+         * counts, natural wonders, latitudes, wrap flags). The header fields can
+         * carry corrupted high bytes, so both dimensions are masked to their low
+         * sixteen bits. When the landmark does not validate, the event coordinates
+         * provide a fallback estimate and no header is returned. The section
+         * position is returned alongside so the terrain walker can start from there
          * @param state Reader over the decompressed game state
          * @param messages The parsed event log
          */
-        readMapDimensions(state, messages) {
+        readMapSection(state, messages) {
             const body = this.decompressed;
             const view = new DataView(body.buffer, body.byteOffset, body.byteLength);
             // First choice: the grid header right after the savegame database
@@ -4542,13 +4676,25 @@
             if (dbPos > 4) {
                 const dbSize = view.getInt32(dbPos - 4, true);
                 const mapPos = dbPos + dbSize;
-                if (dbSize > 0 && mapPos + 8 <= body.byteLength) {
+                if (dbSize > 0 && mapPos + MAP_HEADER_SIZE <= body.byteLength) {
                     state.seek(mapPos);
                     const width = state.getInt32() & 0xffff;
                     const height = state.getInt32() & 0xffff;
                     if (this.validateMapDims(width, height, messages)) {
+                        // The rest of the 47 byte header: plot counts, natural wonders,
+                        // latitudes, wrap flags, a 16 byte GUID, and the generated flag
+                        const landPlots = state.getInt32();
+                        const ownedPlots = state.getInt32();
+                        const numNaturalWonders = state.getInt32();
+                        const topLatitude = state.getInt32();
+                        const bottomLatitude = state.getInt32();
+                        const wrapX = state.getInt8() !== 0;
+                        const wrapY = state.getInt8() !== 0;
+                        state.getBytes(16); // Map GUID, of no use to the viewer
+                        const mapGenerated = state.getInt8() !== 0;
                         this.diagnostics.mapDimsSource = 'map-section';
-                        return { width, height, mapPos };
+                        const header = { width, height, landPlots, ownedPlots, numNaturalWonders, topLatitude, bottomLatitude, wrapX, wrapY, mapGenerated };
+                        return { width, height, mapPos, header };
                     }
                 }
             }
@@ -4565,10 +4711,10 @@
             }
             if (maxX > 0 && maxY > 0) {
                 this.diagnostics.mapDimsSource = 'events';
-                return { width: maxX + 1, height: maxY + 1, mapPos: -1 };
+                return { width: maxX + 1, height: maxY + 1, mapPos: -1, header: null };
             }
             this.diagnostics.mapDimsSource = 'none';
-            return { width: 0, height: 0, mapPos: -1 };
+            return { width: 0, height: 0, mapPos: -1, header: null };
         }
         /**
          * Check that map dimensions are plausible given the event coordinates
@@ -4587,9 +4733,11 @@
             return true;
         }
         /**
-         * Assemble the output in the same shape the replay parser produces
+         * Assemble the output in the same shape the replay parser produces, plus
+         * the save-only extras: the map header, the victory result, the player
+         * slots behind the civilization list, and the per civ dataset diagnostics
          */
-        assembleRawData(header, prelude, civs, civSlots, slotToIndex, messages, clusters, clusterBySlot, mapDims, terrain) {
+        assembleRawData(header, prelude, victory, civs, civSlots, slotToIndex, messages, clusters, clusterBySlot, mapDims, terrain) {
             // Union of all dataset names, alphabetical like the replay file order
             const datasetNames = new Set();
             for (const cluster of clusters) {
@@ -4602,6 +4750,11 @@
             const datasetValues = civSlots.map(slot => {
                 const cluster = clusterBySlot.get(slot);
                 return datasets.map(d => (cluster && cluster.datasets.get(d.key)) || []);
+            });
+            // Per civ dataset quality, so statistics can label uncertain series
+            const datasetDiagnostics = civSlots.map(slot => {
+                const cluster = clusterBySlot.get(slot);
+                return { attached: cluster !== undefined, damagedEntries: cluster ? cluster.damagedEntries : 0 };
             });
             // Remap the raw slot ids in the events to dense civ indices
             const events = messages.map(message => {
@@ -4622,10 +4775,18 @@
                 for (let i = 0; i < mapDims.width * mapDims.height; i++) {
                     const t = terrain && terrain.tiles[i];
                     if (t) {
-                        tiles.push({ elevation: t.elevation, type: t.type, feature: t.feature, rivers: t.rivers });
+                        tiles.push({
+                            elevation: t.elevation, type: t.type, feature: t.feature, rivers: t.rivers,
+                            owner: t.owner, resource: t.resource, improvement: t.improvement, route: t.route,
+                            isCity: t.isCity, owningCityOwner: t.owningCityOwner, owningCityId: t.owningCityId
+                        });
                     }
                     else {
-                        tiles.push({ elevation: -1, type: -1, feature: -1, rivers: [] });
+                        tiles.push({
+                            elevation: -1, type: -1, feature: -1, rivers: [],
+                            owner: -1, resource: -1, improvement: -1, route: -1,
+                            isCity: 0, owningCityOwner: -1, owningCityId: -1
+                        });
                     }
                 }
             }
@@ -4648,11 +4809,15 @@
                 endTurn: prelude.endTurn,
                 endYear: `Turn ${prelude.endTurn}`,
                 civs,
+                civSlots,
                 datasets,
                 datasetValues,
+                datasetDiagnostics,
                 events,
                 mapWidth: mapDims.width,
                 mapHeight: mapDims.height,
+                mapHeader: mapDims.header,
+                victory,
                 tiles
             };
         }
@@ -4901,18 +5066,12 @@
             this.mapHeight = 0;
             // Which kind of file this data came from
             this.source = 'replay';
-            // Kind of every data area this hub exposes, so views never have to guess
-            // whether something is available at every turn or only at the save's turn.
-            // Rivers are fixed when the map is generated, so their kind is history even
-            // though only save files carry them today. Snapshot entries arrive with the
-            // save parser work that reads the game state.
-            this.dataKinds = {
-                terrain: DataKind.History,
-                rivers: DataKind.History,
-                events: DataKind.History,
-                datasets: DataKind.History,
-                ownership: DataKind.History
-            };
+            // Kind of every data area the loaded file carries, so views never have to
+            // guess whether something is available at every turn (history) or only at
+            // the save's turn (snapshot). Built per load in processRawData: a replay
+            // file never has snapshot areas, and a save whose terrain walk failed has
+            // neither rivers nor the plot snapshot.
+            this.dataKinds = {};
             // Game configuration (absorbed from RawReplayData)
             this.game = '';
             this.version = '';
@@ -4933,6 +5092,15 @@
             this.events = [];
             this.datasets = {};
             this.tiles = [];
+            // Save-only extras, null or empty when the source is a replay file
+            /** Player slot behind each civilization, so snapshot slot ids can be mapped to civs */
+            this.civSlots = [];
+            /** Map header of the save (wrap flags and map-wide counts), null when unavailable */
+            this.mapHeader = null;
+            /** Victory result, proven by the file or asserted by a shared link; only reliable results may be presented */
+            this.victory = null;
+            /** Dataset quality per civilization, aligned with the civs list */
+            this.datasetDiagnostics = [];
         }
         /**
          * Load replay data from a binary file
@@ -4953,6 +5121,7 @@
          * Process raw parsed data and populate the replay instance
          */
         processRawData(rawData) {
+            var _a, _b;
             // Store metadata fields
             this.startTurn = rawData.startTurn;
             this.endTurn = rawData.endTurn;
@@ -4976,12 +5145,42 @@
             this.mods = rawData.mods || [];
             // Store civilizations
             this.civs = rawData.civs || [];
+            // Store the save-only extras. Replay files carry byte exact series, so
+            // every civilization starts with clean dataset diagnostics there
+            this.civSlots = rawData.civSlots || [];
+            this.mapHeader = (_a = rawData.mapHeader) !== null && _a !== void 0 ? _a : null;
+            this.victory = (_b = rawData.victory) !== null && _b !== void 0 ? _b : null;
+            this.datasetDiagnostics = rawData.datasetDiagnostics ||
+                this.civs.map(() => ({ attached: true, damagedEntries: 0 }));
             // Index the datasets by name
             this.datasets = indexDatasets(rawData.datasets, rawData.datasetValues);
             // Process events
             this.processEvents(rawData.events || []);
             // Build the tile grid
             this.tiles = buildTileGrid(rawData.tiles || [], this.mapWidth);
+            // Mark the kind of every data area this file carries. Terrain, rivers,
+            // and the map header are fixed when the map is generated, so they count
+            // as history even though only save files carry them; the plot snapshot
+            // fields describe the save's game state and count as snapshot. The
+            // terrain walk fills the tiles from the first record onward, so a real
+            // first tile (not the -1 placeholder) means the walk succeeded
+            const kinds = {
+                terrain: DataKind.History,
+                events: DataKind.History,
+                datasets: DataKind.History,
+                ownership: DataKind.History
+            };
+            if (this.source === 'save') {
+                if (this.mapHeader) {
+                    kinds.mapHeader = DataKind.History;
+                }
+                const firstTile = this.tiles.length > 0 && this.tiles[0].length > 0 ? this.tiles[0][0] : null;
+                if (firstTile && firstTile.elevation !== -1) {
+                    kinds.rivers = DataKind.History;
+                    kinds.plotSnapshot = DataKind.Snapshot;
+                }
+            }
+            this.dataKinds = kinds;
         }
         /**
          * Process game events and add human-readable information
@@ -5000,6 +5199,40 @@
                 return null;
             }
             return this.civs[civId].name;
+        }
+        /**
+         * Map a raw player slot from snapshot data to a civilization index
+         * @returns The civilization index, or -1 when no civilization uses the slot
+         */
+        getCivIdForSlot(slot) {
+            return this.civSlots.indexOf(slot);
+        }
+        /**
+         * Apply a winner asserted through the winner parameter of a shared link
+         * A save taken before the game was won carries no proof of the result,
+         * so the sharer can pass it externally. The link only fills the gap: a
+         * result the file itself proved always stands, and the applied result is
+         * marked as link sourced so the interface can attribute it
+         * @param winnerCivId The winning civilization index
+         * @returns True when the link winner was applied
+         */
+        applyLinkVictory(winnerCivId) {
+            if (this.victory !== null && this.victory.reliable && this.victory.source === 'file') {
+                return false;
+            }
+            if (winnerCivId < 0 || winnerCivId >= this.civs.length) {
+                return false;
+            }
+            this.victory = {
+                winningTurn: -1,
+                winnerTeam: -1,
+                victoryType: -1,
+                gameState: -1,
+                winnerCivId,
+                reliable: true,
+                source: 'link'
+            };
+            return true;
         }
         /**
          * Get civilization color from ID or name
@@ -5381,6 +5614,7 @@
             this.initialTurn = null; // turn parameter, applied once the session exists
             this.view = 'map'; // Selected destination tab
             this.annotations = {}; // playerN labels from the address bar
+            this.linkWinner = null; // winner parameter, applied once a file is loaded
             this.isLoading = false; // A file is being read or parsed
             this.errorTimeout = null; // Auto-dismiss timer for the error banner
             this.unsubscribeTurnSync = null; // Stops URL syncing
@@ -5503,12 +5737,13 @@
             });
         }
         /**
-         * Read the address bar: file, turn, view, and playerN annotations
+         * Read the address bar: file, turn, view, playerN annotations, and winner
          */
         handleUrlParameters() {
             const urlParams = new URLSearchParams(window.location.search);
             this.fileUrl = urlParams.get('file');
             this.annotations = parseCivAnnotations(urlParams);
+            this.linkWinner = urlParams.get('winner');
             const turnParam = urlParams.get('turn');
             this.initialTurn = turnParam !== null ? parseInt(turnParam, 10) : null;
             const viewParam = urlParams.get('view');
@@ -5550,8 +5785,8 @@
         }
         /**
          * Write the current turn, destination, and file into the address bar so a
-         * copied link lands where the user is looking. The playerN parameters are
-         * kept exactly as the sharer wrote them.
+         * copied link lands where the user is looking. The playerN and winner
+         * parameters are kept exactly as the sharer wrote them.
          */
         writeUrlState() {
             const params = new URLSearchParams(window.location.search);
@@ -5654,6 +5889,16 @@
                 // Parse the file and build the session that owns it
                 const replay = new Replay();
                 await replay.loadFromFile(data, size);
+                // Apply a winner the link asserts, for files that cannot prove
+                // their own result, such as a save taken one turn before the
+                // game was won
+                const winnerCivId = resolveWinnerCivId(this.linkWinner, this.annotations, replay.civs.length);
+                if (this.linkWinner !== null && winnerCivId < 0) {
+                    console.warn(`The winner parameter "${this.linkWinner}" names no civilization of the loaded file`);
+                }
+                if (winnerCivId >= 0) {
+                    replay.applyLinkVictory(winnerCivId);
+                }
                 this.session = new GameSession(replay);
                 // Initialize the UI components around the session
                 this.initializeUIComponents();
@@ -5725,10 +5970,20 @@
                 this.gameSummary.appendChild(this.createSummaryItem('fa-map', prettifyEnumValue(replay.worldSize) + ' Map'));
             }
             this.gameSummary.hidden = false;
+            // The annotations, and the winner when the file or the link
+            // established one: a file result is stated as fact, a link result is
+            // attributed to the link
             const civNames = replay.civs.map(civ => civ.name);
-            const annotationText = formatAnnotationLine(civNames, this.annotations);
-            this.annotationLine.textContent = annotationText;
-            this.annotationLine.hidden = !annotationText;
+            let lineText = formatAnnotationLine(civNames, this.annotations);
+            const victory = replay.victory;
+            if (victory && victory.reliable && victory.winnerCivId >= 0) {
+                const winnerName = annotationFor(this.annotations, victory.winnerCivId) || replay.getCivName(victory.winnerCivId);
+                if (winnerName) {
+                    lineText = lineText ? `${lineText} · Winner: ${winnerName}` : winnerText;
+                }
+            }
+            this.annotationLine.textContent = lineText;
+            this.annotationLine.hidden = !lineText;
         }
         /**
          * Create one icon and value pair for the header summary

@@ -23,6 +23,7 @@ import { SaveParser, isSaveFile, extractMapTerrain } from '../../src/parsers/sav
 import { inflateZlib } from '../../src/parsers/utils/inflate';
 import { ReplayParser } from '../../src/parsers/replay-parser';
 import { Replay } from '../../src/replay/replay';
+import { OwnershipTimeline } from '../../src/replay/ownership';
 
 /**
  * Load an example file from the examples directory as a standalone ArrayBuffer
@@ -60,11 +61,15 @@ describe('SaveParser on examples/4.Civ5Save', () => {
   let data: Record<string, any>;
   let parser: SaveParser;
   let replayData: Record<string, any>;
+  let hub: Replay;
 
   beforeAll(async () => {
     const file = loadExample('4.Civ5Save');
     parser = new SaveParser(file, file.byteLength);
     data = await parser.parseReplay();
+
+    hub = new Replay();
+    await hub.loadFromFile(file, file.byteLength);
 
     const replayFile = loadExample('4.Civ5Replay');
     replayData = new ReplayParser(replayFile, replayFile.byteLength).parse() as Record<string, any>;
@@ -240,7 +245,11 @@ describe('SaveParser on examples/4.Civ5Save', () => {
     }
 
     // The first polar plot is ocean under ice and carries no river ids
-    expect(result.tiles[0]).toEqual({ elevation: 3, type: 6, feature: 0, rivers: [] });
+    expect(result.tiles[0]).toEqual({
+      elevation: 3, type: 6, feature: 0, rivers: [],
+      owner: -1, resource: -1, improvement: -1, route: -1,
+      isCity: 0, owningCityOwner: -1, owningCityId: -1
+    });
   });
 
   it('extracts the river ids of every plot edge that borders a river', () => {
@@ -288,6 +297,117 @@ describe('SaveParser on examples/4.Civ5Save', () => {
     expect(data.tiles[0]).toMatchObject({ elevation: 3, type: 6, feature: 0 });
   });
 
+  it('reads the map header including the wrap flags', () => {
+    // The example maps wrap horizontally, which Stage 4 needs for wrapped
+    // panning, and the owned plot count is the invariant checked below
+    expect(data.mapHeader).toEqual({
+      width: 79,
+      height: 53,
+      landPlots: 1434,
+      ownedPlots: 2740,
+      numNaturalWonders: 9,
+      topLatitude: 90,
+      bottomLatitude: -90,
+      wrapX: true,
+      wrapY: false,
+      mapGenerated: true
+    });
+  });
+
+  it('counts owned plots in agreement with the map header', () => {
+    // The header's owned plot count must match the plot records themselves
+    const owned = data.tiles.filter((tile: any) => tile.owner >= 0).length;
+    expect(owned).toBe(data.mapHeader.ownedPlots);
+    expect(owned).toBe(2740);
+  });
+
+  it('agrees with the event-derived ownership at the save turn', () => {
+    // The strongest cross check available: every plot the save calls owned,
+    // the ownership folded from the event log agrees on, owner by owner.
+    // The fold cannot see tile releases (the game emits them as claim
+    // events with no civilization), so plots released by a razing keep a
+    // stale owner in the fold: five tiles around Rapa Nui, razed at turn 308
+    const ownership = new OwnershipTimeline(hub.events, civId => hub.getCivName(civId));
+    const state = ownership.stateAt(hub.endTurn);
+
+    let owned = 0;
+    let agreed = 0;
+    let stale = 0;
+    for (let y = 0; y < hub.mapHeight; y++) {
+      for (let x = 0; x < hub.mapWidth; x++) {
+        const tile = hub.getTileAt(x, y)!;
+        const civId = hub.getCivIdForSlot(tile.owner ?? -1);
+        const snapshotOwner = civId >= 0 ? hub.getCivName(civId) : null;
+        const foldedOwner = state[`${x},${y}`]?.owner ?? null;
+        if (snapshotOwner !== null) owned++;
+        if (snapshotOwner !== null || foldedOwner !== null) {
+          if (snapshotOwner === foldedOwner) agreed++;
+          else stale++;
+        }
+      }
+    }
+    expect(owned).toBe(2740);
+    expect(agreed).toBe(2740);
+    expect(stale).toBe(5);
+  });
+
+  it('marks city plots that match the founded, captured, and razed events', () => {
+    // The city flags of the plot records must land exactly on the cities
+    // the event fold keeps alive, and every city plot is worked by the city
+    // itself, so the owning city belongs to the plot owner
+    const ownership = new OwnershipTimeline(hub.events, civId => hub.getCivName(civId));
+    const state = ownership.stateAt(hub.endTurn);
+
+    const cityPlotKeys = new Set<string>();
+    for (let y = 0; y < hub.mapHeight; y++) {
+      for (let x = 0; x < hub.mapWidth; x++) {
+        const tile = hub.getTileAt(x, y)!;
+        if (tile.isCity === 1) {
+          cityPlotKeys.add(`${x},${y}`);
+          expect(tile.owningCityOwner).toBe(tile.owner);
+          expect(tile.owningCityId).toBeGreaterThanOrEqual(0);
+        }
+      }
+    }
+
+    const foldedCityKeys = Object.entries(state)
+      .filter(([, info]) => info.city !== undefined)
+      .map(([key]) => key);
+
+    expect(cityPlotKeys.size).toBe(79);
+    expect(foldedCityKeys).toHaveLength(79);
+    expect([...cityPlotKeys].sort()).toEqual([...foldedCityKeys].sort());
+  });
+
+  it('reads the victory result and confirms it against the event log', () => {
+    // The header says Maria Theresa's team won a cultural victory at turn
+    // 484, and the event log carries the matching victory message, whose
+    // author is Austria, so the result counts as reliable
+    expect(data.victory).toEqual({
+      winningTurn: 484,
+      winnerTeam: 6,
+      victoryType: 3,
+      gameState: 2,
+      winnerCivId: 6,
+      reliable: true,
+      source: 'file'
+    });
+    expect(data.civs[6].name).toBe('Austria');
+  });
+
+  it('exposes the player slots and clean dataset diagnostics', () => {
+    // Eight major civilizations on slots 0 to 7, sixteen city states on
+    // slots 22 to 37; every slot carries an undamaged data region
+    expect(data.civSlots).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7,
+      22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37
+    ]);
+    expect(data.datasetDiagnostics).toHaveLength(24);
+    for (const entry of data.datasetDiagnostics) {
+      expect(entry).toEqual({ attached: true, damagedEntries: 0 });
+    }
+  });
+
   it('keeps every parsed series within the game bounds', () => {
     for (const civTable of data.datasetValues) {
       for (const series of civTable) {
@@ -327,11 +447,15 @@ describe('SaveParser on examples/5.Civ5Save', () => {
   let data: Record<string, any>;
   let parser: SaveParser;
   let replayData: Record<string, any>;
+  let hub: Replay;
 
   beforeAll(async () => {
     const file = loadExample('5.Civ5Save');
     parser = new SaveParser(file, file.byteLength);
     data = await parser.parseReplay();
+
+    hub = new Replay();
+    await hub.loadFromFile(file, file.byteLength);
 
     const replayFile = loadExample('5.Civ5Replay');
     replayData = new ReplayParser(replayFile, replayFile.byteLength).parse() as Record<string, any>;
@@ -409,7 +533,11 @@ describe('SaveParser on examples/5.Civ5Save', () => {
       expect(tile.type).toBe(gt.type);
       expect(tile.feature).toBe(gt.feature);
     }
-    expect(data.tiles[0]).toEqual({ elevation: 3, type: 6, feature: 0, rivers: [] });
+    expect(data.tiles[0]).toEqual({
+      elevation: 3, type: 6, feature: 0, rivers: [],
+      owner: -1, resource: -1, improvement: -1, route: -1,
+      isCity: 0, owningCityOwner: -1, owningCityId: -1
+    });
 
     // The same map as the late game save, so the same rivers run through it
     let riverPlots = 0;
@@ -417,6 +545,126 @@ describe('SaveParser on examples/5.Civ5Save', () => {
       if ((tile.rivers ?? []).some((id: number) => id >= 0)) riverPlots++;
     }
     expect(riverPlots).toBe(479);
+  });
+
+  it('reads the map header and counts owned plots in agreement with it', () => {
+    expect(data.mapHeader).toEqual({
+      width: 79,
+      height: 53,
+      landPlots: 1434,
+      ownedPlots: 2526,
+      numNaturalWonders: 9,
+      topLatitude: 90,
+      bottomLatitude: -90,
+      wrapX: true,
+      wrapY: false,
+      mapGenerated: true
+    });
+
+    const owned = data.tiles.filter((tile: any) => tile.owner >= 0).length;
+    expect(owned).toBe(data.mapHeader.ownedPlots);
+    expect(owned).toBe(2526);
+  });
+
+  it('agrees with the event-derived ownership at the save turn', () => {
+    // Same picture as the finished game: every owned plot agrees with the
+    // event fold. The fifteen stale tiles belong to Belo Horizonte, founded
+    // by Brazil at turn 330 and razed by Arabia at turn 365, whose released
+    // tiles the fold cannot see
+    const ownership = new OwnershipTimeline(hub.events, civId => hub.getCivName(civId));
+    const state = ownership.stateAt(hub.endTurn);
+
+    let owned = 0;
+    let agreed = 0;
+    let stale = 0;
+    for (let y = 0; y < hub.mapHeight; y++) {
+      for (let x = 0; x < hub.mapWidth; x++) {
+        const tile = hub.getTileAt(x, y)!;
+        const civId = hub.getCivIdForSlot(tile.owner ?? -1);
+        const snapshotOwner = civId >= 0 ? hub.getCivName(civId) : null;
+        const foldedOwner = state[`${x},${y}`]?.owner ?? null;
+        if (snapshotOwner !== null) owned++;
+        if (snapshotOwner !== null || foldedOwner !== null) {
+          if (snapshotOwner === foldedOwner) agreed++;
+          else stale++;
+        }
+      }
+    }
+    expect(owned).toBe(2526);
+    expect(agreed).toBe(2526);
+    expect(stale).toBe(15);
+  });
+
+  it('marks city plots that match the founded, captured, and razed events', () => {
+    const ownership = new OwnershipTimeline(hub.events, civId => hub.getCivName(civId));
+    const state = ownership.stateAt(hub.endTurn);
+
+    const cityPlotKeys = new Set<string>();
+    for (let y = 0; y < hub.mapHeight; y++) {
+      for (let x = 0; x < hub.mapWidth; x++) {
+        const tile = hub.getTileAt(x, y)!;
+        if (tile.isCity === 1) {
+          cityPlotKeys.add(`${x},${y}`);
+          expect(tile.owningCityOwner).toBe(tile.owner);
+        }
+      }
+    }
+
+    const foldedCityKeys = Object.entries(state)
+      .filter(([, info]) => info.city !== undefined)
+      .map(([key]) => key);
+
+    expect(cityPlotKeys.size).toBe(82);
+    expect(foldedCityKeys).toHaveLength(82);
+    expect([...cityPlotKeys].sort()).toEqual([...foldedCityKeys].sort());
+  });
+
+  it('reports no victory for a mid game save', () => {
+    // The game is still running, so the interface must never imply a result
+    expect(data.victory).toEqual({
+      winningTurn: -1,
+      winnerTeam: -1,
+      victoryType: -1,
+      gameState: 0,
+      winnerCivId: -1,
+      reliable: false,
+      source: 'file'
+    });
+  });
+
+  it('accepts a winner passed through a shared link', () => {
+    // A save taken before the game was won carries no proof of the result,
+    // so a shared link may assert it; here it lands on Austria, and the
+    // result is marked as link sourced so the interface can attribute it
+    const original = hub.victory;
+    expect(hub.applyLinkVictory(6)).toBe(true);
+    expect(hub.victory).toEqual({
+      winningTurn: -1,
+      winnerTeam: -1,
+      victoryType: -1,
+      gameState: -1,
+      winnerCivId: 6,
+      reliable: true,
+      source: 'link'
+    });
+
+    // A winner the loaded file does not have is rejected, and the applied
+    // link result gives way to nothing
+    expect(hub.applyLinkVictory(99)).toBe(false);
+    expect(hub.victory?.winnerCivId).toBe(6);
+
+    hub.victory = original;
+  });
+
+  it('exposes the player slots and clean dataset diagnostics', () => {
+    expect(data.civSlots).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7,
+      22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37
+    ]);
+    expect(data.datasetDiagnostics).toHaveLength(24);
+    for (const entry of data.datasetDiagnostics) {
+      expect(entry).toEqual({ attached: true, damagedEntries: 0 });
+    }
   });
 
   it('loads end to end through the Replay class', async () => {

@@ -13,7 +13,7 @@ The application has three destinations: **Map**, **Events**, and **Statistics**.
 ### Two kinds of data
 
 - **Replay history** is known at every turn: the event log and the datasets, which both file types carry, plus terrain and rivers. Terrain and rivers are fixed when the map is generated, so they are valid at every turn even though only save files store the rivers.
-- **Saved snapshot** is known only at the turn of the loaded save: plot ownership, improvements, resources, routes, city details, and anything else read from the save's game state. Whether any of it comes with history is what Stage 3 finds out.
+- **Saved snapshot** is known only at the turn of the loaded save: plot ownership, improvements, resources, routes, city details, and anything else read from the save's game state. Stage 3 settled the open question: nothing in the save's game state carries per-turn history. The datasets remain the only per-turn numeric series, and everything else the save adds is either a snapshot or a map fact fixed at generation.
 
 Snapshot details appear only while the timeline sits on the save's last turn and step aside with a short note when it moves back. This keeps a single timeline and needs no separate mode. A replay file never has snapshot data and stays fully useful without it. When the save is a finished game, the snapshot is the end-game position. When it is not, the interface says "Snapshot at turn ..." and never implies that the game ended.
 
@@ -130,6 +130,8 @@ Support touch panning and zooming, large tap targets, keyboard navigation, visib
 
 ## Stage 3: Explore and expand the parsers
 
+Status: implemented. The save parser reads the full map header, and the example maps wrap horizontally, which Stage 4 needs for wrapped panning. Plot records now carry the snapshot fields (owner, resource, improvement, route, city flag, owning city pair), and the validation was stronger than hoped: on both example saves, every plot the save calls owned agrees with the event-derived ownership owner by owner, the owned plot count matches the header, and the city flags land exactly on the founded-and-not-razed cities. The only disagreement is tiles released by a razed city: the game emits those releases as claim events with no civilization, the event processor drops them, and the fold keeps a stale owner on five tiles in the finished game and fifteen in the mid game save. Feeding release events into the fold is left to the map rendering stages. The victory block is read from the game prelude and a result counts as reliable only when the event log confirms it with a victory message at the winning turn, so the finished example reports a reliable cultural win at turn 484 while the mid game save reports no result. Because some saves are taken one turn before the game is won and can never prove their result, a `winner` address bar parameter can assert it externally: it names the civilization by number or by a `playerN` label, applies only when the file has no proven result of its own, and the header shows it as coming from the link. Per civilization dataset diagnostics (attached, damaged entries) now flow through the Replay hub so statistics can label uncertain series. The per player sections were surveyed in the game DLL source: city records, diplomacy, and everything else there hold current values and single turn stamps only, so no per-player field earns the decode effort for now. The findings are recorded in `docs/save-format.md`, and the data inventory below lets Stages 4 to 6 name their layers and measures from it.
+
 **Goal:** know what the files can tell us before designing map layers and statistics around guesses.
 
 The save parser in `src/parsers/save-parser.ts` currently stops reading each plot record after terrain, feature, and river ids, even though `docs/save-format.md` documents where owner, improvement, resource, and route sit. The map header's wrap flags and the game prelude's winning turn are read and discarded. The per-player sections holding cities, units, and diplomacy are not read at all. Datasets from saves are attributed to civilizations by heuristics whose diagnostics never reach the interface.
@@ -211,7 +213,7 @@ The 29 datasets already parsed and tested come first. Confirm each one's name, u
 +-----------------------------------------------------------------------------+
 ```
 
-Values in this mockup are illustrative. On phones the table becomes a compact list and the chart stacks below it. Readable values sit next to every chart so comparison never depends on reading lines or colors alone. Unavailable data is shown as unavailable and never as zero, incomplete histories are labeled, and a winner or victory type appears only when Stage 3 established a reliable result.
+Values in this mockup are illustrative. On phones the table becomes a compact list and the chart stacks below it. Readable values sit next to every chart so comparison never depends on reading lines or colors alone. Unavailable data is shown as unavailable and never as zero, incomplete histories are labeled, and a winner or victory type appears only when the file established a reliable result or a shared link asserted one through the `winner` parameter.
 
 Parser-dependent measures follow as separate increments. Candidates include economy, science, culture, military strength, city development, and diplomacy. Choose the questions users want answered first, then take the parser work for each from the Stage 3 inventory. A snapshot-only value can support a final comparison without supporting a chart.
 
@@ -271,6 +273,45 @@ Selecting an event with a known location focuses the map. Inspecting a city can 
 **Ready to move on when:** users can inspect a city or tile, see which turn its details describe, and move between inspection and events without losing context.
 
 **Decision to revisit:** which snapshot layers are most useful. Units and detailed city views stay open until their data and visual value are clearer.
+
+## Data inventory
+
+What the loaded files provide, sorted by kind, with the parser cost of reading it. "Read" means Stage 3 already parses it; "cheap" means a fixed offset that is trivial to add; "medium" and "heavy" mean walking bounded runs or database-sized arrays inside the per player sections, per the survey recorded in `docs/save-format.md`.
+
+Known at every turn, from both file types:
+
+| Data | Cost |
+|---|---|
+| Event log: foundings, claims, captures, razings, victory and other messages | read |
+| Datasets, 29 per civilization: score, city count, population, techs, gold, science, culture, tourism, military might, land, policies, happiness, workers, worked and improved tiles, maintenance | read |
+| Terrain per plot: elevation, type, feature | read |
+| Ownership and city list folded from the events (stale on tiles a razed city released) | read |
+
+Known at every turn, from save files only, because the map fixes them at generation:
+
+| Data | Cost |
+|---|---|
+| Rivers, one id per hex edge | read |
+| Map header: wrap flags, land and owned plot counts, natural wonder count, latitudes | read |
+
+Known only at the save's turn:
+
+| Data | Cost |
+|---|---|
+| Plot owner (player slot), validated against the event fold | read |
+| Plot resource, improvement, route | read |
+| City flag and owning city pair per plot, validated against the event fold | read |
+| Victory result: winning turn, winner, victory type, reliable flag | read |
+| City details: population, founding turn, buildings with build turns, puppet state, original owner | heavy, future work |
+| Current treasury, yields, policy and tech lists, espionage, corporations, religion | medium to heavy, future work |
+| Diplomacy: opinions, approaches, wars, peace treaties, promises, all with single turn stamps | heavy, future work |
+| Units | heavy, left out per Stage 6's open decision |
+
+Unavailable in either file type: any per-turn history beyond the datasets, for example city population over time, diplomacy over time, or war timelines. The save keeps no such series, so charts of anything not in the datasets cannot be built.
+
+Two annotations travel with the data rather than being game state: the per civilization dataset diagnostics (attached, damaged entries) let statistics label uncertain series, and the victory result's reliable flag comes from the header and the event log agreeing, or from the `winner` parameter of a shared link when the file cannot prove a result, for example a save taken one turn before the game was won.
+
+What this means for the stages: Stage 4 can draw rivers and offer wrapped panning (the example maps wrap horizontally), and its optional resource and improvement layers already have data. Stage 5 builds every chart from the datasets, labels uncertain series through the diagnostics, and shows a winner only when the result is reliable. Stage 6 can inspect terrain, rivers, and event-derived ownership and cities at every turn, add the snapshot block (owner, resource, improvement, route, owning city) at the save's turn, and needs the heavy city work first for population and buildings.
 
 ## How to revise and carry out this plan
 

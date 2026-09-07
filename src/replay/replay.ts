@@ -5,7 +5,7 @@
  */
 
 import { ReplayParser } from '../parsers/replay-parser';
-import { SaveParser, isSaveFile } from '../parsers/save-parser';
+import { SaveParser, isSaveFile, MapHeader, VictoryInfo, DatasetDiagnostics } from '../parsers/save-parser';
 import { EventParser } from './event-parser';
 import { getCivColors } from '../utils/civ-colors';
 import { indexDatasets, buildTileGrid } from './utils/replay-data';
@@ -40,18 +40,12 @@ export class Replay {
   // Which kind of file this data came from
   public source: ReplaySource = 'replay';
 
-  // Kind of every data area this hub exposes, so views never have to guess
-  // whether something is available at every turn or only at the save's turn.
-  // Rivers are fixed when the map is generated, so their kind is history even
-  // though only save files carry them today. Snapshot entries arrive with the
-  // save parser work that reads the game state.
-  public readonly dataKinds: Record<string, DataKind> = {
-    terrain: DataKind.History,
-    rivers: DataKind.History,
-    events: DataKind.History,
-    datasets: DataKind.History,
-    ownership: DataKind.History
-  };
+  // Kind of every data area the loaded file carries, so views never have to
+  // guess whether something is available at every turn (history) or only at
+  // the save's turn (snapshot). Built per load in processRawData: a replay
+  // file never has snapshot areas, and a save whose terrain walk failed has
+  // neither rivers nor the plot snapshot.
+  public dataKinds: Record<string, DataKind> = {};
 
   // Game configuration (absorbed from RawReplayData)
   public game: string = '';
@@ -74,6 +68,16 @@ export class Replay {
   public events: GameEvent[] = [];
   public datasets: Record<string, DatasetCivSeries> = {};
   public tiles: Tile[][] = [];
+
+  // Save-only extras, null or empty when the source is a replay file
+  /** Player slot behind each civilization, so snapshot slot ids can be mapped to civs */
+  public civSlots: number[] = [];
+  /** Map header of the save (wrap flags and map-wide counts), null when unavailable */
+  public mapHeader: MapHeader | null = null;
+  /** Victory result, proven by the file or asserted by a shared link; only reliable results may be presented */
+  public victory: VictoryInfo | null = null;
+  /** Dataset quality per civilization, aligned with the civs list */
+  public datasetDiagnostics: DatasetDiagnostics[] = [];
 
   /**
    * Load replay data from a binary file
@@ -123,6 +127,14 @@ export class Replay {
     // Store civilizations
     this.civs = rawData.civs || [];
 
+    // Store the save-only extras. Replay files carry byte exact series, so
+    // every civilization starts with clean dataset diagnostics there
+    this.civSlots = rawData.civSlots || [];
+    this.mapHeader = rawData.mapHeader ?? null;
+    this.victory = rawData.victory ?? null;
+    this.datasetDiagnostics = rawData.datasetDiagnostics ||
+      this.civs.map(() => ({ attached: true, damagedEntries: 0 }));
+
     // Index the datasets by name
     this.datasets = indexDatasets(rawData.datasets, rawData.datasetValues);
 
@@ -131,6 +143,30 @@ export class Replay {
 
     // Build the tile grid
     this.tiles = buildTileGrid(rawData.tiles || [], this.mapWidth);
+
+    // Mark the kind of every data area this file carries. Terrain, rivers,
+    // and the map header are fixed when the map is generated, so they count
+    // as history even though only save files carry them; the plot snapshot
+    // fields describe the save's game state and count as snapshot. The
+    // terrain walk fills the tiles from the first record onward, so a real
+    // first tile (not the -1 placeholder) means the walk succeeded
+    const kinds: Record<string, DataKind> = {
+      terrain: DataKind.History,
+      events: DataKind.History,
+      datasets: DataKind.History,
+      ownership: DataKind.History
+    };
+    if (this.source === 'save') {
+      if (this.mapHeader) {
+        kinds.mapHeader = DataKind.History;
+      }
+      const firstTile = this.tiles.length > 0 && this.tiles[0].length > 0 ? this.tiles[0][0] : null;
+      if (firstTile && (firstTile.elevation as number) !== -1) {
+        kinds.rivers = DataKind.History;
+        kinds.plotSnapshot = DataKind.Snapshot;
+      }
+    }
+    this.dataKinds = kinds;
   }
 
   /**
@@ -152,6 +188,42 @@ export class Replay {
       return null;
     }
     return this.civs[civId].name;
+  }
+
+  /**
+   * Map a raw player slot from snapshot data to a civilization index
+   * @returns The civilization index, or -1 when no civilization uses the slot
+   */
+  public getCivIdForSlot(slot: number): number {
+    return this.civSlots.indexOf(slot);
+  }
+
+  /**
+   * Apply a winner asserted through the winner parameter of a shared link
+   * A save taken before the game was won carries no proof of the result,
+   * so the sharer can pass it externally. The link only fills the gap: a
+   * result the file itself proved always stands, and the applied result is
+   * marked as link sourced so the interface can attribute it
+   * @param winnerCivId The winning civilization index
+   * @returns True when the link winner was applied
+   */
+  public applyLinkVictory(winnerCivId: number): boolean {
+    if (this.victory !== null && this.victory.reliable && this.victory.source === 'file') {
+      return false;
+    }
+    if (winnerCivId < 0 || winnerCivId >= this.civs.length) {
+      return false;
+    }
+    this.victory = {
+      winningTurn: -1,
+      winnerTeam: -1,
+      victoryType: -1,
+      gameState: -1,
+      winnerCivId,
+      reliable: true,
+      source: 'link'
+    };
+    return true;
   }
 
   /**

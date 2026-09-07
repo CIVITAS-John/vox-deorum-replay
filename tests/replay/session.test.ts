@@ -211,6 +211,66 @@ describe('Replay hub data kinds and datasets', () => {
     expect(Object.values(replay.dataKinds)).not.toContain('snapshot');
   });
 
+  it('marks the snapshot areas of a save file', async () => {
+    const buffer = loadExample('4.Civ5Save');
+    const replay = new Replay();
+    await replay.loadFromFile(buffer, buffer.byteLength);
+
+    expect(replay.source).toBe('save');
+    // Terrain, rivers, and the map header are fixed when the map was
+    // generated, so they count as history; the plot snapshot fields
+    // describe the save's game state and count as snapshot
+    expect(replay.dataKinds).toEqual({
+      terrain: 'history',
+      events: 'history',
+      datasets: 'history',
+      ownership: 'history',
+      mapHeader: 'history',
+      rivers: 'history',
+      plotSnapshot: 'snapshot'
+    });
+
+    // The save-only extras flow through the hub
+    expect(replay.mapHeader?.wrapX).toBe(true);
+    expect(replay.victory?.reliable).toBe(true);
+    expect(replay.victory?.winnerCivId).toBe(6);
+    expect(replay.getCivIdForSlot(6)).toBe(6);
+    expect(replay.getCivIdForSlot(22)).toBe(8);
+    expect(replay.getCivIdForSlot(63)).toBe(-1);
+    expect(replay.datasetDiagnostics).toHaveLength(24);
+    expect(replay.datasetDiagnostics.every(d => d.attached && d.damagedEntries === 0)).toBe(true);
+
+    // A result the file proved itself stands: a link winner cannot override
+    // it, so the finished game keeps its own winner
+    expect(replay.applyLinkVictory(0)).toBe(false);
+    expect(replay.victory?.winnerCivId).toBe(6);
+    expect(replay.victory?.source).toBe('file');
+  });
+
+  it('accepts a link winner for a file without its own result', async () => {
+    // A replay file carries no victory block, and a save taken before the
+    // game was won cannot prove its result, so the link fills the gap
+    const buffer = loadExample('4.Civ5Replay');
+    const replay = new Replay();
+    await replay.loadFromFile(buffer, buffer.byteLength);
+
+    expect(replay.victory).toBeNull();
+    expect(replay.applyLinkVictory(1)).toBe(true);
+    expect(replay.victory).toEqual({
+      winningTurn: -1,
+      winnerTeam: -1,
+      victoryType: -1,
+      gameState: -1,
+      winnerCivId: 1,
+      reliable: true,
+      source: 'link'
+    });
+
+    // A civilization the file does not have is rejected
+    expect(replay.applyLinkVictory(99)).toBe(false);
+    expect(replay.victory?.winnerCivId).toBe(1);
+  });
+
   it('exposes each dataset as one series of turn and value pairs per civilization', async () => {
     const buffer = loadExample('4.Civ5Replay');
     const replay = new Replay();

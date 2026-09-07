@@ -7,6 +7,10 @@
  * player0 annotates the first civilization in the file, player1 the second,
  * and so on. The annotations appear next to civilization names in the event
  * log and as a summary line in the header.
+ *
+ * The same family carries the winner parameter, which asserts who won a
+ * game whose file cannot prove the result, for example a save taken one
+ * turn before the game was won.
  */
 
 // Annotations by civilization id, parsed from the playerN URL parameters
@@ -74,4 +78,42 @@ export function formatAnnotationLine(civNames: string[], annotations: CivAnnotat
   }
 
   return parts.join(' · ');
+}
+
+/**
+ * Resolve the winner parameter to a civilization id
+ * A plain number is the civilization index, numbered like the playerN
+ * parameters (player0 annotates civilization 0, so winner=0 names the same
+ * civilization). Anything else is matched against those annotations, so
+ * "winner=GLM" names the civilization that a playerN parameter labeled GLM
+ * @param raw The winner parameter value, null when the link carries none
+ * @param annotations The parsed playerN annotations
+ * @param civCount The number of civilizations in the loaded file
+ * @returns The civilization id, or -1 when the parameter is absent or names
+ * no civilization of the loaded file
+ */
+export function resolveWinnerCivId(raw: string | null, annotations: CivAnnotations, civCount: number): number {
+  if (raw === null) {
+    return -1;
+  }
+
+  const value = raw.trim().slice(0, maxAnnotationLength);
+  if (!value) {
+    return -1;
+  }
+
+  // A plain number addresses the civilization directly
+  if (/^\d+$/.test(value)) {
+    const civId = parseInt(value, 10);
+    return civId >= 0 && civId < civCount ? civId : -1;
+  }
+
+  // Anything else must be one of the playerN labels
+  for (const civId of Object.keys(annotations)) {
+    const id = Number(civId);
+    if (id < civCount && annotations[id] === value) {
+      return id;
+    }
+  }
+  return -1;
 }

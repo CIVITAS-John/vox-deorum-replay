@@ -13,7 +13,7 @@ import { ControlBar } from './control-bar';
 import { LayersControl } from './layers-control';
 import { Replay } from '../replay/replay';
 import { GameSession } from '../replay/session';
-import { CivAnnotations, parseCivAnnotations, formatAnnotationLine } from './annotations';
+import { CivAnnotations, parseCivAnnotations, formatAnnotationLine, annotationFor, resolveWinnerCivId } from './annotations';
 import { throttle } from '../utils/throttle';
 
 // One bundled example game; where a save is bundled the save is preferred
@@ -82,6 +82,7 @@ export class ReplayViewer {
 	private initialTurn: number | null = null;  // turn parameter, applied once the session exists
 	private view: ViewDestination = 'map';      // Selected destination tab
 	private annotations: CivAnnotations = {};   // playerN labels from the address bar
+	private linkWinner: string | null = null;   // winner parameter, applied once a file is loaded
 	private isLoading = false;                  // A file is being read or parsed
 	private errorTimeout: number | null = null; // Auto-dismiss timer for the error banner
 	private unsubscribeTurnSync: (() => void) | null = null; // Stops URL syncing
@@ -234,12 +235,13 @@ export class ReplayViewer {
 	}
 
 	/**
-	 * Read the address bar: file, turn, view, and playerN annotations
+	 * Read the address bar: file, turn, view, playerN annotations, and winner
 	 */
 	private handleUrlParameters(): void {
 		const urlParams = new URLSearchParams(window.location.search);
 		this.fileUrl = urlParams.get('file');
 		this.annotations = parseCivAnnotations(urlParams);
+		this.linkWinner = urlParams.get('winner');
 
 		const turnParam = urlParams.get('turn');
 		this.initialTurn = turnParam !== null ? parseInt(turnParam, 10) : null;
@@ -293,8 +295,8 @@ export class ReplayViewer {
 
 	/**
 	 * Write the current turn, destination, and file into the address bar so a
-	 * copied link lands where the user is looking. The playerN parameters are
-	 * kept exactly as the sharer wrote them.
+	 * copied link lands where the user is looking. The playerN and winner
+	 * parameters are kept exactly as the sharer wrote them.
 	 */
 	private writeUrlState(): void {
 		const params = new URLSearchParams(window.location.search);
@@ -406,6 +408,18 @@ export class ReplayViewer {
 			// Parse the file and build the session that owns it
 			const replay = new Replay();
 			await replay.loadFromFile(data, size);
+
+			// Apply a winner the link asserts, for files that cannot prove
+			// their own result, such as a save taken one turn before the
+			// game was won
+			const winnerCivId = resolveWinnerCivId(this.linkWinner, this.annotations, replay.civs.length);
+			if (this.linkWinner !== null && winnerCivId < 0) {
+				console.warn(`The winner parameter "${this.linkWinner}" names no civilization of the loaded file`);
+			}
+			if (winnerCivId >= 0) {
+				replay.applyLinkVictory(winnerCivId);
+			}
+
 			this.session = new GameSession(replay);
 
 			// Initialize the UI components around the session
@@ -490,10 +504,23 @@ export class ReplayViewer {
 
 		this.gameSummary.hidden = false;
 
+		// The annotations, and the winner when the file or the link
+		// established one: a file result is stated as fact, a link result is
+		// attributed to the link
 		const civNames = replay.civs.map(civ => civ.name);
-		const annotationText = formatAnnotationLine(civNames, this.annotations);
-		this.annotationLine.textContent = annotationText;
-		this.annotationLine.hidden = !annotationText;
+		let lineText = formatAnnotationLine(civNames, this.annotations);
+
+		const victory = replay.victory;
+		if (victory && victory.reliable && victory.winnerCivId >= 0) {
+			const winnerName = annotationFor(this.annotations, victory.winnerCivId) || replay.getCivName(victory.winnerCivId);
+			if (winnerName) {
+				const winnerText = `Winner: ${winnerName}`;
+				lineText = lineText ? `${lineText} · ${winnerText}` : winnerText;
+			}
+		}
+
+		this.annotationLine.textContent = lineText;
+		this.annotationLine.hidden = !lineText;
 	}
 
 	/**

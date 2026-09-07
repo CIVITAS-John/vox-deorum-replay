@@ -8,6 +8,12 @@
  * replay parser produces so the rest of the application cannot tell the
  * difference.
  *
+ * Beyond the replay content, the parser reads the save-only snapshot data
+ * that sits at known offsets: the victory result from the game section
+ * prelude, the map header (wrap flags and map-wide counts) in front of the
+ * plot records, and the per plot snapshot fields (owner, resource,
+ * improvement, route, city flag, owning city) inside each plot record.
+ *
  * Layout of a save, top to bottom:
  * - An uncompressed engine header (shared front half with replay files)
  * - The uncompressed CvPreGame section (slot setup and game options)
@@ -66,6 +72,80 @@ export interface MapTerrainTile {
   feature: number;
   /** One river id per hex direction in the order NE, E, SE, SW, W, NW, each -1 when the edge has no river */
   rivers: number[];
+  /** Snapshot: owning player slot, -1 when unowned */
+  owner: number;
+  /** Snapshot: resource type index, -1 when none */
+  resource: number;
+  /** Snapshot: improvement type index, -1 when none */
+  improvement: number;
+  /** Snapshot: route type index, -1 when none */
+  route: number;
+  /** Snapshot: 1 when a city stands on the plot */
+  isCity: number;
+  /** Snapshot: player slot of the city whose borders cover the plot, -1 when none */
+  owningCityOwner: number;
+  /** Snapshot: id of the city whose borders cover the plot, -1 when none */
+  owningCityId: number;
+}
+
+/**
+ * Map section header: grid size and map-wide facts. Like terrain and rivers,
+ * these are fixed when the map is generated, so they are valid at every turn
+ * even though only save files carry them.
+ */
+export interface MapHeader {
+  width: number;
+  height: number;
+  /** Plots that are not water */
+  landPlots: number;
+  /** Plots owned by any player at the save turn */
+  ownedPlots: number;
+  /** Natural wonders on the map */
+  numNaturalWonders: number;
+  /** Latitude range of the map, purely decorative */
+  topLatitude: number;
+  bottomLatitude: number;
+  /** Whether the map wraps horizontally */
+  wrapX: boolean;
+  /** Whether the map wraps vertically */
+  wrapY: boolean;
+  /** Whether the map was generated in game rather than loaded from a file */
+  mapGenerated: boolean;
+}
+
+/**
+ * Victory result of a loaded game. The save parser reads it from the game
+ * section header, where it can lie (a modded or hand-edited game), so a
+ * file result counts as reliable only when the event log confirms it with
+ * a victory message at the winning turn. A result can also come from the
+ * `winner` parameter of a shared link, for saves taken before the game was
+ * won: such a save cannot prove its result, so the sharer asserts it. The
+ * interface may present a winner only when reliable is true, and the source
+ * tells the reader whether the file or the link vouches for it.
+ */
+export interface VictoryInfo {
+  /** Turn the game was won on, -1 when nobody has won yet or the turn is unknown */
+  winningTurn: number;
+  /** Raw team id of the winner, -1 when none or unknown */
+  winnerTeam: number;
+  /** Raw index into the mod's Victories table, -1 when none; the victory event text is the readable source */
+  victoryType: number;
+  /** 0 while the game runs, 1 when it is over, 2 when playing on after the end, -1 when unknown */
+  gameState: number;
+  /** Dense civilization index of the winner, taken from the victory event or the link, -1 when unknown */
+  winnerCivId: number;
+  /** True when the result may be presented: proven by the file or asserted by a shared link */
+  reliable: boolean;
+  /** Where the result comes from: the loaded file, or the winner parameter of a shared link */
+  source: 'file' | 'link';
+}
+
+/** Dataset quality of one civilization, so statistics can label uncertain series */
+export interface DatasetDiagnostics {
+  /** True when a replay data region was attached to the civilization's player slot */
+  attached: boolean;
+  /** Entries dropped or repaired across the region's series, zero when clean */
+  damagedEntries: number;
 }
 
 /** Terrain statistics reported by the plot record walk */
@@ -123,12 +203,24 @@ const PLOT_MIN_RECORD_SIZE = 1422;
 const PLOT_RIVER_COUNT_OFFSET = 17;
 /** A plot holds one river id per hex direction and the list stays short */
 const PLOT_MAX_RIVERS = 64;
+/** Offset of the owner byte behind the river id list */
+const PLOT_OWNER_OFFSET = 7;
 /** Offset of the plot type byte behind the river id list */
 const PLOT_PLOT_TYPE_OFFSET = 8;
 /** Offset of the terrain type byte behind the river id list */
 const PLOT_TERRAIN_OFFSET = 9;
 /** Offset of the feature word behind the river id list, stored as a full enum */
 const PLOT_FEATURE_OFFSET = 10;
+/** Offset of the resource word behind the river id list, stored as a full enum */
+const PLOT_RESOURCE_OFFSET = 14;
+/** Offset of the improvement word behind the river id list, stored as a full enum */
+const PLOT_IMPROVEMENT_OFFSET = 18;
+/** Offset of the route byte behind the river id list */
+const PLOT_ROUTE_OFFSET = 30;
+/** Offset of the city flag byte behind the river id list */
+const PLOT_IS_CITY_OFFSET = 38;
+/** Offset of the owning city pair behind the river id list: owner then city id, both int32 */
+const PLOT_OWNING_CITY_OFFSET = 39;
 /** Size of the per team visibility block between the yields and the revealed bits */
 const PLOT_TEAM_BLOCK_SIZE = 1024;
 /** Size of the revealed bits array behind the team block */
@@ -153,6 +245,20 @@ interface PlotRecord {
   feature: number;
   /** One river id per hex direction, -1 when the edge has no river */
   rivers: number[];
+  /** Owning player slot, -1 when unowned */
+  owner: number;
+  /** Resource type index, -1 when none */
+  resource: number;
+  /** Improvement type index, -1 when none */
+  improvement: number;
+  /** Route type index, -1 when none */
+  route: number;
+  /** 1 when a city stands on the plot */
+  isCity: number;
+  /** Player slot of the city whose borders cover the plot, -1 when none */
+  owningCityOwner: number;
+  /** Id of the city whose borders cover the plot, -1 when none */
+  owningCityId: number;
 }
 
 /**
@@ -180,9 +286,16 @@ function decodePlotRecord(body: Uint8Array, view: DataView, s: number): PlotReco
 
   // Behind the river id list every field sits at a fixed offset
   const base = s + 21 + riverCount * 4;
+  const owner = view.getInt8(base + PLOT_OWNER_OFFSET);
   const plotType = view.getInt8(base + PLOT_PLOT_TYPE_OFFSET);
   const terrain = view.getInt8(base + PLOT_TERRAIN_OFFSET);
   const feature = view.getInt32(base + PLOT_FEATURE_OFFSET, true);
+  const resource = view.getInt32(base + PLOT_RESOURCE_OFFSET, true);
+  const improvement = view.getInt32(base + PLOT_IMPROVEMENT_OFFSET, true);
+  const route = view.getInt8(base + PLOT_ROUTE_OFFSET);
+  const isCity = body[base + PLOT_IS_CITY_OFFSET];
+  const owningCityOwner = view.getInt32(base + PLOT_OWNING_CITY_OFFSET, true);
+  const owningCityId = view.getInt32(base + PLOT_OWNING_CITY_OFFSET + 4, true);
 
   // The counted tail pieces. Script data exists only behind a flag byte,
   // the other pieces always carry their count word
@@ -227,7 +340,7 @@ function decodePlotRecord(body: Uint8Array, view: DataView, s: number): PlotReco
 
   p += PLOT_CLOSING_FIELDS_SIZE;
   if (p > body.length) return null;
-  return { end: p, plotType, terrain, feature, rivers };
+  return { end: p, plotType, terrain, feature, rivers, owner, resource, improvement, route, isCity, owningCityOwner, owningCityId };
 }
 
 /**
@@ -264,7 +377,14 @@ export function extractMapTerrain(body: Uint8Array, mapPos: number, width: numbe
         elevation: record.plotType,
         type: record.terrain,
         feature: record.feature,
-        rivers: record.rivers
+        rivers: record.rivers,
+        owner: record.owner,
+        resource: record.resource,
+        improvement: record.improvement,
+        route: record.route,
+        isCity: record.isCity,
+        owningCityOwner: record.owningCityOwner,
+        owningCityId: record.owningCityId
       };
       if (record.rivers.some(id => id >= 0)) walkStats.riverPlots++;
       walkStats.slotsFilled++;
@@ -673,14 +793,17 @@ export class SaveParser extends BaseParser {
     const slotToIndex = new Map<number, number>();
     civSlots.forEach((slot, index) => slotToIndex.set(slot, index));
 
+    // The victory result needs the event log and the slot mapping
+    const victory = this.buildVictoryInfo(prelude, eventList.messages, slotToIndex);
+
     // Stage 7: replay data clusters, one per player slot in slot order
     const clusters = this.scanClusters(state, eventList.endPos, endTurn);
     const citySeries = this.predictCityCounts(eventList.messages, civSlots, endTurn);
     const deaths = this.analyzeDeaths(eventList.messages, civSlots);
     const clusterBySlot = this.assignClusters(clusters, civSlots, citySeries, deaths, endTurn);
 
-    // Stage 8: map dimensions and terrain, then assemble the output shape
-    const mapDims = this.readMapDimensions(state, eventList.messages);
+    // Stage 8: the map section header, then assemble the output shape
+    const mapDims = this.readMapSection(state, eventList.messages);
 
     // Stage 9: decode the plot records for terrain when the map section was found
     let terrain: MapTerrainResult | null = null;
@@ -703,7 +826,7 @@ export class SaveParser extends BaseParser {
       this.diagnostics.terrainGatePassed = false;
     }
 
-    return this.assembleRawData(header, prelude, civs, civSlots, slotToIndex,
+    return this.assembleRawData(header, prelude, victory, civs, civSlots, slotToIndex,
       eventList.messages, clusters, clusterBySlot, mapDims, terrain);
   }
 
@@ -725,12 +848,22 @@ export class SaveParser extends BaseParser {
 
   /**
    * Parse the fixed prelude of the game section: save version, data hash,
-   * version string, then the first game fields including the turn counters
-   * and the start year
+   * version string, then the game fields including the turn counters, the
+   * start year, and the victory result. Every field up to the victory block
+   * has a fixed size, so the read is one straight walk following
+   * CvGame::Serialize in the game DLL
    * @param state Reader over the decompressed game state
    * @param headerTurn The game turn from the engine header, for cross checking
    */
-  private parseGamePrelude(state: BinaryParser, headerTurn: number): { startTurn: number; endTurn: number; startYear: number } {
+  private parseGamePrelude(state: BinaryParser, headerTurn: number): {
+    startTurn: number;
+    endTurn: number;
+    startYear: number;
+    winningTurn: number;
+    winnerTeam: number;
+    victoryType: number;
+    gameState: number;
+  } {
     state.getInt32();                  // Save version, always 0
     state.getBytes(16);                // Game data hash
     state.getVarString();              // Game core version string
@@ -738,15 +871,83 @@ export class SaveParser extends BaseParser {
     state.getInt32();                  // End turn messages sent
     const elapsedGameTurns = state.getInt32();
     const startTurn = state.getInt32();
-    state.getInt32();                  // Winning turn
+    const winningTurn = state.getInt32();
     const startYear = state.getInt32();
+
+    // Turn estimates, slice counters, and score counters up to the civ counts
+    for (let i = 0; i < 28; i++) {
+      state.getInt32();
+    }
+    // Six bools: score dirty, circumnavigated, and friends
+    for (let i = 0; i < 6; i++) {
+      state.getInt8();
+    }
+    state.getInt32();                  // Observer UI override player
+    // Five bools: tuner, saved once, tutorial, and friends
+    for (let i = 0; i < 5; i++) {
+      state.getInt8();
+    }
+    // Advisor messages viewed: a counted set of hashes
+    const advisorMessages = state.getInt32();
+    if (advisorMessages < 0 || advisorMessages > 100000) {
+      throw new Error(`Implausible advisor message count ${advisorMessages} in the game prelude`);
+    }
+    state.getBytes(advisorMessages * 4);
+
+    state.getInt32();                  // Handicap
+    state.getInt32();                  // Pause player
+    state.getInt32();                  // AI auto play return player
+    state.getInt32();                  // Best land unit
+    const winnerTeam = state.getInt32();
+    const victoryType = state.getInt32();
+    const gameState = state.getInt32();
 
     const endTurn = elapsedGameTurns;
     if (endTurn !== headerTurn) {
       console.warn(`Save turn mismatch: header says ${headerTurn}, game section says ${endTurn}`);
     }
 
-    return { startTurn, endTurn, startYear };
+    return { startTurn, endTurn, startYear, winningTurn, winnerTeam, victoryType, gameState };
+  }
+
+  /**
+   * Build the victory result from the prelude fields and the event log
+   * A result counts as reliable only when the header claims a winner and the
+   * event log carries the matching victory message at the winning turn; the
+   * winner civilization comes from that message, whose slot is mapped to the
+   * dense civ index
+   * @param prelude The parsed game prelude
+   * @param messages The raw event log, with original player slots
+   * @param slotToIndex Mapping from player slots to dense civ indices
+   */
+  private buildVictoryInfo(
+    prelude: { startTurn: number; endTurn: number; startYear: number; winningTurn: number; winnerTeam: number; victoryType: number; gameState: number },
+    messages: SaveMessage[],
+    slotToIndex: Map<number, number>
+  ): VictoryInfo {
+    // The header claims a winner when the winning turn is past the start and
+    // the victory fields are set; m_iWinningTurn stays 0 until someone wins
+    const claimed = prelude.winningTurn > 0 && prelude.victoryType >= 0 &&
+      prelude.winnerTeam >= 0 && prelude.gameState !== 0;
+
+    // The event log must confirm the claim with a victory message at the
+    // winning turn, which also names the winning civilization
+    const victoryEvent = claimed
+      ? messages.find(m => m.turn === prelude.winningTurn && m.civId >= 0 && m.text.includes(' has won a '))
+      : undefined;
+
+    const winnerSlot = victoryEvent ? victoryEvent.civId : -1;
+    const winnerCivId = winnerSlot >= 0 ? (slotToIndex.get(winnerSlot) ?? -1) : -1;
+
+    return {
+      winningTurn: claimed ? prelude.winningTurn : -1,
+      winnerTeam: prelude.winnerTeam,
+      victoryType: prelude.victoryType,
+      gameState: prelude.gameState,
+      winnerCivId,
+      reliable: victoryEvent !== undefined && winnerCivId >= 0,
+      source: 'file'
+    };
   }
 
   /**
@@ -1286,16 +1487,17 @@ export class SaveParser extends BaseParser {
   }
 
   /**
-   * Read the map dimensions
-   * The map section follows the embedded savegame database directly, but its
-   * fields can carry corrupted high bytes, so both dimensions are masked to
-   * their low sixteen bits. When the landmark does not validate, the event
-   * coordinates provide a fallback estimate. The section position is returned
-   * alongside the dimensions so the terrain walker can start from there
+   * Read the map section: dimensions from the grid header right after the
+   * savegame database, plus the rest of the header (land and owned plot
+   * counts, natural wonders, latitudes, wrap flags). The header fields can
+   * carry corrupted high bytes, so both dimensions are masked to their low
+   * sixteen bits. When the landmark does not validate, the event coordinates
+   * provide a fallback estimate and no header is returned. The section
+   * position is returned alongside so the terrain walker can start from there
    * @param state Reader over the decompressed game state
    * @param messages The parsed event log
    */
-  private readMapDimensions(state: BinaryParser, messages: SaveMessage[]): { width: number; height: number; mapPos: number } {
+  private readMapSection(state: BinaryParser, messages: SaveMessage[]): { width: number; height: number; mapPos: number; header: MapHeader | null } {
     const body = this.decompressed;
     const view = new DataView(body.buffer, body.byteOffset, body.byteLength);
 
@@ -1304,13 +1506,25 @@ export class SaveParser extends BaseParser {
     if (dbPos > 4) {
       const dbSize = view.getInt32(dbPos - 4, true);
       const mapPos = dbPos + dbSize;
-      if (dbSize > 0 && mapPos + 8 <= body.byteLength) {
+      if (dbSize > 0 && mapPos + MAP_HEADER_SIZE <= body.byteLength) {
         state.seek(mapPos);
         const width = state.getInt32() & 0xffff;
         const height = state.getInt32() & 0xffff;
         if (this.validateMapDims(width, height, messages)) {
+          // The rest of the 47 byte header: plot counts, natural wonders,
+          // latitudes, wrap flags, a 16 byte GUID, and the generated flag
+          const landPlots = state.getInt32();
+          const ownedPlots = state.getInt32();
+          const numNaturalWonders = state.getInt32();
+          const topLatitude = state.getInt32();
+          const bottomLatitude = state.getInt32();
+          const wrapX = state.getInt8() !== 0;
+          const wrapY = state.getInt8() !== 0;
+          state.getBytes(16);          // Map GUID, of no use to the viewer
+          const mapGenerated = state.getInt8() !== 0;
           this.diagnostics.mapDimsSource = 'map-section';
-          return { width, height, mapPos };
+          const header: MapHeader = { width, height, landPlots, ownedPlots, numNaturalWonders, topLatitude, bottomLatitude, wrapX, wrapY, mapGenerated };
+          return { width, height, mapPos, header };
         }
       }
     }
@@ -1327,11 +1541,11 @@ export class SaveParser extends BaseParser {
 
     if (maxX > 0 && maxY > 0) {
       this.diagnostics.mapDimsSource = 'events';
-      return { width: maxX + 1, height: maxY + 1, mapPos: -1 };
+      return { width: maxX + 1, height: maxY + 1, mapPos: -1, header: null };
     }
 
     this.diagnostics.mapDimsSource = 'none';
-    return { width: 0, height: 0, mapPos: -1 };
+    return { width: 0, height: 0, mapPos: -1, header: null };
   }
 
   /**
@@ -1352,18 +1566,21 @@ export class SaveParser extends BaseParser {
   }
 
   /**
-   * Assemble the output in the same shape the replay parser produces
+   * Assemble the output in the same shape the replay parser produces, plus
+   * the save-only extras: the map header, the victory result, the player
+   * slots behind the civilization list, and the per civ dataset diagnostics
    */
   private assembleRawData(
     header: Record<string, any>,
     prelude: { startTurn: number; endTurn: number; startYear: number },
+    victory: VictoryInfo,
     civs: Record<string, unknown>[],
     civSlots: number[],
     slotToIndex: Map<number, number>,
     messages: SaveMessage[],
     clusters: ReplayCluster[],
     clusterBySlot: Map<number, ReplayCluster>,
-    mapDims: { width: number; height: number },
+    mapDims: { width: number; height: number; header: MapHeader | null },
     terrain: MapTerrainResult | null
   ): Record<string, unknown> {
     // Union of all dataset names, alphabetical like the replay file order
@@ -1379,6 +1596,12 @@ export class SaveParser extends BaseParser {
     const datasetValues = civSlots.map(slot => {
       const cluster = clusterBySlot.get(slot);
       return datasets.map(d => (cluster && cluster.datasets.get(d.key)) || []);
+    });
+
+    // Per civ dataset quality, so statistics can label uncertain series
+    const datasetDiagnostics: DatasetDiagnostics[] = civSlots.map(slot => {
+      const cluster = clusterBySlot.get(slot);
+      return { attached: cluster !== undefined, damagedEntries: cluster ? cluster.damagedEntries : 0 };
     });
 
     // Remap the raw slot ids in the events to dense civ indices
@@ -1398,9 +1621,17 @@ export class SaveParser extends BaseParser {
       for (let i = 0; i < mapDims.width * mapDims.height; i++) {
         const t = terrain && terrain.tiles[i];
         if (t) {
-          tiles.push({ elevation: t.elevation, type: t.type, feature: t.feature, rivers: t.rivers });
+          tiles.push({
+            elevation: t.elevation, type: t.type, feature: t.feature, rivers: t.rivers,
+            owner: t.owner, resource: t.resource, improvement: t.improvement, route: t.route,
+            isCity: t.isCity, owningCityOwner: t.owningCityOwner, owningCityId: t.owningCityId
+          });
         } else {
-          tiles.push({ elevation: -1, type: -1, feature: -1, rivers: [] });
+          tiles.push({
+            elevation: -1, type: -1, feature: -1, rivers: [],
+            owner: -1, resource: -1, improvement: -1, route: -1,
+            isCity: 0, owningCityOwner: -1, owningCityId: -1
+          });
         }
       }
     }
@@ -1424,11 +1655,15 @@ export class SaveParser extends BaseParser {
       endTurn: prelude.endTurn,
       endYear: `Turn ${prelude.endTurn}`,
       civs,
+      civSlots,
       datasets,
       datasetValues,
+      datasetDiagnostics,
       events,
       mapWidth: mapDims.width,
       mapHeight: mapDims.height,
+      mapHeader: mapDims.header,
+      victory,
       tiles
     };
   }
