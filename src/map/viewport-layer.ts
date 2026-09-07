@@ -164,7 +164,7 @@ export class ViewportLayer extends L.Layer {
 	constructor(private readonly tiles: Tile[][], events: GameEvent[], wrapX: boolean, hasRivers: boolean) {
 		super();
 		this.geometry = { width: tiles[0]?.length || 0, height: tiles.length, wrapX };
-		this.rivers = hasRivers ? buildRiverEdges(tiles as unknown as Array<Array<{ rivers?: number[] }>>, this.geometry) : [];
+		this.rivers = hasRivers ? buildRiverEdges(tiles as unknown as Array<Array<{ rivers?: number[]; type?: number }>>, this.geometry) : [];
 		for (const event of events) {
 			const turnEvents = this.eventsByTurn.get(event.turn) || [];
 			turnEvents.push(event);

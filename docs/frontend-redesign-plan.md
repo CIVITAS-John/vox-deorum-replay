@@ -218,7 +218,7 @@ The source set uses high-resolution PNGs. All seven ground images are opaque and
 
 ### Rivers, wrapping, and layer scope
 
-Read river ids in the parser's direction order, NE, E, SE, SW, W, NW, and map them through the shared hex geometry. Deduplicate paired records for each shared edge and retain edges supplied by only one plot. Example 4 has six such records around plot (57,11), giving 533 drawable edges from 1060 directed records; `docs/save-format.md` records the finding. Draw connected strokes with round joins and keep junctions and coast endpoints intact. When borders follow a river, offset each owner's political stroke toward its own tile enough to leave the water visible.
+Read river ids in the parser's direction order, NE, E, SE, SW, W, NW, and map them through the shared hex geometry. Deduplicate paired records for each shared edge, retain edges supplied by only one plot, and drop every edge that touches water terrain, because the save encodes each lake shoreline as river records; `docs/save-format.md` records the finding. Example 4 yields 353 drawable edges from 1060 directed records. Draw connected strokes with round joins and keep junctions intact. Inset each owner's political stroke into its own hexagon by half the line width so both sides of a shared frontier stay visible.
 
 Use the map's wrap flags for neighbor lookup even before wrapped panning is enabled. Canonical edge keys must handle the horizontal seam, while drawing places seam segments at the appropriate map edges. Optional horizontal panning repeats visible world copies and normalizes selection to the original tile; it must not duplicate cities or ownership in the session. Replay files without wrap metadata retain bounded panning.
 

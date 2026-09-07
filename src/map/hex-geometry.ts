@@ -4,6 +4,8 @@
  * these helpers so a plot has one stable location everywhere.
  */
 
+import { TileType } from '../replay/types';
+
 export type HexDirection = 'NE' | 'E' | 'SE' | 'SW' | 'W' | 'NW';
 
 export interface WorldPoint {
@@ -170,16 +172,22 @@ export function buildSharedEdges(options: MapGeometryOptions): SharedEdge[] {
 }
 
 /**
- * Deduplicate parsed river ids into drawable shared edges.
+ * Deduplicate parsed river ids into drawable shared edges. Edges that touch
+ * a water plot are dropped: the save encodes every lake shoreline as river
+ * records with the lake's own river id, and one-tile lakes neighbor only
+ * land, so the only reliable lake marker is water terrain on either side.
  */
 export function buildRiverEdges(
-	tiles: Array<Array<{ rivers?: number[] }>>,
+	tiles: Array<Array<{ rivers?: number[]; type?: number }>>,
 	options: MapGeometryOptions
 ): RiverEdge[] {
+	/** Check whether a plot is coast, ocean, or a lake stored as coast. */
+	const isWater = (tile: { type?: number }) => tile.type === TileType.Coast || tile.type === TileType.Ocean;
 	const edges = new Map<string, RiverEdge>();
 	for (let y = 0; y < tiles.length; y++) {
 		for (let x = 0; x < tiles[y].length; x++) {
-			const rivers = tiles[y][x].rivers || [];
+			const tileData = tiles[y][x];
+			const rivers = tileData.rivers || [];
 			for (let index = 0; index < directions.length; index++) {
 				const riverId = rivers[index];
 				if (riverId === undefined || riverId < 0) {
@@ -187,11 +195,14 @@ export function buildRiverEdges(
 				}
 				const tile = { x, y };
 				const direction = directions[index];
+				const neighbor = neighborFor(tile, direction, options);
+				if (isWater(tileData) || (neighbor && isWater(tiles[neighbor.y][neighbor.x]))) {
+					continue;
+				}
 				const key = sharedEdgeKey(tile, direction, options);
 				if (edges.has(key)) {
 					continue;
 				}
-				const neighbor = neighborFor(tile, direction, options);
 				const edge: RiverEdge = { key, direction, tile, neighbor, riverId, points: edgeCorners(tile, direction) };
 				if (neighbor && Math.abs(neighbor.x - tile.x) > 1) {
 					edge.seamPoints = edgeCorners(neighbor, oppositeDirection(direction));

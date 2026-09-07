@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { SaveParser } from '../../src/parsers/save-parser';
 import { buildTileGrid } from '../../src/replay/utils/replay-data';
-import { TurnState } from '../../src/replay/types';
+import { TurnState, TileType } from '../../src/replay/types';
 import { buildRiverEdges, directions, edgeCorners, neighborFor, oppositeDirection } from '../../src/map/hex-geometry';
 import { FrameCoalescer, GeographyChunkCache, ownershipChanges } from '../../src/map/renderer-support';
 
@@ -133,7 +133,7 @@ describe('example 4 river geometry', () => {
 		map = { width: data.mapHeader.width, height: data.mapHeader.height, wrapX: data.mapHeader.wrapX };
 	});
 
-	it('retains the six supplied unpaired records around 57,11 while deduplicating every paired edge', () => {
+	it('deduplicates paired edges and drops every edge that touches water', () => {
 		let directed = 0;
 		for (const row of tiles) for (const tile of row) directed += (tile.rivers || []).filter((id: number) => id >= 0).length;
 		expect(directed).toBe(1060);
@@ -144,7 +144,15 @@ describe('example 4 river geometry', () => {
 			if (id >= 0 && (!neighbor || tiles[neighbor.y][neighbor.x].rivers[directions.indexOf(oppositeDirection(direction))] !== id)) misses.push(`${tile.x},${tile.y}:${direction}`);
 		});
 		expect(misses).toEqual(['57,10:NE', '58,10:NW', '56,11:E', '58,11:W', '57,12:SE', '58,12:SW']);
-		expect(buildRiverEdges(tiles, map)).toHaveLength(533);
+		const drawable = buildRiverEdges(tiles, map);
+		expect(drawable).toHaveLength(353);
+		// Lake shorelines are recorded as rivers, so every drawn edge must
+		// keep land on both sides
+		const water = (tile: any) => tile.type === TileType.Coast || tile.type === TileType.Ocean;
+		for (const edge of drawable) {
+			expect(water(tiles[edge.tile.y][edge.tile.x])).toBe(false);
+			if (edge.neighbor) expect(water(tiles[edge.neighbor.y][edge.neighbor.x])).toBe(false);
+		}
 	});
 
 	it('matches every real river id and geometric edge to its opposite neighbor record', () => {

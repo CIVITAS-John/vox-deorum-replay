@@ -66,7 +66,9 @@ Beyond the terrain, the parser reads the snapshot fields of each record: the own
 
 Each plot stores six river ids, one per hex edge, in the direction order NE, E, SE, SW, W, NW. A value of -1 means the edge has no river; any other value is the id of the river that crosses that edge, indexing the river list stored behind the plot array.
 
-The example maps carry 64 river ids across 479 plots and 1060 directed edge records. Opposite-direction totals agree (NE with SW, E with W, SE with NW), but those totals do not prove every neighboring plot stores a duplicate. Geometry checks on example 4 find 1054 records paired with matching neighbors and six river-id-15 records facing plot (57,11) whose opposite records are absent. Deduplicating the supplied records gives 533 drawable edges. The renderer keeps an edge supplied by either plot, including these six unpaired records.
+The example maps carry 64 river ids across 479 plots and 1060 directed edge records. Opposite-direction totals agree (NE with SW, E with W, SE with NW), but those totals do not prove every neighboring plot stores a duplicate. Geometry checks on example 4 find 1054 records paired with matching neighbors and six river-id-15 records facing plot (57,11) whose opposite records are absent.
+
+Lakes are encoded as shoreline rivers. Each lake body owns one river id and every lake plot stores that id on all six of its edges, and the surrounding land plots mirror it on their facing edges like any river bank. Example 4 holds 11 lake bodies, and their ids consume 528 of the 1060 directed records. The game itself paints water there instead of rivers, so the renderer keeps an edge supplied by either plot but drops every edge that touches water terrain (coast, ocean, or a lake stored as coast), leaving 353 drawable edges.
 
 Replay files store no river data. The parser attaches the river id array to every tile it reads from a save (`rivers` on the tile objects). Tests check direction totals, neighboring geometry, the known unpaired records, and horizontal seam segments. `src/map/hex-geometry.ts` builds the shared edges, and `src/map/viewport-layer.ts` draws them at every turn.
 
