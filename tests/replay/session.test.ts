@@ -154,7 +154,9 @@ describe('GameSession ownership on examples/test-2.Civ5Replay', () => {
     const session = new GameSession(replay);
 
     const legacy = referenceTurnStates(replay.events, (id) => replay.getCivName(id));
-    for (let turn = 0; turn <= replay.endTurn; turn++) {
+    // The reference fold stops at the last event, which can fall short of the
+    // replay's end turn in an ongoing game
+    for (let turn = 0; turn < legacy.length; turn++) {
       expect(session.stateAt(turn)).toEqual(legacy[turn]);
     }
   });
@@ -295,9 +297,9 @@ describe('Replay decision trails on the example games', () => {
   // Ground truth from the files: each game has exactly two model-driven
   // civilizations, and they sit at different player numbers per game
   it.each([
-    ['examples/Claude-5-Opus.Civ5Save', [1, 4]],
-    ['examples/GPT-5.6-Sol.Civ5Save', [1, 7]],
-    ['examples/test-1.Civ5Replay', [1, 7]]
+    ['Claude-5-Opus.Civ5Save', [1, 4]],
+    ['GPT-5.6-Sol.Civ5Save', [1, 7]],
+    ['test-1.Civ5Replay', [1, 7]]
   ])('lists the civilizations with strategy events in %s', async (name, expected) => {
     const buffer = loadExample(name);
     const replay = new Replay();

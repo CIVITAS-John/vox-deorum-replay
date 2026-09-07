@@ -66,7 +66,7 @@ Desktop layout:
 
 ```text
 +-----------------------------------------------------------------------------+
-| Vox Deorum Replay    Game 4 · Standard · Small               [Open] [Stats] |
+| Vox Deorum Replay    Claude-5-Opus · Standard · Small           [Open] [Stats] |
 +-----------------------------------------------------+-----------------------+
 | [Layers v]                                          | Events     [7 types v]|
 |                                                     |-----------------------|
@@ -113,12 +113,13 @@ Empty state, shown before a file is loaded and reachable again from Open file:
 |      Drop a .Civ5Replay or .Civ5Save here      |
 |                                                |
 |  --------------------------------------------  |
-|  [Game 1] [Game 2] [Game 3] [Game 4] [Game 5]  |
+|  [Claude-5-Opus] [GLM-5.2] [GPT-5.6-Sol]        |
+|  [Qwen-3.8-27B]                                 |
 |                                                |
 +------------------------------------------------+
 ```
 
-The examples are the bundled games; where a save is bundled as well, the button offers both files. Show a loading indicator while we process the save, including from the URL.
+The examples are bundled playthroughs named after their files: each was driven by the model it is named after, and opening one marks its civilizations with decision-making trails through the `model` parameter. Show a loading indicator while we process the save, including from the URL.
 
 Support touch panning and zooming, large tap targets, keyboard navigation, visible focus, and labels that do not rely on color alone. Essential information is available by tap or selection rather than hover.
 
@@ -228,9 +229,9 @@ Ownership-release handling is implemented in `src/replay/event-parser.ts` and `s
 
 ### Delivery and validation
 
-The browser build and all 117 Vitest tests pass. Headless Chrome opened both bundled saves and example 4's replay without runtime exceptions. Layer changes, resizing, and reopening Game 5 retained one correctly sized viewport canvas. A cold zoom to 40 px entered local detail, displayed city labels, and finished cache warming within the two-second observation window. Desktop and 390 px phone layouts were inspected in screenshots; this does not establish physical phone performance.
+The browser build and all 117 Vitest tests pass. Headless Chrome opened the bundled example saves without runtime exceptions. Layer changes, resizing, and reopening an example retained one correctly sized viewport canvas. A cold zoom to 40 px entered local detail, displayed city labels, and finished cache warming within the two-second observation window. Desktop and 390 px phone layouts were inspected in screenshots; this does not establish physical phone performance.
 
-The desktop comparison used example 5's 79 by 53 map (4187 plots, tied for the largest bundled map), a 1440 by 1000 viewport at pixel ratio 1, and 60 consecutive turn changes at each requested hex width. The latency below measures a turn update through the next animation-frame callback, including session and UI work. It is not isolated renderer draw time or a pan/pinch frame benchmark.
+The desktop comparison used a bundled example save's 79 by 53 map (4187 plots, tied for the largest bundled map), a 1440 by 1000 viewport at pixel ratio 1, and 60 consecutive turn changes at each requested hex width. The latency below measures a turn update through the next animation-frame callback, including session and UI work. It is not isolated renderer draw time or a pan/pinch frame benchmark.
 
 | Requested hex width | Original p95 turn-to-frame latency | New p95 turn-to-frame latency | Original / new live canvases |
 |---|---|---|---|
@@ -251,13 +252,13 @@ The 29 datasets already parsed and tested come first. Confirm each one's name, u
 
 ```text
 +-----------------------------------------------------------------------------+
-| Vox Deorum Replay    Game 4 · Standard · Small               [Open] [Stats] |
+| Vox Deorum Replay    Claude-5-Opus · Standard · Small           [Open] [Stats] |
 | Turn 320                            [ Overview ]  [ Trends ]  [ Compare ]   |
 +-----------------------------------------------------------------------------+
 | Civilization    Score   Cities   Population   Gold    Techs                 |
 | Rome             1240       9         71      1820       48                 |
 | Egypt             980       7         55       640       44                 |
-| Songhai           610       4         30       n/a       39   incomplete    |
+| Songhai           610       4         30       n/a       39                 |
 |                                                                             |
 | Measure [Score v]            Civilizations [x] Rome  [x] Egypt  [ ] Songhai |
 |                                                                             |
@@ -268,7 +269,6 @@ The 29 datasets already parsed and tested come first. Confirm each one's name, u
 |      |   _______/    ............                                           |
 |    0 +------------------------------------------------------------ Turn     |
 |      0         80        160       240       320                            |
-|                                            [View turn 240 on map]           |
 +-----------------------------------------------------------------------------+
 ```
 

@@ -18,10 +18,10 @@ interface SpeedOption {
 
 // Available speeds, from slowest to "as fast as the browser allows"
 const speedOptions: SpeedOption[] = [
-	{ label: '0.5x', interval: 2000, icon: 'fa-hourglass-half' },
-	{ label: '1x', interval: 1000, icon: 'fa-person-walking' },
-	{ label: '2x', interval: 500, icon: 'fa-person-running' },
-	{ label: '4x', interval: 250, icon: 'fa-bolt' },
+	{ label: '0.5x', interval: 8000, icon: 'fa-hourglass-half' },
+	{ label: '1x', interval: 4000, icon: 'fa-person-walking' },
+	{ label: '2x', interval: 2000, icon: 'fa-person-running' },
+	{ label: '4x', interval: 1000, icon: 'fa-bolt' },
 	{ label: 'Max', interval: 0, icon: 'fa-forward-fast' }
 ];
 
