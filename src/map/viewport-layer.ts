@@ -515,7 +515,7 @@ export class ViewportLayer extends L.Layer {
 			const color = CivColors[state.owner]?.territory || [80, 80, 80];
 			const water = tile.type === TileType.Coast || tile.type === TileType.Ocean;
 			this.drawHex(tile, () => {
-				this.context!.fillStyle = `rgba(${color.join(',')}, ${water ? 0.2 : 0.35})`;
+				this.context!.fillStyle = `rgba(${color.join(',')}, ${water ? 0.2 : 0.3})`;
 				this.context!.fill();
 			});
 		}
