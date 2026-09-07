@@ -501,8 +501,35 @@
             this.highlightedCivs = new Set();
             this.assetLoadHandlers = [];
             this.pendingGeography = false;
+            this.zoomAnimating = false;
+            this.paintedView = null;
             /** Request a redraw when Leaflet changes the camera. */
             this.onCameraChange = () => this.scheduleRender();
+            /** Animate the existing bitmap with Leaflet before drawing the settled view. */
+            this.onZoomAnimation = (event) => {
+                if (!this.canvas || !this.paintedView)
+                    return;
+                this.zoomAnimating = true;
+                this.frames.cancelPending();
+                const view = this.paintedView;
+                const scale = this.map.getZoomScale(event.zoom, view.zoom);
+                const oldCenter = this.map.project(view.center, event.zoom);
+                const newCenter = this.map.project(event.center, event.zoom);
+                const size = this.map.getSize();
+                const x = size.x / 2 - view.width / 2 * scale + oldCenter.x - newCenter.x;
+                const y = size.y / 2 - view.height / 2 * scale + oldCenter.y - newCenter.y;
+                this.canvas.style.transition = 'transform 250ms cubic-bezier(0, 0, 0.25, 1)';
+                this.canvas.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+            };
+            /** Replace the scaled bitmap with a crisp rendering at the final camera position. */
+            this.onZoomEnd = () => {
+                if (!this.canvas || !this.zoomAnimating)
+                    return;
+                this.zoomAnimating = false;
+                this.canvas.style.transition = 'none';
+                this.canvas.style.transform = '';
+                this.render();
+            };
             this.geometry = { width: ((_a = tiles[0]) === null || _a === void 0 ? void 0 : _a.length) || 0, height: tiles.length, wrapX };
             this.rivers = hasRivers ? buildRiverEdges(tiles, this.geometry) : [];
             for (const river of this.rivers)
@@ -531,7 +558,8 @@
         onAdd(map) {
             this.map = map;
             this.canvas = document.createElement('canvas');
-            this.canvas.className = 'replay-map-canvas';
+            this.canvas.className = 'replay-map-canvas leaflet-zoom-animated';
+            this.canvas.style.transformOrigin = '0 0';
             this.canvas.style.position = 'absolute';
             this.canvas.style.inset = '0';
             this.canvas.style.width = '100%';
@@ -541,6 +569,8 @@
             this.context = this.canvas.getContext('2d');
             map.getContainer().appendChild(this.canvas);
             map.on('move zoom resize viewreset', this.onCameraChange);
+            map.on('zoomanim', this.onZoomAnimation);
+            map.on('zoomend', this.onZoomEnd);
             this.bindAssetRefresh();
             this.scheduleRender();
         }
@@ -550,6 +580,10 @@
         onRemove(map) {
             var _a;
             map.off('move zoom resize viewreset', this.onCameraChange);
+            map.off('zoomanim', this.onZoomAnimation);
+            map.off('zoomend', this.onZoomEnd);
+            this.zoomAnimating = false;
+            this.paintedView = null;
             this.frames.cancelPending();
             this.staticCache.clear();
             this.borderCache.clear();
@@ -626,7 +660,7 @@
          * into the latest state instead of queuing obsolete scrub renders.
          */
         scheduleRender() {
-            if (!this.map)
+            if (!this.map || this.zoomAnimating)
                 return;
             this.frames.schedule(() => this.render());
         }
@@ -634,11 +668,12 @@
          * Size the backing store, select a stable LOD, and draw geography then overlays.
          */
         render() {
-            if (!this.map || !this.canvas || !this.context)
+            if (!this.map || !this.canvas || !this.context || this.zoomAnimating)
                 return;
             const container = this.map.getContainer();
             const width = Math.max(1, container.clientWidth);
             const height = Math.max(1, container.clientHeight);
+            this.paintedView = { center: this.map.getCenter(), zoom: this.map.getZoom(), width, height };
             const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
             const backingWidth = Math.round(width * pixelRatio);
             const backingHeight = Math.round(height * pixelRatio);
@@ -863,7 +898,7 @@
         drawRivers() {
             if (!this.context || !this.layers.rivers.visible)
                 return;
-            const width = this.lod === 'world' ? 1 : this.lod === 'regional' ? 1.5 : 2.5;
+            const width = this.riverWidth();
             this.context.save();
             this.context.strokeStyle = 'rgba(74, 167, 202, 0.96)';
             this.context.lineWidth = width;
@@ -1101,7 +1136,7 @@
             const center = hexCenter(segment.tile);
             const midpoint = { x: (segment.points[0].x + segment.points[1].x) / 2, y: (segment.points[0].y + segment.points[1].y) / 2 };
             const length = Math.hypot(center.x - midpoint.x, center.y - midpoint.y) || 1;
-            const distance = 2 / this.worldScale();
+            const distance = (this.riverWidth() / 2 + 1.5) / this.worldScale();
             const x = (center.x - midpoint.x) / length * distance;
             const y = (center.y - midpoint.y) / length * distance;
             return [
@@ -1141,6 +1176,10 @@
          */
         worldScale() {
             return Math.max(0.001, Math.pow(2, this.map.getZoom()));
+        }
+        /** Widen rivers continuously with the visible hex size, keeping world views light. */
+        riverWidth() {
+            return Math.max(0.8, Math.min(8, this.worldScale() * hexWidth * 0.1));
         }
         /**
          * Quantize static raster resolution so continuous Leaflet zoom does not
@@ -1193,7 +1232,9 @@
                 zoomControl: false,
                 keyboardPanOffset: 0,
                 fadeAnimation: false,
-                zoomSnap: 0.2,
+                zoomSnap: 0.1,
+                zoomDelta: 0.5,
+                wheelPxPerZoomLevel: 120,
                 crs: L.CRS.Simple
             }).setView([0, 0], 0);
         }

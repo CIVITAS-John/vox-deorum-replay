@@ -33,7 +33,9 @@ export class ReplayMap {
 			zoomControl: false,
 			keyboardPanOffset: 0,
 			fadeAnimation: false,
-			zoomSnap: 0.2,
+			zoomSnap: 0.1,
+			zoomDelta: 0.5,
+			wheelPxPerZoomLevel: 120,
 			crs: L.CRS.Simple
 		}).setView([0, 0], 0);
 	}
