@@ -8,12 +8,12 @@ Designed to work with the [Vox Deorum project](https://github.com/CIVITAS-John/v
 
 ## How to Use
 
-Visit the viewer at: https://civitas-john.github.io/vox-deorum-replay/
+Visit the viewer at: https://vox-deorum.github.io/vox-deorum-replay/
 
 In those examples, Player 0 is an LLM. You can see how they play and reason throughout the game.
-- [Example save 1](https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/1.Civ5Replay)
-- [Example save 2](https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/2.Civ5Replay)
-- [Example save 3](https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/3.Civ5Replay)
+- [Example save 1](https://vox-deorum.github.io/vox-deorum-replay/?file=https://vox-deorum.github.io/vox-deorum-replay/examples/1.Civ5Replay)
+- [Example save 2](https://vox-deorum.github.io/vox-deorum-replay/?file=https://vox-deorum.github.io/vox-deorum-replay/examples/2.Civ5Replay)
+- [Example save 3](https://vox-deorum.github.io/vox-deorum-replay/?file=https://vox-deorum.github.io/vox-deorum-replay/examples/3.Civ5Replay)
 
 ### Option 1: Drag and Drop
 Simply drag your `.Civ5Replay` file from your computer and drop it onto the webpage. The replay will load automatically and you can use the playback controls or keyboard shortcuts to navigate through the game.
@@ -21,7 +21,7 @@ Simply drag your `.Civ5Replay` file from your computer and drop it onto the webp
 ### Option 2: Direct Link
 Share replays with others by linking directly to a hosted replay file. Add the `file` parameter with the full URL to your replay:
 ```
-https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/1.Civ5Replay
+https://vox-deorum.github.io/vox-deorum-replay/?file=https://vox-deorum.github.io/vox-deorum-replay/examples/1.Civ5Replay
 ```
 The viewer keeps the address bar in sync while you explore, so copying the URL at any point shares the exact view. These parameters are available:
 
@@ -37,7 +37,7 @@ Parameter   | Meaning
 
 When sharing a game between LLMs or specific players, you can label each civilization through the address bar. Player numbering starts at zero, so `player0` annotates the first civilization in the file, `player1` the second, and so on:
 ```
-https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/1.Civ5Replay&player0=Qwen&player1=GLM
+https://vox-deorum.github.io/vox-deorum-replay/?file=https://vox-deorum.github.io/vox-deorum-replay/examples/1.Civ5Replay&player0=Qwen&player1=GLM
 ```
 The annotations appear in the header ("Rome: Qwen · Egypt: GLM") and next to civilization names in the event log. They are display labels only: they rename civilizations in the interface but change no data.
 
@@ -47,8 +47,8 @@ The viewer presents a winner only when it can trust the result. A finished save 
 
 A save taken before the game was won, for example one turn before the end, carries no proof of the result, so the viewer shows no winner on its own. The `winner` parameter lets the sharer pass the result externally. It accepts the civilization number, numbered like the annotations above, or one of the annotation labels:
 ```
-https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/test-2.Civ5Save&player0=Qwen&player1=GLM&winner=GLM
-https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/test-2.Civ5Save&winner=1
+https://vox-deorum.github.io/vox-deorum-replay/?file=https://vox-deorum.github.io/vox-deorum-replay/examples/test-2.Civ5Save&player0=Qwen&player1=GLM&winner=GLM
+https://vox-deorum.github.io/vox-deorum-replay/?file=https://vox-deorum.github.io/vox-deorum-replay/examples/test-2.Civ5Save&winner=1
 ```
 Both links name the second civilization in the file.
 
