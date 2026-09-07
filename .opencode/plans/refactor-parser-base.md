@@ -2,7 +2,7 @@
 
 ## What we know (verified by direct DataView extraction on the real files)
 
-- The current schema in `src/core/replay-parser.ts` parses `examples/4.Civ5Replay` (2,637,853 bytes) to the very last byte, and the same holds for examples 1, 2, and 3. All four fully consume.
+- The current schema in `src/core/replay-parser.ts` parses `examples/test-1.Civ5Replay` (2,637,853 bytes) to the very last byte, and the same holds for examples 1, 2, and 3. All four fully consume.
 - Ground truth for example 4: game CIV5, version "1.0.3.279 (403694)", playerCiv CIVILIZATION_ARABIA, 13 DLC, 3 mods (Community Patch, Vox Populi, Vox Deorum), startTurn 0, startYear -4000, endTurn 484, endYear "2042 AD", 24 civs, 29 dataset keys, 2802 events, map 79x53 with 4187 tiles, junk bytes `_1` = e4 01 00 00 01 and `_4` = 06 00 00 00.
 - The mysterious `_5` heuristic is now understood: it scans misaligned int32s until it sees the start year byte-shifted (found -1024000, which is -4000 shifted one byte), then rewinds 7 bytes to land exactly on startTurn. Behavior stays identical, only the code gets cleaner.
 - A native `DataView` implementation reproduces jDataView semantics exactly, including latin1 string decoding (the event-parser mojibake fix depends on it, so we must NOT use UTF-8 TextDecoder).
@@ -52,7 +52,7 @@
 - Tests live in a top-level `tests/` directory (outside the app's `src/`, so the Rollup bundle is untouched):
   - `tests/core/binary-parser.test.ts`: synthetic buffers pinning little-endian reads, tell/seek, varstr, latin1 decoding of high bytes (the mojibake contract), getUntil, and the bounds error.
   - `tests/core/base-parser.test.ts`: a tiny `TestParser extends BaseParser` with a custom schema (str, int32, varstr, nested arrays, a function item using `this.seek`/`this.getInt32`, junk filtering both ways) proves the base is genuinely general purpose and ready for the savegame parser.
-  - `tests/core/replay-parser.test.ts`: the real-file regression test using `examples/4.Civ5Replay` (parsed once in beforeAll):
+  - `tests/core/replay-parser.test.ts`: the real-file regression test using `examples/test-1.Civ5Replay` (parsed once in beforeAll):
     - Header and metadata: CIV5, version, build, playerCiv, difficulty, eras, speed, world size.
     - 13 DLC entries, 3 mods with names Community Patch, Vox Populi, Vox Deorum.
     - startTurn 0, startYear -4000, endTurn 484, endYear "2042 AD".
@@ -72,7 +72,7 @@
 
 ## Out of scope
 
-- The savegame parser itself (next change; `4.Civ5Save` is already in examples for it).
+- The savegame parser itself (next change; `test-1.Civ5Save` is already in examples for it).
 - Converting UI/map files to any new conventions, touching vendor files beyond the script tag, staging anything in git.
 
 ## Delegation note

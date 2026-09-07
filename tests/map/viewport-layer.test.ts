@@ -127,7 +127,7 @@ describe('example 4 river geometry', () => {
 	let map: { width: number; height: number; wrapX: boolean };
 
 	beforeAll(async () => {
-		const file = loadExample('4.Civ5Save');
+		const file = loadExample('test-1.Civ5Save');
 		const data = await new SaveParser(file, file.byteLength).parseReplay();
 		tiles = buildTileGrid(data.tiles, data.mapWidth);
 		map = { width: data.mapHeader.width, height: data.mapHeader.height, wrapX: data.mapHeader.wrapX };

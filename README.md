@@ -47,8 +47,8 @@ The viewer presents a winner only when it can trust the result. A finished save 
 
 A save taken before the game was won, for example one turn before the end, carries no proof of the result, so the viewer shows no winner on its own. The `winner` parameter lets the sharer pass the result externally. It accepts the civilization number, numbered like the annotations above, or one of the annotation labels:
 ```
-https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/5.Civ5Save&player0=Qwen&player1=GLM&winner=GLM
-https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/5.Civ5Save&winner=1
+https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/test-2.Civ5Save&player0=Qwen&player1=GLM&winner=GLM
+https://civitas-john.github.io/vox-deorum-replay/?file=https://civitas-john.github.io/vox-deorum-replay/examples/test-2.Civ5Save&winner=1
 ```
 Both links name the second civilization in the file.
 

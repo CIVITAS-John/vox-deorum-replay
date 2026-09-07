@@ -1,7 +1,7 @@
 /**
  * replay-parser.test.ts
  * Regression tests for the replay parser against real game files
- * examples/4.Civ5Replay is the detailed case: every assertion below is ground
+ * examples/test-1.Civ5Replay is the detailed case: every assertion below is ground
  * truth extracted from the actual bytes of that exact file, so any parser
  * regression or accidental schema change trips a concrete failure
  */
@@ -38,14 +38,14 @@ afterAll(() => {
   vi.restoreAllMocks();
 });
 
-describe('ReplayParser on examples/4.Civ5Replay', () => {
+describe('ReplayParser on examples/test-1.Civ5Replay', () => {
   let data: Record<string, any>;
   let junkData: Record<string, any>;
   let endOffset: number;
   let fileSize: number;
 
   beforeAll(() => {
-    const file = loadExample('4.Civ5Replay');
+    const file = loadExample('test-1.Civ5Replay');
     fileSize = file.byteLength;
 
     // The production path parses without junk fields

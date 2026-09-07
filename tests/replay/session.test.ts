@@ -2,7 +2,7 @@
  * session.test.ts
  * Checks the per-turn ownership derived by the game session against the
  * example replays. Every hard-coded value below is ground truth from the
- * actual bytes of examples/4.Civ5Replay, cross-checked against the previous
+ * actual bytes of examples/test-1.Civ5Replay, cross-checked against the previous
  * renderer-side algorithm that the session model replaces.
  */
 
@@ -81,11 +81,11 @@ function referenceTurnStates(events: GameEvent[], getCivName: (civId?: number) =
   return states;
 }
 
-describe('GameSession ownership on examples/4.Civ5Replay', () => {
+describe('GameSession ownership on examples/test-1.Civ5Replay', () => {
   let session: GameSession;
 
   beforeAll(async () => {
-    const buffer = loadExample('4.Civ5Replay');
+    const buffer = loadExample('test-1.Civ5Replay');
     const replay = new Replay();
     await replay.loadFromFile(buffer, buffer.byteLength);
     session = new GameSession(replay);
@@ -164,7 +164,7 @@ describe('GameSession turn changes and subscriptions', () => {
   let session: GameSession;
 
   beforeAll(async () => {
-    const buffer = loadExample('4.Civ5Replay');
+    const buffer = loadExample('test-1.Civ5Replay');
     const replay = new Replay();
     await replay.loadFromFile(buffer, buffer.byteLength);
     session = new GameSession(replay);
@@ -209,7 +209,7 @@ describe('GameSession turn changes and subscriptions', () => {
 
 describe('Replay hub data kinds and datasets', () => {
   it('marks the data areas of a replay file as history', async () => {
-    const buffer = loadExample('4.Civ5Replay');
+    const buffer = loadExample('test-1.Civ5Replay');
     const replay = new Replay();
     await replay.loadFromFile(buffer, buffer.byteLength);
 
@@ -219,7 +219,7 @@ describe('Replay hub data kinds and datasets', () => {
   });
 
   it('marks the snapshot areas of a save file', async () => {
-    const buffer = loadExample('4.Civ5Save');
+    const buffer = loadExample('test-1.Civ5Save');
     const replay = new Replay();
     await replay.loadFromFile(buffer, buffer.byteLength);
 
@@ -257,7 +257,7 @@ describe('Replay hub data kinds and datasets', () => {
   it('accepts a link winner for a file without its own result', async () => {
     // A replay file carries no victory block, and a save taken before the
     // game was won cannot prove its result, so the link fills the gap
-    const buffer = loadExample('4.Civ5Replay');
+    const buffer = loadExample('test-1.Civ5Replay');
     const replay = new Replay();
     await replay.loadFromFile(buffer, buffer.byteLength);
 
@@ -279,7 +279,7 @@ describe('Replay hub data kinds and datasets', () => {
   });
 
   it('exposes each dataset as one series of turn and value pairs per civilization', async () => {
-    const buffer = loadExample('4.Civ5Replay');
+    const buffer = loadExample('test-1.Civ5Replay');
     const replay = new Replay();
     await replay.loadFromFile(buffer, buffer.byteLength);
 

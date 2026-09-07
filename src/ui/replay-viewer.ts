@@ -29,8 +29,8 @@ const exampleGames: ExampleGame[] = [
 	{ label: 'Game 1', file: 'examples/1.Civ5Replay', kind: 'replay' },
 	{ label: 'Game 2', file: 'examples/2.Civ5Replay', kind: 'replay' },
 	{ label: 'Game 3', file: 'examples/3.Civ5Replay', kind: 'replay' },
-	{ label: 'Game 4', file: 'examples/4.Civ5Save', kind: 'save' },
-	{ label: 'Game 5', file: 'examples/5.Civ5Save', kind: 'save' }
+	{ label: 'Game 4', file: 'examples/test-1.Civ5Save', kind: 'save' },
+	{ label: 'Game 5', file: 'examples/test-2.Civ5Save', kind: 'save' }
 ];
 
 // The destinations the tabs can switch between; statistics arrives in Stage 5
@@ -255,7 +255,7 @@ export class ReplayViewer {
 	}
 
 	/**
-	 * Derive a display label from a file name or URL, e.g. "4.Civ5Save"
+	 * Derive a display label from a file name or URL, e.g. "test-1.Civ5Save"
 	 * becomes "Game 4" and "my-game.Civ5Replay" becomes "my-game"
 	 */
 	private labelFromFileReference(reference: string): string {

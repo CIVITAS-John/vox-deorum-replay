@@ -7,7 +7,7 @@ information that the save format stores (event log, per-civ stat series, civ lis
 and feeding it through the existing `Replay` pipeline unchanged.
 
 Research is complete: the save container, the replay storage inside saves, and every quirk of the
-example files were verified byte-for-byte against `examples/4.Civ5Save`, `examples/4.Civ5Replay`,
+example files were verified byte-for-byte against `examples/test-1.Civ5Save`, `examples/test-1.Civ5Replay`,
 and the DLL source in `vox-deorum/civ5-dll`. Nothing below is speculative.
 
 ## Established facts (verified)
@@ -35,7 +35,7 @@ and the DLL source in `vox-deorum/civ5-dll`. Nothing below is speculative.
 - The event log is `CvGame::m_listReplayMessages`, located ~0x1F95 in the example: int32 count
   (2802) then `CvReplayMessage` records: turn int32, type int32, plotCount + (int16 x, int16 y)
   pairs, player int32 (raw slot id), varstr text. Same wire format as the replay file events.
-  The 2802 events match `4.Civ5Replay` 100% except civIds (raw slots vs remapped dense indices).
+  The 2802 events match `test-1.Civ5Replay` 100% except civIds (raw slots vs remapped dense indices).
 - Per-turn stat series are `CvPlayer::m_ReplayData`, serialized once per player slot, in slot
   order: `[datasetCount][per dataset: name varstr, entryCount, (turn u32, value i32) pairs]`.
   Three shapes occur: 29-dataset clusters for civs that played, a 1-dataset
@@ -128,11 +128,11 @@ Modified modules:
 
 ## Tests (Vitest, mirroring the style of `tests/core/replay-parser.test.ts`)
 
-- `tests/core/save-parser.test.ts` against `examples/4.Civ5Save`:
+- `tests/core/save-parser.test.ts` against `examples/test-1.Civ5Save`:
   - header and CvPreGame fields (cursor lands on the marker; mods list, civ keys, map dims).
   - inflate: decompressed size is 28,375,559.
   - events: 2802 parsed; first two records equal the replay file's (Mecca founding etc.);
-    full deep-equal against `4.Civ5Replay` events after civId remap.
+    full deep-equal against `test-1.Civ5Replay` events after civId remap.
   - civs: 24 entries, dense order, names match the replay file's civ list (Arabia first,
     Bratislava last).
   - clusters: attribution matches ground truth (spot-check Polynesia via series, Kabul 235,
@@ -155,4 +155,4 @@ Modified modules:
 
 - Map terrain from `CvPlot` serialization (phase 2 candidate, needs DB-count handling).
 - Supporting saves from other mod configs relies on the same self-describing formats; only
-  `4.Civ5Save` is a locked test case for now.
+  `test-1.Civ5Save` is a locked test case for now.

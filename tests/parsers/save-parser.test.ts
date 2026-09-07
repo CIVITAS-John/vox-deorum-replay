@@ -1,9 +1,9 @@
 /**
  * save-parser.test.ts
  * Regression tests for the save parser against real games
- * examples/4.Civ5Save and examples/5.Civ5Save are late and mid game
- * snapshots of the same game as examples/4.Civ5Replay and
- * examples/5.Civ5Replay. The replay files are the ground truth: the save
+ * examples/test-1.Civ5Save and examples/test-2.Civ5Save are late and mid game
+ * snapshots of the same game as examples/test-1.Civ5Replay and
+ * examples/test-2.Civ5Replay. The replay files are the ground truth: the save
  * parser must rebuild the exact same event log, civilization list, dataset
  * tables, and map terrain, down to every feature tile
  *
@@ -57,27 +57,27 @@ async function inflateSaveBody(name: string): Promise<Uint8Array> {
   return inflateZlib(raw.subarray(markerPos + 8));
 }
 
-describe('SaveParser on examples/4.Civ5Save', () => {
+describe('SaveParser on examples/test-1.Civ5Save', () => {
   let data: Record<string, any>;
   let parser: SaveParser;
   let replayData: Record<string, any>;
   let hub: Replay;
 
   beforeAll(async () => {
-    const file = loadExample('4.Civ5Save');
+    const file = loadExample('test-1.Civ5Save');
     parser = new SaveParser(file, file.byteLength);
     data = await parser.parseReplay();
 
     hub = new Replay();
     await hub.loadFromFile(file, file.byteLength);
 
-    const replayFile = loadExample('4.Civ5Replay');
+    const replayFile = loadExample('test-1.Civ5Replay');
     replayData = new ReplayParser(replayFile, replayFile.byteLength).parse() as Record<string, any>;
   });
 
   it('recognizes saves and rejects replays', () => {
-    expect(isSaveFile(loadExample('4.Civ5Save'))).toBe(true);
-    expect(isSaveFile(loadExample('4.Civ5Replay'))).toBe(false);
+    expect(isSaveFile(loadExample('test-1.Civ5Save'))).toBe(true);
+    expect(isSaveFile(loadExample('test-1.Civ5Replay'))).toBe(false);
   });
 
   it('reads the engine header', () => {
@@ -112,7 +112,7 @@ describe('SaveParser on examples/4.Civ5Save', () => {
   });
 
   it('lands the pregame cursor exactly on the compression marker', () => {
-    const file = loadExample('4.Civ5Save');
+    const file = loadExample('test-1.Civ5Save');
     const fresh = new SaveParser(file, file.byteLength);
     fresh.parse();
     // The marker (int32 2, int32 0x10000) sits at 0x3953 in this file
@@ -221,7 +221,7 @@ describe('SaveParser on examples/4.Civ5Save', () => {
     // Inflate the body once and hand it to the decoder directly, the same
     // way the parser does, so the walk itself can be checked against the
     // replay
-    const body = await inflateSaveBody('4.Civ5Save');
+    const body = await inflateSaveBody('test-1.Civ5Save');
     const result = extractMapTerrain(body, 0x4faca, 79, 53);
 
     // The structural walk starts at the first plot record behind the
@@ -420,7 +420,7 @@ describe('SaveParser on examples/4.Civ5Save', () => {
   });
 
   it('loads end to end through the Replay class', async () => {
-    const file = loadExample('4.Civ5Save');
+    const file = loadExample('test-1.Civ5Save');
     const replay = new Replay();
     await replay.loadFromFile(file, file.byteLength);
 
@@ -439,21 +439,21 @@ describe('SaveParser on examples/4.Civ5Save', () => {
   });
 });
 
-describe('SaveParser on examples/5.Civ5Save', () => {
+describe('SaveParser on examples/test-2.Civ5Save', () => {
   let data: Record<string, any>;
   let parser: SaveParser;
   let replayData: Record<string, any>;
   let hub: Replay;
 
   beforeAll(async () => {
-    const file = loadExample('5.Civ5Save');
+    const file = loadExample('test-2.Civ5Save');
     parser = new SaveParser(file, file.byteLength);
     data = await parser.parseReplay();
 
     hub = new Replay();
     await hub.loadFromFile(file, file.byteLength);
 
-    const replayFile = loadExample('5.Civ5Replay');
+    const replayFile = loadExample('test-2.Civ5Replay');
     replayData = new ReplayParser(replayFile, replayFile.byteLength).parse() as Record<string, any>;
   });
 
@@ -662,7 +662,7 @@ describe('SaveParser on examples/5.Civ5Save', () => {
   });
 
   it('loads end to end through the Replay class', async () => {
-    const file = loadExample('5.Civ5Save');
+    const file = loadExample('test-2.Civ5Save');
     const replay = new Replay();
     await replay.loadFromFile(file, file.byteLength);
     expect(replay.civs).toHaveLength(24);
