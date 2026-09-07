@@ -604,6 +604,10 @@ summary::-webkit-details-marker {
 	min-width: fit-content;
 }
 
+.strategy-header {
+	margin-bottom: 4px;
+}
+
 .strategy-from,
 .strategy-to {
 	padding: 2px 6px;

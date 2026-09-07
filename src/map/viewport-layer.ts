@@ -22,7 +22,6 @@ import {
 	nextMapLod,
 	pickHex,
 	RiverEdge,
-	sharedEdgeKey,
 	tileKey,
 	WorldPoint
 } from './hex-geometry';
@@ -43,7 +42,6 @@ interface BorderSegment {
 	points: [WorldPoint, WorldPoint];
 	owner: string;
 	tile: Tile;
-	river: boolean;
 }
 
 interface CityMarker {
@@ -125,7 +123,6 @@ export class ViewportLayer extends L.Layer {
 	private previousState: TurnState = {};
 	private readonly geometry: MapGeometryOptions;
 	private readonly rivers: RiverEdge[];
-	private readonly riverKeys = new Set<string>();
 	private readonly eventsByTurn = new Map<number, GameEvent[]>();
 	private readonly staticCache = new GeographyChunkCache();
 	private readonly borderCache = new Map<string, BorderSegment[]>();
@@ -168,7 +165,6 @@ export class ViewportLayer extends L.Layer {
 		super();
 		this.geometry = { width: tiles[0]?.length || 0, height: tiles.length, wrapX };
 		this.rivers = hasRivers ? buildRiverEdges(tiles as unknown as Array<Array<{ rivers?: number[] }>>, this.geometry) : [];
-		for (const river of this.rivers) this.riverKeys.add(river.key);
 		for (const event of events) {
 			const turnEvents = this.eventsByTurn.get(event.turn) || [];
 			turnEvents.push(event);
@@ -508,7 +504,8 @@ export class ViewportLayer extends L.Layer {
 	}
 
 	/**
-	 * Fill owned plots with the lower-opacity territory tint proposed for Stage 4.
+	 * Fill owned plots with the owning civilization's territory tint, lighter
+	 * over water so coast and ocean remain recognizable.
 	 */
 	private drawTerritory(tiles: Tile[]): void {
 		if (!this.context || !this.layers.territory.visible) return;
@@ -518,7 +515,7 @@ export class ViewportLayer extends L.Layer {
 			const color = CivColors[state.owner]?.territory || [80, 80, 80];
 			const water = tile.type === TileType.Coast || tile.type === TileType.Ocean;
 			this.drawHex(tile, () => {
-				this.context!.fillStyle = `rgba(${color.join(',')}, ${water ? 0.1 : 0.2})`;
+				this.context!.fillStyle = `rgba(${color.join(',')}, ${water ? 0.2 : 0.35})`;
 				this.context!.fill();
 			});
 		}
@@ -546,8 +543,7 @@ export class ViewportLayer extends L.Layer {
 	 * Draw precomputed outward border segments using their owner's territory
 	 * color. Every segment is inset into its owner's hexagon by half the line
 	 * width, so both sides of a shared frontier stay visible side by side and
-	 * no stroke crosses a hexagon boundary. Segments that follow a river keep
-	 * the wider inset that leaves the water visible between the two stripes.
+	 * no stroke crosses a hexagon boundary.
 	 */
 	private drawBorders(): void {
 		if (!this.context || !this.layers.borders.visible) return;
@@ -561,7 +557,7 @@ export class ViewportLayer extends L.Layer {
 					? [255, 235, 59]
 					: CivColors[segment.owner]?.territory || [120, 120, 120];
 				this.context.strokeStyle = `rgb(${color.join(',')})`;
-				const inset = segment.river ? this.riverWidth() / 2 + 1.5 : borderWidth / 2;
+				const inset = borderWidth / 2;
 				this.strokeSegment(insetEdgeToward(segment.points, hexCenter(segment.tile), inset / this.worldScale()));
 			}
 		}
@@ -712,7 +708,7 @@ export class ViewportLayer extends L.Layer {
 			const neighbor = neighborFor(tile, direction, this.geometry);
 			const neighborOwner = neighbor ? this.turnState[tileKey(neighbor)]?.owner : undefined;
 			if (neighborOwner !== state.owner) {
-				segments.push({ points: edgeCorners(tile, direction), owner: state.owner, tile, river: this.riverKeys.has(sharedEdgeKey(tile, direction, this.geometry)) });
+				segments.push({ points: edgeCorners(tile, direction), owner: state.owner, tile });
 			}
 		}
 		this.borderCache.set(tileKey(tile), segments);

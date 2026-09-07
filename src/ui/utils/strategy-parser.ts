@@ -11,6 +11,8 @@ export interface StrategyChange {
 
 export interface ParsedStrategyEvent {
 	type: string;
+	/** Event level title, e.g. "AI preferences", present when the text is a titled list of changes */
+	label?: string;
 	changes: StrategyChange[];
 	rationale: string | null;
 }
@@ -109,6 +111,58 @@ function parseComplexChanges(text: string): StrategyChange[] {
 }
 
 /**
+ * Parse keyless changes from the main text
+ * Handles titled lists where each part carries its own metric name before the
+ * arrow, e.g. "CityDefense: 82 → 85; Mobilization: 65 → 60"
+ */
+function parseKeylessChanges(text: string): StrategyChange[] {
+	const changes: StrategyChange[] = [];
+
+	// Split by semicolon to get individual changes
+	const parts = text.split(';');
+
+	for (const part of parts) {
+		const arrowMatch = part.trim().match(/(.+?)\s*→\s*(.+)/);
+
+		if (arrowMatch) {
+			changes.push({
+				key: '',
+				from: arrowMatch[1].trim(),
+				to: arrowMatch[2].trim()
+			});
+		}
+	}
+
+	return changes;
+}
+
+/**
+ * Count the colons before the first arrow in one semicolon separated part
+ */
+function colonsBeforeArrow(part: string): number {
+	const arrowIndex = part.indexOf('→');
+	const head = arrowIndex === -1 ? part : part.substring(0, arrowIndex);
+	return head.split(':').length - 1;
+}
+
+/**
+ * Check whether a text is a titled list of changes, e.g.
+ * "AI preferences: CityDefense: 82 → 85; Mobilization: 65 → 60"
+ * A text is titled when the first part carries a title plus a metric name
+ * (two colons before the arrow), or when a later part has no colon at all
+ * (its metric name rides along in the from value, like "Private -15 → 0")
+ */
+function isTitledChanges(text: string): boolean {
+	const parts = text.split(';');
+
+	if (colonsBeforeArrow(parts[0]) >= 2) {
+		return true;
+	}
+
+	return parts.slice(1).some(part => colonsBeforeArrow(part) === 0);
+}
+
+/**
  * Parse a simple change
  * Handles format: "None → Pottery" or "None → Tradition"
  */
@@ -166,6 +220,24 @@ export function parseStrategyEvent(text: string): ParsedStrategyEvent | null {
 
 	// Fallback: try to parse as generic strategy changes if it has colons and arrows
 	if (mainText.includes(':') && mainText.includes('→')) {
+		// Titled texts lead with an event level label, e.g. "AI preferences: ..."
+		if (isTitledChanges(mainText)) {
+			const colonIndex = mainText.indexOf(':');
+			const label = mainText.substring(0, colonIndex).trim();
+			const contentText = mainText.substring(colonIndex + 1).trim();
+
+			const titledChanges = parseKeylessChanges(contentText);
+
+			if (titledChanges.length > 0 && label) {
+				return {
+					type: 'other',
+					label: label,
+					changes: titledChanges,
+					rationale
+				};
+			}
+		}
+
 		const changes = parseComplexChanges(mainText);
 
 		if (changes.length > 0) {
@@ -187,16 +259,26 @@ export function renderStrategyEvent(parsed: ParsedStrategyEvent): HTMLElement {
 	const container = document.createElement('div');
 	container.className = 'strategy-change';
 
+	// Render the event level title, e.g. "AI preferences"
+	if (parsed.label) {
+		const headerEl = document.createElement('div');
+		headerEl.className = 'strategy-key strategy-header';
+		headerEl.textContent = parsed.label + ':';
+		container.appendChild(headerEl);
+	}
+
 	// Render each change
 	parsed.changes.forEach(change => {
 		const item = document.createElement('div');
 		item.className = 'strategy-change-item';
 
-		// Key
-		const keyEl = document.createElement('span');
-		keyEl.className = 'strategy-key';
-		keyEl.textContent = change.key + ':';
-		item.appendChild(keyEl);
+		// Key (titled events keep the metric name inside the from value instead)
+		if (change.key) {
+			const keyEl = document.createElement('span');
+			keyEl.className = 'strategy-key';
+			keyEl.textContent = change.key + ':';
+			item.appendChild(keyEl);
+		}
 
 		// From value
 		const fromEl = document.createElement('span');

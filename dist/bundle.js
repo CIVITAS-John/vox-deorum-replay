@@ -178,55 +178,186 @@
 
     /**
      * civ-colors.ts
-     * Defines color mappings for each civilization in Civilization V
-     * Each civilization has two color sets: city (for city markers) and territory (for borders)
-     * Colors are defined as RGB arrays [R, G, B] with values 0-255
-     * Note: Replay files don't include color data, so these are hardcoded defaults
+     * Color mappings for the civilizations and city-states of a Vox Populi game.
+     * Each entry carries two colors as RGB arrays [R, G, B] with values 0-255:
+     * city (for city markers) and territory (for borders and the territory tint).
+     *
+     * Major civilizations use the two colors the game database gives them: the city
+     * color is the civilization's icon color and the territory color is its background
+     * color, matching how the game itself paints empire borders and banners. The
+     * values come from the base game color XML, which Vox Populi leaves unchanged.
+     *
+     * City-states carry one identity color in both slots. The base game city-states
+     * use their assigned palette color, and the city-states themed after a major
+     * civilization use the themed background Vox Populi gives them (NewColors.xml),
+     * often brightened so it stays readable as a border color.
+     *
+     * Note: Replay files don't include color data, so these are hardcoded defaults.
      */
     const CivColors = {
+        // Major civilizations
         America: { city: [255, 255, 255], territory: [31, 51, 120] },
-        Arabia: { city: [146, 221, 9], territory: [43, 87, 45] },
-        Assyria: { city: [255, 168, 12], territory: [255, 243, 173] },
-        Austria: { city: [255, 255, 255], territory: [234, 0, 0] },
-        Babylon: { city: [200, 248, 255], territory: [43, 81, 97] },
-        Brazil: { city: [41, 83, 44], territory: [149, 221, 10] },
-        Byzantium: { city: [60, 0, 108], territory: [113, 161, 232] },
-        Carthage: { city: [80, 0, 136], territory: [204, 204, 204] },
-        China: { city: [255, 255, 255], territory: [0, 148, 82] },
-        Denmark: { city: [239, 231, 179], territory: [108, 42, 20] },
-        Egypt: { city: [82, 0, 208], territory: [255, 251, 3] },
-        England: { city: [255, 255, 255], territory: [108, 2, 0] },
-        Ethiopia: { city: [255, 45, 45], territory: [1, 39, 14] },
-        France: { city: [235, 235, 138], territory: [65, 141, 253] },
-        Germany: { city: [36, 43, 32], territory: [179, 177, 184] },
-        Greece: { city: [65, 141, 253], territory: [255, 255, 255] },
-        India: { city: [255, 153, 49], territory: [18, 135, 6] },
-        Indonesia: { city: [158, 46, 28], territory: [110, 210, 217] },
+        Arabia: { city: [146, 221, 10], territory: [43, 88, 46] },
+        Assyria: { city: [255, 169, 13], territory: [255, 244, 174] },
+        Austria: { city: [255, 255, 255], territory: [235, 0, 0] },
+        Babylon: { city: [201, 248, 255], territory: [43, 81, 98] },
+        Brazil: { city: [42, 84, 45], territory: [150, 222, 10] },
+        Byzantium: { city: [61, 0, 109], territory: [114, 162, 233] },
+        Carthage: { city: [81, 0, 137], territory: [205, 205, 205] },
+        China: { city: [255, 255, 255], territory: [0, 149, 82] },
+        Denmark: { city: [240, 231, 180], territory: [109, 43, 21] },
+        Egypt: { city: [83, 0, 208], territory: [255, 252, 3] },
+        England: { city: [255, 255, 255], territory: [109, 2, 0] },
+        Ethiopia: { city: [255, 46, 46], territory: [2, 40, 15] },
+        France: { city: [235, 235, 139], territory: [65, 141, 254] },
+        Germany: { city: [37, 43, 33], territory: [179, 178, 184] },
+        Greece: { city: [65, 141, 254], territory: [255, 255, 255] },
+        India: { city: [255, 153, 50], territory: [18, 136, 7] },
+        Indonesia: { city: [159, 47, 29], territory: [111, 211, 218] },
         Japan: { city: [184, 0, 0], territory: [255, 255, 255] },
-        Korea: { city: [255, 0, 0], territory: [26, 32, 96] },
-        Mongolia: { city: [255, 120, 0], territory: [81, 0, 8] },
-        Morocco: { city: [39, 178, 79], territory: [144, 2, 0] },
-        Persia: { city: [245, 230, 55], territory: [176, 7, 3] },
-        Poland: { city: [56, 0, 0], territory: [244, 5, 0] },
-        Polynesia: { city: [255, 255, 74], territory: [217, 88, 0] },
-        Portugal: { city: [3, 20, 124], territory: [255, 255, 255] },
-        Rome: { city: [239, 198, 0], territory: [70, 0, 118] },
-        Russia: { city: [0, 0, 0], territory: [238, 238, 238] },
-        Siam: { city: [176, 7, 3], territory: [245, 230, 55] },
-        Songhai: { city: [90, 0, 9], territory: [213, 145, 19] },
-        Spain: { city: [244, 168, 168], territory: [83, 26, 26] },
-        Sweden: { city: [248, 246, 2], territory: [7, 7, 165] },
-        Venice: { city: [255, 254, 215], territory: [102, 33, 161] },
-        'The Aztecs': { city: [136, 238, 212], territory: [161, 57, 34] },
-        'The Celts': { city: [147, 169, 255], territory: [21, 91, 62] },
-        'The Huns': { city: [69, 0, 3], territory: [179, 177, 163] },
-        'The Inca': { city: [6, 159, 119], territory: [255, 184, 33] },
-        'The Iroquois': { city: [251, 201, 129], territory: [65, 86, 86] },
-        'The Maya': { city: [23, 62, 65], territory: [197, 140, 98] },
-        'The Netherlands': { city: [255, 255, 255], territory: [255, 143, 0] },
-        'The Ottomans': { city: [18, 82, 30], territory: [247, 248, 199] },
-        'The Shoshone': { city: [24, 239, 206], territory: [73, 58, 45] },
-        'The Zulus': { city: [106, 49, 24], territory: [255, 231, 213] }
+        Korea: { city: [255, 0, 0], territory: [27, 33, 96] },
+        Mongolia: { city: [255, 120, 0], territory: [81, 0, 9] },
+        Morocco: { city: [40, 179, 80], territory: [145, 2, 0] },
+        Persia: { city: [245, 230, 55], territory: [177, 8, 3] },
+        Poland: { city: [57, 0, 0], territory: [245, 5, 0] },
+        Polynesia: { city: [255, 255, 75], territory: [217, 89, 0] },
+        Portugal: { city: [4, 20, 125], territory: [255, 255, 255] },
+        Rome: { city: [240, 199, 0], territory: [70, 0, 118] },
+        Russia: { city: [0, 0, 0], territory: [239, 180, 0] },
+        Siam: { city: [177, 8, 3], territory: [245, 230, 55] },
+        Songhai: { city: [90, 0, 10], territory: [214, 145, 19] },
+        Spain: { city: [255, 168, 168], territory: [84, 26, 26] },
+        Sweden: { city: [249, 247, 3], territory: [8, 8, 166] },
+        Venice: { city: [255, 254, 216], territory: [102, 34, 162] },
+        'The Aztecs': { city: [137, 239, 213], territory: [161, 57, 35] },
+        'The Celts': { city: [148, 170, 255], territory: [22, 92, 63] },
+        'The Huns': { city: [70, 0, 4], territory: [180, 178, 164] },
+        'The Inca': { city: [7, 160, 119], territory: [255, 185, 34] },
+        'The Iroquois': { city: [252, 202, 129], territory: [65, 87, 87] },
+        'The Maya': { city: [24, 63, 66], territory: [198, 141, 99] },
+        'The Netherlands': { city: [255, 255, 255], territory: [255, 144, 0] },
+        'The Ottomans': { city: [18, 82, 30], territory: [247, 249, 200] },
+        'The Shoshone': { city: [25, 240, 206], territory: [74, 59, 46] },
+        'The Zulus': { city: [107, 50, 25], territory: [255, 232, 214] },
+        // City-states
+        Abernethy: { city: [49, 205, 143], territory: [49, 205, 143] },
+        Aksum: { city: [10, 205, 82], territory: [10, 205, 82] },
+        Almaty: { city: [230, 166, 82], territory: [230, 166, 82] },
+        Antananarivo: { city: [255, 217, 143], territory: [255, 217, 143] },
+        Antwerp: { city: [196, 87, 255], territory: [196, 87, 255] },
+        Argos: { city: [255, 255, 255], territory: [255, 255, 255] },
+        Assur: { city: [255, 244, 174], territory: [255, 244, 174] },
+        Aztlan: { city: [161, 57, 35], territory: [161, 57, 35] },
+        'Ban Chiang': { city: [245, 230, 55], territory: [245, 230, 55] },
+        Belgrade: { city: [125, 224, 0], territory: [125, 224, 0] },
+        Bogota: { city: [172, 30, 185], territory: [172, 30, 185] },
+        Bornu: { city: [18, 204, 245], territory: [18, 204, 245] },
+        Brandenburg: { city: [179, 178, 184], territory: [179, 178, 184] },
+        Bratislava: { city: [230, 230, 230], territory: [230, 230, 230] },
+        Brussels: { city: [128, 178, 255], territory: [128, 178, 255] },
+        Bucharest: { city: [128, 255, 128], territory: [128, 255, 128] },
+        Budapest: { city: [178, 178, 178], territory: [178, 178, 178] },
+        'Buenos Aires': { city: [178, 153, 255], territory: [178, 153, 255] },
+        Bunkeya: { city: [128, 255, 128], territory: [128, 255, 128] },
+        Byblos: { city: [172, 30, 185], territory: [172, 30, 185] },
+        Cahokia: { city: [230, 230, 230], territory: [230, 230, 230] },
+        'Cape Town': { city: [230, 166, 82], territory: [230, 166, 82] },
+        Colombo: { city: [178, 153, 255], territory: [178, 153, 255] },
+        Copenhagen: { city: [166, 96, 51], territory: [166, 96, 51] },
+        Djenne: { city: [214, 145, 19], territory: [214, 145, 19] },
+        Dorestad: { city: [255, 144, 0], territory: [255, 144, 0] },
+        Dublin: { city: [49, 205, 143], territory: [49, 205, 143] },
+        Ecbatana: { city: [167, 94, 61], territory: [167, 94, 61] },
+        Edinburgh: { city: [49, 205, 143], territory: [49, 205, 143] },
+        Enns: { city: [255, 174, 255], territory: [255, 174, 255] },
+        Eraclea: { city: [129, 43, 205], territory: [129, 43, 205] },
+        Florence: { city: [18, 204, 245], territory: [18, 204, 245] },
+        Geneva: { city: [0, 56, 233], territory: [0, 56, 233] },
+        Genoa: { city: [0, 163, 181], territory: [0, 163, 181] },
+        Hanoi: { city: [178, 153, 255], territory: [178, 153, 255] },
+        Harappa: { city: [18, 136, 7], territory: [18, 136, 7] },
+        Heidabir: { city: [166, 96, 51], territory: [166, 96, 51] },
+        Helsinki: { city: [255, 255, 0], territory: [255, 255, 0] },
+        Holmul: { city: [198, 141, 99], territory: [198, 141, 99] },
+        'Hong Kong': { city: [54, 102, 255], territory: [54, 102, 255] },
+        Huari: { city: [255, 185, 34], territory: [255, 185, 34] },
+        Ife: { city: [178, 178, 178], territory: [178, 178, 178] },
+        Jakarta: { city: [111, 211, 218], territory: [111, 211, 218] },
+        Jerusalem: { city: [230, 230, 230], territory: [230, 230, 230] },
+        Kabul: { city: [167, 94, 61], territory: [167, 94, 61] },
+        Kathmandu: { city: [172, 30, 185], territory: [172, 30, 185] },
+        'Kuala Lumpur': { city: [255, 255, 43], territory: [255, 255, 43] },
+        'Kwa Bulawayo': { city: [255, 232, 214], territory: [255, 232, 214] },
+        Kyiv: { city: [54, 102, 255], territory: [54, 102, 255] },
+        Kyzyl: { city: [0, 163, 181], territory: [0, 163, 181] },
+        'La Venta': { city: [18, 204, 245], territory: [18, 204, 245] },
+        Lhasa: { city: [128, 255, 128], territory: [128, 255, 128] },
+        Lisbon: { city: [255, 255, 255], territory: [255, 255, 255] },
+        Longcheng: { city: [180, 178, 164], territory: [180, 178, 164] },
+        Luba: { city: [255, 255, 43], territory: [255, 255, 43] },
+        Lutetia: { city: [65, 141, 254], territory: [65, 141, 254] },
+        Malacca: { city: [18, 204, 245], territory: [18, 204, 245] },
+        Manila: { city: [128, 255, 128], territory: [128, 255, 128] },
+        Marrakech: { city: [212, 175, 55], territory: [212, 175, 55] },
+        'Mbanza Kongo': { city: [18, 204, 245], territory: [18, 204, 245] },
+        Melbourne: { city: [128, 255, 128], territory: [128, 255, 128] },
+        Milan: { city: [230, 166, 82], territory: [230, 166, 82] },
+        Mogadishu: { city: [128, 178, 255], territory: [128, 178, 255] },
+        Mombasa: { city: [125, 224, 0], territory: [125, 224, 0] },
+        Monaco: { city: [196, 87, 255], territory: [196, 87, 255] },
+        Msoura: { city: [212, 175, 55], territory: [212, 175, 55] },
+        Nippur: { city: [90, 167, 205], territory: [90, 167, 205] },
+        Novgorod: { city: [239, 180, 0], territory: [239, 180, 0] },
+        Okilis: { city: [205, 63, 63], territory: [205, 63, 63] },
+        Onondaga: { city: [154, 205, 205], territory: [154, 205, 205] },
+        Ormus: { city: [178, 178, 178], territory: [178, 178, 178] },
+        Oslo: { city: [166, 96, 51], territory: [166, 96, 51] },
+        Ouagadougou: { city: [196, 87, 255], territory: [196, 87, 255] },
+        Oviedo: { city: [70, 195, 212], territory: [70, 195, 212] },
+        'Pago Pago': { city: [217, 89, 0], territory: [217, 89, 0] },
+        Palatium: { city: [138, 0, 230], territory: [138, 0, 230] },
+        'Panama City': { city: [255, 255, 128], territory: [255, 255, 128] },
+        Perge: { city: [114, 162, 233], territory: [114, 162, 233] },
+        Prague: { city: [54, 102, 255], territory: [54, 102, 255] },
+        'Quebec City': { city: [54, 102, 255], territory: [54, 102, 255] },
+        Ragusa: { city: [0, 163, 181], territory: [0, 163, 181] },
+        Raqmu: { city: [100, 205, 107], territory: [100, 205, 107] },
+        Riga: { city: [18, 204, 245], territory: [18, 204, 245] },
+        'Rio De Janeiro': { city: [150, 222, 10], territory: [150, 222, 10] },
+        Salem: { city: [53, 84, 205], territory: [53, 84, 205] },
+        Samarkand: { city: [0, 56, 233], territory: [0, 56, 233] },
+        Segou: { city: [214, 145, 19], territory: [214, 145, 19] },
+        Seoul: { city: [65, 76, 230], territory: [65, 76, 230] },
+        Shanghai: { city: [0, 149, 82], territory: [0, 149, 82] },
+        Shedet: { city: [255, 252, 3], territory: [255, 252, 3] },
+        Sidon: { city: [172, 30, 185], territory: [172, 30, 185] },
+        Sigtuna: { city: [255, 255, 0], territory: [255, 255, 0] },
+        Singapore: { city: [255, 255, 128], territory: [255, 255, 128] },
+        Sofia: { city: [128, 255, 128], territory: [128, 255, 128] },
+        Sogut: { city: [247, 249, 200], territory: [247, 249, 200] },
+        Sokoto: { city: [0, 163, 181], territory: [0, 163, 181] },
+        Stockholm: { city: [255, 255, 0], territory: [255, 255, 0] },
+        Sydney: { city: [0, 56, 233], territory: [0, 56, 233] },
+        Trowulan: { city: [111, 211, 218], territory: [111, 211, 218] },
+        Tyre: { city: [125, 224, 0], territory: [125, 224, 0] },
+        Ur: { city: [178, 153, 255], territory: [178, 153, 255] },
+        Utica: { city: [205, 205, 205], territory: [205, 205, 205] },
+        Valletta: { city: [255, 255, 43], territory: [255, 255, 43] },
+        Vancouver: { city: [196, 87, 255], territory: [196, 87, 255] },
+        'Vatican City': { city: [255, 255, 128], territory: [255, 255, 128] },
+        Veligrad: { city: [57, 128, 52], territory: [57, 128, 52] },
+        Vienna: { city: [255, 174, 255], territory: [255, 174, 255] },
+        Vilnius: { city: [230, 166, 82], territory: [230, 166, 82] },
+        Wanggeom: { city: [65, 76, 230], territory: [65, 76, 230] },
+        Warsaw: { city: [230, 132, 134], territory: [230, 132, 134] },
+        Wellington: { city: [255, 217, 143], territory: [255, 217, 143] },
+        Winchester: { city: [176, 112, 107], territory: [176, 112, 107] },
+        Wittenberg: { city: [178, 153, 255], territory: [178, 153, 255] },
+        Yamatai: { city: [255, 255, 255], territory: [255, 255, 255] },
+        Yerevan: { city: [255, 217, 143], territory: [255, 217, 143] },
+        Zanzibar: { city: [128, 178, 255], territory: [128, 178, 255] },
+        Zurich: { city: [178, 178, 178], territory: [178, 178, 178] },
+        Zuunmod: { city: [255, 160, 64], territory: [255, 160, 64] },
     };
     /**
      * Look up the color pair of a civilization by name
@@ -507,7 +638,6 @@
             this.lod = null;
             this.turnState = {};
             this.previousState = {};
-            this.riverKeys = new Set();
             this.eventsByTurn = new Map();
             this.staticCache = new GeographyChunkCache();
             this.borderCache = new Map();
@@ -548,8 +678,6 @@
             };
             this.geometry = { width: ((_a = tiles[0]) === null || _a === void 0 ? void 0 : _a.length) || 0, height: tiles.length, wrapX };
             this.rivers = hasRivers ? buildRiverEdges(tiles, this.geometry) : [];
-            for (const river of this.rivers)
-                this.riverKeys.add(river.key);
             for (const event of events) {
                 const turnEvents = this.eventsByTurn.get(event.turn) || [];
                 turnEvents.push(event);
@@ -890,7 +1018,8 @@
             }
         }
         /**
-         * Fill owned plots with the lower-opacity territory tint proposed for Stage 4.
+         * Fill owned plots with the owning civilization's territory tint, lighter
+         * over water so coast and ocean remain recognizable.
          */
         drawTerritory(tiles) {
             var _a;
@@ -903,7 +1032,7 @@
                 const color = ((_a = CivColors[state.owner]) === null || _a === void 0 ? void 0 : _a.territory) || [80, 80, 80];
                 const water = tile.type === TileType.Coast || tile.type === TileType.Ocean;
                 this.drawHex(tile, () => {
-                    this.context.fillStyle = `rgba(${color.join(',')}, ${water ? 0.1 : 0.2})`;
+                    this.context.fillStyle = `rgba(${color.join(',')}, ${water ? 0.2 : 0.35})`;
                     this.context.fill();
                 });
             }
@@ -931,8 +1060,7 @@
          * Draw precomputed outward border segments using their owner's territory
          * color. Every segment is inset into its owner's hexagon by half the line
          * width, so both sides of a shared frontier stay visible side by side and
-         * no stroke crosses a hexagon boundary. Segments that follow a river keep
-         * the wider inset that leaves the water visible between the two stripes.
+         * no stroke crosses a hexagon boundary.
          */
         drawBorders() {
             var _a;
@@ -948,7 +1076,7 @@
                         ? [255, 235, 59]
                         : ((_a = CivColors[segment.owner]) === null || _a === void 0 ? void 0 : _a.territory) || [120, 120, 120];
                     this.context.strokeStyle = `rgb(${color.join(',')})`;
-                    const inset = segment.river ? this.riverWidth() / 2 + 1.5 : borderWidth / 2;
+                    const inset = borderWidth / 2;
                     this.strokeSegment(insetEdgeToward(segment.points, hexCenter(segment.tile), inset / this.worldScale()));
                 }
             }
@@ -1111,7 +1239,7 @@
                 const neighbor = neighborFor(tile, direction, this.geometry);
                 const neighborOwner = neighbor ? (_a = this.turnState[tileKey(neighbor)]) === null || _a === void 0 ? void 0 : _a.owner : undefined;
                 if (neighborOwner !== state.owner) {
-                    segments.push({ points: edgeCorners(tile, direction), owner: state.owner, tile, river: this.riverKeys.has(sharedEdgeKey(tile, direction, this.geometry)) });
+                    segments.push({ points: edgeCorners(tile, direction), owner: state.owner, tile });
                 }
             }
             this.borderCache.set(tileKey(tile), segments);
@@ -1501,6 +1629,49 @@
         return changes;
     }
     /**
+     * Parse keyless changes from the main text
+     * Handles titled lists where each part carries its own metric name before the
+     * arrow, e.g. "CityDefense: 82 → 85; Mobilization: 65 → 60"
+     */
+    function parseKeylessChanges(text) {
+        const changes = [];
+        // Split by semicolon to get individual changes
+        const parts = text.split(';');
+        for (const part of parts) {
+            const arrowMatch = part.trim().match(/(.+?)\s*→\s*(.+)/);
+            if (arrowMatch) {
+                changes.push({
+                    key: '',
+                    from: arrowMatch[1].trim(),
+                    to: arrowMatch[2].trim()
+                });
+            }
+        }
+        return changes;
+    }
+    /**
+     * Count the colons before the first arrow in one semicolon separated part
+     */
+    function colonsBeforeArrow(part) {
+        const arrowIndex = part.indexOf('→');
+        const head = arrowIndex === -1 ? part : part.substring(0, arrowIndex);
+        return head.split(':').length - 1;
+    }
+    /**
+     * Check whether a text is a titled list of changes, e.g.
+     * "AI preferences: CityDefense: 82 → 85; Mobilization: 65 → 60"
+     * A text is titled when the first part carries a title plus a metric name
+     * (two colons before the arrow), or when a later part has no colon at all
+     * (its metric name rides along in the from value, like "Private -15 → 0")
+     */
+    function isTitledChanges(text) {
+        const parts = text.split(';');
+        if (colonsBeforeArrow(parts[0]) >= 2) {
+            return true;
+        }
+        return parts.slice(1).some(part => colonsBeforeArrow(part) === 0);
+    }
+    /**
      * Parse a simple change
      * Handles format: "None → Pottery" or "None → Tradition"
      */
@@ -1550,6 +1721,21 @@
         }
         // Fallback: try to parse as generic strategy changes if it has colons and arrows
         if (mainText.includes(':') && mainText.includes('→')) {
+            // Titled texts lead with an event level label, e.g. "AI preferences: ..."
+            if (isTitledChanges(mainText)) {
+                const colonIndex = mainText.indexOf(':');
+                const label = mainText.substring(0, colonIndex).trim();
+                const contentText = mainText.substring(colonIndex + 1).trim();
+                const titledChanges = parseKeylessChanges(contentText);
+                if (titledChanges.length > 0 && label) {
+                    return {
+                        type: 'other',
+                        label: label,
+                        changes: titledChanges,
+                        rationale
+                    };
+                }
+            }
             const changes = parseComplexChanges(mainText);
             if (changes.length > 0) {
                 return {
@@ -1567,15 +1753,24 @@
     function renderStrategyEvent(parsed) {
         const container = document.createElement('div');
         container.className = 'strategy-change';
+        // Render the event level title, e.g. "AI preferences"
+        if (parsed.label) {
+            const headerEl = document.createElement('div');
+            headerEl.className = 'strategy-key strategy-header';
+            headerEl.textContent = parsed.label + ':';
+            container.appendChild(headerEl);
+        }
         // Render each change
         parsed.changes.forEach(change => {
             const item = document.createElement('div');
             item.className = 'strategy-change-item';
-            // Key
-            const keyEl = document.createElement('span');
-            keyEl.className = 'strategy-key';
-            keyEl.textContent = change.key + ':';
-            item.appendChild(keyEl);
+            // Key (titled events keep the metric name inside the from value instead)
+            if (change.key) {
+                const keyEl = document.createElement('span');
+                keyEl.className = 'strategy-key';
+                keyEl.textContent = change.key + ':';
+                item.appendChild(keyEl);
+            }
             // From value
             const fromEl = document.createElement('span');
             fromEl.className = 'strategy-from';
