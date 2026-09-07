@@ -2087,6 +2087,11 @@
    * and so on. The annotations appear next to civilization names in the event
    * log and as a summary line in the header.
    *
+   * The model parameter belongs to the same family: it names the model that
+   * drove every civilization with decision-making trails (strategy change
+   * events), regardless of the player number those civilizations sit at, for
+   * example "?model=opus-5".
+   *
    * The same family carries the winner parameter, which asserts who won a
    * game whose file cannot prove the result, for example a save taken one
    * turn before the game was won.
@@ -2143,6 +2148,39 @@
           }
       }
       return parts.join(' · ');
+  }
+  /**
+   * Read the model parameter, which names the model behind the civilizations
+   * with decision-making trails
+   * @param params The URL search parameters to read from
+   * @returns The trimmed model name, or null when the parameter is absent or blank
+   */
+  function parseModelName(params) {
+      const raw = params.get('model');
+      if (raw === null) {
+          return null;
+      }
+      const name = raw.trim().slice(0, maxAnnotationLength);
+      return name || null;
+  }
+  /**
+   * Merge the model name into the annotations for every civilization that left
+   * decision-making trails, so a shared link can mark which model drove them
+   * without knowing their player numbers. An explicit playerN annotation wins,
+   * because it names one specific civilization
+   * @param annotations The parsed playerN annotations
+   * @param modelName The model name from the link
+   * @param trailCivIds Ids of the civilizations with decision-making trails
+   * @returns A new annotation map carrying both kinds of labels
+   */
+  function applyModelAnnotations(annotations, modelName, trailCivIds) {
+      const merged = Object.assign({}, annotations);
+      for (const civId of trailCivIds) {
+          if (!(civId in merged)) {
+              merged[civId] = modelName;
+          }
+      }
+      return merged;
   }
   /**
    * Resolve the winner parameter to a civilization id
@@ -5424,6 +5462,20 @@
           return true;
       }
       /**
+       * List the civilizations that left decision-making trails, meaning strategy
+       * change events in the event log, ordered by civilization id. A model that
+       * drove the game leaves these trails, so the model parameter can mark them
+       */
+      getCivIdsWithDecisionTrails() {
+          const civIds = new Set();
+          for (const event of this.events) {
+              if (event.type === EventType.Strategies && event.civId !== undefined && event.civId >= 0) {
+                  civIds.add(event.civId);
+              }
+          }
+          return [...civIds].sort((a, b) => a - b);
+      }
+      /**
        * Get civilization color from ID or name
        */
       getCivColor(civIdOrName) {
@@ -5768,13 +5820,12 @@
    * and the address bar state. Connects the loaded game session to the map,
    * the event log, the layers panel, and the playback bar.
    */
-  // The example games offered in the empty state
+  // The example games offered in the empty state, named after their files
   const exampleGames = [
-      { label: 'Game 1', file: 'examples/1.Civ5Replay', kind: 'replay' },
-      { label: 'Game 2', file: 'examples/2.Civ5Replay', kind: 'replay' },
-      { label: 'Game 3', file: 'examples/3.Civ5Replay', kind: 'replay' },
-      { label: 'Game 4', file: 'examples/test-1.Civ5Save', kind: 'save' },
-      { label: 'Game 5', file: 'examples/test-2.Civ5Save', kind: 'save' }
+      { label: 'Claude-5-Opus', file: 'examples/Claude-5-Opus.Civ5Save', kind: 'save', model: 'Claude-5-Opus' },
+      { label: 'GLM-5.2', file: 'examples/GLM-5.2.Civ5Save', kind: 'save', model: 'GLM-5.2' },
+      { label: 'GPT-5.6-Sol', file: 'examples/GPT-5.6-Sol.Civ5Save', kind: 'save', model: 'GPT-5.6-Sol' },
+      { label: 'Qwen-3.8-27B', file: 'examples/Qwen-3.8-27B.Civ5Save', kind: 'save', model: 'Qwen-3.8-27B' }
   ];
   // How long an error banner stays on screen before dismissing itself
   const errorBannerTimeoutMs = 10000;
@@ -5806,6 +5857,7 @@
           this.initialTurn = null; // turn parameter, applied once the session exists
           this.view = 'map'; // Selected destination tab
           this.annotations = {}; // playerN labels from the address bar
+          this.modelName = null; // model parameter, marks the civilizations with decision trails
           this.linkWinner = null; // winner parameter, applied once a file is loaded
           this.isLoading = false; // A file is being read or parsed
           this.errorTimeout = null; // Auto-dismiss timer for the error banner
@@ -5924,39 +5976,37 @@
               button.appendChild(icon);
               button.appendChild(label);
               button.appendChild(kind);
-              button.addEventListener('click', () => this.loadFromUrl(example.file, example.label));
+              button.addEventListener('click', () => { var _a; return this.loadFromUrl(example.file, example.label, (_a = example.model) !== null && _a !== void 0 ? _a : null); });
               container.appendChild(button);
           });
       }
       /**
-       * Read the address bar: file, turn, view, playerN annotations, and winner
+       * Read the address bar: file, turn, view, playerN annotations, the model
+       * name, and the winner
        */
       handleUrlParameters() {
           const urlParams = new URLSearchParams(window.location.search);
           this.fileUrl = urlParams.get('file');
           this.annotations = parseCivAnnotations(urlParams);
+          this.modelName = parseModelName(urlParams);
           this.linkWinner = urlParams.get('winner');
           const turnParam = urlParams.get('turn');
           this.initialTurn = turnParam !== null ? parseInt(turnParam, 10) : null;
           const viewParam = urlParams.get('view');
           this.setView(viewParam === 'events' ? 'events' : 'map');
           if (this.fileUrl) {
-              this.loadFromUrl(this.fileUrl, this.labelFromFileReference(this.fileUrl));
+              this.loadFromUrl(this.fileUrl, this.labelFromFileReference(this.fileUrl), this.modelName);
           }
       }
       /**
-       * Derive a display label from a file name or URL, e.g. "test-1.Civ5Save"
-       * becomes "Game 4" and "my-game.Civ5Replay" becomes "my-game"
+       * Derive a display label from a file name or URL, e.g.
+       * "Claude-5-Opus.Civ5Save" becomes "Claude-5-Opus"
        */
       labelFromFileReference(reference) {
           // Keep only the part after the last slash
           const fileName = reference.split('/').pop() || reference;
           // Drop the file extension
           const base = fileName.replace(/\.(Civ5Replay|Civ5Save)$/i, '');
-          // Plain numbers are the bundled example games
-          if (/^\d+$/.test(base)) {
-              return `Game ${base}`;
-          }
           return base || fileName;
       }
       /**
@@ -5977,8 +6027,9 @@
       }
       /**
        * Write the current turn, destination, and file into the address bar so a
-       * copied link lands where the user is looking. The playerN and winner
-       * parameters are kept exactly as the sharer wrote them.
+       * copied link lands where the user is looking. The model parameter travels
+       * with the file, so an opened example shares its marks. The playerN and
+       * winner parameters are kept exactly as the sharer wrote them.
        */
       writeUrlState() {
           const params = new URLSearchParams(window.location.search);
@@ -5988,6 +6039,12 @@
           }
           else {
               params.delete('file');
+          }
+          if (this.modelName) {
+              params.set('model', this.modelName);
+          }
+          else {
+              params.delete('model');
           }
           if (this.session) {
               params.set('turn', String(this.session.currentTurn));
@@ -6037,12 +6094,17 @@
       }
       /**
        * Load a replay file from a URL
+       * @param fileUrl The URL to load from
+       * @param label Display name for the file, derived from the reference when omitted
+       * @param model Model name marking the civilizations with decision trails,
+       * null for none
        */
-      loadFromUrl(fileUrl, label) {
+      loadFromUrl(fileUrl, label, model = null) {
           if (this.isLoading)
               return;
           this.isLoading = true;
           this.fileUrl = fileUrl;
+          this.modelName = model;
           this.fileLabel = label || this.labelFromFileReference(fileUrl);
           this.showLoading(this.fileLabel);
           const xhr = new XMLHttpRequest();
@@ -6081,10 +6143,16 @@
               // Parse the file and build the session that owns it
               const replay = new Replay();
               await replay.loadFromFile(data, size);
+              // The model parameter marks every civilization with decision-making
+              // trails, whatever player number it sits at, so merge those marks
+              // with the playerN labels before anything reads the annotations
+              const annotations = this.modelName
+                  ? applyModelAnnotations(this.annotations, this.modelName, replay.getCivIdsWithDecisionTrails())
+                  : this.annotations;
               // Apply a winner the link asserts, for files that cannot prove
               // their own result, such as a save taken one turn before the
               // game was won
-              const winnerCivId = resolveWinnerCivId(this.linkWinner, this.annotations, replay.civs.length);
+              const winnerCivId = resolveWinnerCivId(this.linkWinner, annotations, replay.civs.length);
               if (this.linkWinner !== null && winnerCivId < 0) {
                   console.warn(`The winner parameter "${this.linkWinner}" names no civilization of the loaded file`);
               }
@@ -6093,14 +6161,14 @@
               }
               this.session = new GameSession(replay);
               // Initialize the UI components around the session
-              this.initializeUIComponents();
+              this.initializeUIComponents(annotations);
               // Apply the turn the link asked for, or the replay's first turn
               const initialTurn = this.initialTurn !== null && !Number.isNaN(this.initialTurn)
                   ? this.initialTurn
                   : replay.startTurn;
               this.session.setTurn(initialTurn);
               // Show the loaded game and hide the empty state
-              this.updateHeader();
+              this.updateHeader(annotations);
               this.updateEmptyState();
               // Fit the map once everything has settled in the DOM
               setTimeout(() => {
@@ -6119,12 +6187,14 @@
       }
       /**
        * Initialize the UI components with the game session
+       * @param annotations The annotations in effect, playerN labels merged with
+       * the model parameter's marks
        */
-      initializeUIComponents() {
+      initializeUIComponents(annotations) {
           if (!this.session)
               return;
           // The event log, with the address bar annotations
-          this.eventLog = new EventLog(this.session, this.annotations);
+          this.eventLog = new EventLog(this.session, annotations);
           // Map layers and the layers panel that toggles them
           this.map.initLayers(this.session);
           this.layersControl = new LayersControl(this.map.map, Object.entries(this.map.getToggleableLayers())
@@ -6142,8 +6212,10 @@
        * Fill the header with the loaded game's summary and annotation line.
        * The summary shows the file name, then the game speed and map size as
        * icon and value pairs.
+       * @param annotations The annotations in effect, playerN labels merged with
+       * the model parameter's marks
        */
-      updateHeader() {
+      updateHeader(annotations) {
           if (!this.session) {
               this.gameSummary.hidden = true;
               this.annotationLine.hidden = true;
@@ -6166,10 +6238,10 @@
           // established one: a file result is stated as fact, a link result is
           // attributed to the link
           const civNames = replay.civs.map(civ => civ.name);
-          let lineText = formatAnnotationLine(civNames, this.annotations);
+          let lineText = formatAnnotationLine(civNames, annotations);
           const victory = replay.victory;
           if (victory && victory.reliable && victory.winnerCivId >= 0) {
-              const winnerName = annotationFor(this.annotations, victory.winnerCivId) || replay.getCivName(victory.winnerCivId);
+              const winnerName = annotationFor(annotations, victory.winnerCivId) || replay.getCivName(victory.winnerCivId);
               if (winnerName) {
                   const winnerText = `Winner: ${winnerName}`;
                   lineText = lineText ? `${lineText} · ${winnerText}` : winnerText;

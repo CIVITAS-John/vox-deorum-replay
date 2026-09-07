@@ -13,24 +13,23 @@ import { ControlBar } from './control-bar';
 import { LayersControl } from './layers-control';
 import { Replay } from '../replay/replay';
 import { GameSession } from '../replay/session';
-import { CivAnnotations, parseCivAnnotations, formatAnnotationLine, annotationFor, resolveWinnerCivId } from './annotations';
+import { CivAnnotations, parseCivAnnotations, parseModelName, applyModelAnnotations, formatAnnotationLine, annotationFor, resolveWinnerCivId } from './annotations';
 import { throttle } from '../utils/throttle';
 
-// One bundled example game; where a save is bundled the save is preferred
-// because it carries everything the replay carries plus the rivers
+// One bundled example game: a playthrough by the model it is named after
 interface ExampleGame {
-	label: string;    // Button label, e.g. "Game 4"
+	label: string;    // Button label, e.g. "Claude-5-Opus"
 	file: string;     // Path relative to the site root
 	kind: string;     // "replay" or "save", shown as the button subtitle
+	model?: string;   // Model that drove the civilizations with decision-making trails
 }
 
-// The example games offered in the empty state
+// The example games offered in the empty state, named after their files
 const exampleGames: ExampleGame[] = [
-	{ label: 'Game 1', file: 'examples/1.Civ5Replay', kind: 'replay' },
-	{ label: 'Game 2', file: 'examples/2.Civ5Replay', kind: 'replay' },
-	{ label: 'Game 3', file: 'examples/3.Civ5Replay', kind: 'replay' },
-	{ label: 'Game 4', file: 'examples/test-1.Civ5Save', kind: 'save' },
-	{ label: 'Game 5', file: 'examples/test-2.Civ5Save', kind: 'save' }
+	{ label: 'Claude-5-Opus', file: 'examples/Claude-5-Opus.Civ5Save', kind: 'save', model: 'Claude-5-Opus' },
+	{ label: 'GLM-5.2', file: 'examples/GLM-5.2.Civ5Save', kind: 'save', model: 'GLM-5.2' },
+	{ label: 'GPT-5.6-Sol', file: 'examples/GPT-5.6-Sol.Civ5Save', kind: 'save', model: 'GPT-5.6-Sol' },
+	{ label: 'Qwen-3.8-27B', file: 'examples/Qwen-3.8-27B.Civ5Save', kind: 'save', model: 'Qwen-3.8-27B' }
 ];
 
 // The destinations the tabs can switch between; statistics arrives in Stage 5
@@ -82,6 +81,7 @@ export class ReplayViewer {
 	private initialTurn: number | null = null;  // turn parameter, applied once the session exists
 	private view: ViewDestination = 'map';      // Selected destination tab
 	private annotations: CivAnnotations = {};   // playerN labels from the address bar
+	private modelName: string | null = null;    // model parameter, marks the civilizations with decision trails
 	private linkWinner: string | null = null;   // winner parameter, applied once a file is loaded
 	private isLoading = false;                  // A file is being read or parsed
 	private errorTimeout: number | null = null; // Auto-dismiss timer for the error banner
@@ -228,19 +228,21 @@ export class ReplayViewer {
 			button.appendChild(icon);
 			button.appendChild(label);
 			button.appendChild(kind);
-			button.addEventListener('click', () => this.loadFromUrl(example.file, example.label));
+			button.addEventListener('click', () => this.loadFromUrl(example.file, example.label, example.model ?? null));
 
 			container.appendChild(button);
 		});
 	}
 
 	/**
-	 * Read the address bar: file, turn, view, playerN annotations, and winner
+	 * Read the address bar: file, turn, view, playerN annotations, the model
+	 * name, and the winner
 	 */
 	private handleUrlParameters(): void {
 		const urlParams = new URLSearchParams(window.location.search);
 		this.fileUrl = urlParams.get('file');
 		this.annotations = parseCivAnnotations(urlParams);
+		this.modelName = parseModelName(urlParams);
 		this.linkWinner = urlParams.get('winner');
 
 		const turnParam = urlParams.get('turn');
@@ -250,13 +252,13 @@ export class ReplayViewer {
 		this.setView(viewParam === 'events' ? 'events' : 'map');
 
 		if (this.fileUrl) {
-			this.loadFromUrl(this.fileUrl, this.labelFromFileReference(this.fileUrl));
+			this.loadFromUrl(this.fileUrl, this.labelFromFileReference(this.fileUrl), this.modelName);
 		}
 	}
 
 	/**
-	 * Derive a display label from a file name or URL, e.g. "test-1.Civ5Save"
-	 * becomes "Game 4" and "my-game.Civ5Replay" becomes "my-game"
+	 * Derive a display label from a file name or URL, e.g.
+	 * "Claude-5-Opus.Civ5Save" becomes "Claude-5-Opus"
 	 */
 	private labelFromFileReference(reference: string): string {
 		// Keep only the part after the last slash
@@ -264,11 +266,6 @@ export class ReplayViewer {
 
 		// Drop the file extension
 		const base = fileName.replace(/\.(Civ5Replay|Civ5Save)$/i, '');
-
-		// Plain numbers are the bundled example games
-		if (/^\d+$/.test(base)) {
-			return `Game ${base}`;
-		}
 
 		return base || fileName;
 	}
@@ -295,8 +292,9 @@ export class ReplayViewer {
 
 	/**
 	 * Write the current turn, destination, and file into the address bar so a
-	 * copied link lands where the user is looking. The playerN and winner
-	 * parameters are kept exactly as the sharer wrote them.
+	 * copied link lands where the user is looking. The model parameter travels
+	 * with the file, so an opened example shares its marks. The playerN and
+	 * winner parameters are kept exactly as the sharer wrote them.
 	 */
 	private writeUrlState(): void {
 		const params = new URLSearchParams(window.location.search);
@@ -306,6 +304,12 @@ export class ReplayViewer {
 			params.set('file', this.fileUrl);
 		} else {
 			params.delete('file');
+		}
+
+		if (this.modelName) {
+			params.set('model', this.modelName);
+		} else {
+			params.delete('model');
 		}
 
 		if (this.session) {
@@ -359,12 +363,17 @@ export class ReplayViewer {
 
 	/**
 	 * Load a replay file from a URL
+	 * @param fileUrl The URL to load from
+	 * @param label Display name for the file, derived from the reference when omitted
+	 * @param model Model name marking the civilizations with decision trails,
+	 * null for none
 	 */
-	public loadFromUrl(fileUrl: string, label?: string): void {
+	public loadFromUrl(fileUrl: string, label?: string, model: string | null = null): void {
 		if (this.isLoading) return;
 
 		this.isLoading = true;
 		this.fileUrl = fileUrl;
+		this.modelName = model;
 		this.fileLabel = label || this.labelFromFileReference(fileUrl);
 		this.showLoading(this.fileLabel);
 
@@ -409,10 +418,17 @@ export class ReplayViewer {
 			const replay = new Replay();
 			await replay.loadFromFile(data, size);
 
+			// The model parameter marks every civilization with decision-making
+			// trails, whatever player number it sits at, so merge those marks
+			// with the playerN labels before anything reads the annotations
+			const annotations = this.modelName
+				? applyModelAnnotations(this.annotations, this.modelName, replay.getCivIdsWithDecisionTrails())
+				: this.annotations;
+
 			// Apply a winner the link asserts, for files that cannot prove
 			// their own result, such as a save taken one turn before the
 			// game was won
-			const winnerCivId = resolveWinnerCivId(this.linkWinner, this.annotations, replay.civs.length);
+			const winnerCivId = resolveWinnerCivId(this.linkWinner, annotations, replay.civs.length);
 			if (this.linkWinner !== null && winnerCivId < 0) {
 				console.warn(`The winner parameter "${this.linkWinner}" names no civilization of the loaded file`);
 			}
@@ -423,7 +439,7 @@ export class ReplayViewer {
 			this.session = new GameSession(replay);
 
 			// Initialize the UI components around the session
-			this.initializeUIComponents();
+			this.initializeUIComponents(annotations);
 
 			// Apply the turn the link asked for, or the replay's first turn
 			const initialTurn = this.initialTurn !== null && !Number.isNaN(this.initialTurn)
@@ -432,7 +448,7 @@ export class ReplayViewer {
 			this.session.setTurn(initialTurn);
 
 			// Show the loaded game and hide the empty state
-			this.updateHeader();
+			this.updateHeader(annotations);
 			this.updateEmptyState();
 
 			// Fit the map once everything has settled in the DOM
@@ -451,12 +467,14 @@ export class ReplayViewer {
 
 	/**
 	 * Initialize the UI components with the game session
+	 * @param annotations The annotations in effect, playerN labels merged with
+	 * the model parameter's marks
 	 */
-	private initializeUIComponents(): void {
+	private initializeUIComponents(annotations: CivAnnotations): void {
 		if (!this.session) return;
 
 		// The event log, with the address bar annotations
-		this.eventLog = new EventLog(this.session, this.annotations);
+		this.eventLog = new EventLog(this.session, annotations);
 
 		// Map layers and the layers panel that toggles them
 		this.map.initLayers(this.session);
@@ -478,8 +496,10 @@ export class ReplayViewer {
 	 * Fill the header with the loaded game's summary and annotation line.
 	 * The summary shows the file name, then the game speed and map size as
 	 * icon and value pairs.
+	 * @param annotations The annotations in effect, playerN labels merged with
+	 * the model parameter's marks
 	 */
-	private updateHeader(): void {
+	private updateHeader(annotations: CivAnnotations): void {
 		if (!this.session) {
 			this.gameSummary.hidden = true;
 			this.annotationLine.hidden = true;
@@ -508,11 +528,11 @@ export class ReplayViewer {
 		// established one: a file result is stated as fact, a link result is
 		// attributed to the link
 		const civNames = replay.civs.map(civ => civ.name);
-		let lineText = formatAnnotationLine(civNames, this.annotations);
+		let lineText = formatAnnotationLine(civNames, annotations);
 
 		const victory = replay.victory;
 		if (victory && victory.reliable && victory.winnerCivId >= 0) {
-			const winnerName = annotationFor(this.annotations, victory.winnerCivId) || replay.getCivName(victory.winnerCivId);
+			const winnerName = annotationFor(annotations, victory.winnerCivId) || replay.getCivName(victory.winnerCivId);
 			if (winnerName) {
 				const winnerText = `Winner: ${winnerName}`;
 				lineText = lineText ? `${lineText} · ${winnerText}` : winnerText;

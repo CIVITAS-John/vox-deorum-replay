@@ -146,9 +146,9 @@ describe('GameSession ownership on examples/test-1.Civ5Replay', () => {
   });
 });
 
-describe('GameSession ownership on examples/1.Civ5Replay', () => {
+describe('GameSession ownership on examples/test-2.Civ5Replay', () => {
   it('matches the full-copy reference fold at every turn', async () => {
-    const buffer = loadExample('1.Civ5Replay');
+    const buffer = loadExample('test-2.Civ5Replay');
     const replay = new Replay();
     await replay.loadFromFile(buffer, buffer.byteLength);
     const session = new GameSession(replay);
@@ -288,5 +288,21 @@ describe('Replay hub data kinds and datasets', () => {
     const score = replay.getDatasetForCiv('REPLAYDATASET_SCORE', 0);
     expect(score[0]).toEqual({ turn: 0, value: 6 });
     expect(score[score.length - 1]).toEqual({ turn: 484, value: 0 });
+  });
+});
+
+describe('Replay decision trails on the example games', () => {
+  // Ground truth from the files: each game has exactly two model-driven
+  // civilizations, and they sit at different player numbers per game
+  it.each([
+    ['examples/Claude-5-Opus.Civ5Save', [1, 4]],
+    ['examples/GPT-5.6-Sol.Civ5Save', [1, 7]],
+    ['examples/test-1.Civ5Replay', [1, 7]]
+  ])('lists the civilizations with strategy events in %s', async (name, expected) => {
+    const buffer = loadExample(name);
+    const replay = new Replay();
+    await replay.loadFromFile(buffer, buffer.byteLength);
+
+    expect(replay.getCivIdsWithDecisionTrails()).toEqual(expected);
   });
 });

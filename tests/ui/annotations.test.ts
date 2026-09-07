@@ -1,11 +1,12 @@
 /**
  * annotations.test.ts
- * Checks the parsing of playerN URL parameters, the formatting of the
+ * Checks the parsing of playerN URL parameters, the model parameter that
+ * marks the civilizations with decision-making trails, the formatting of the
  * annotation summary line, and the resolution of the winner parameter
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseCivAnnotations, annotationFor, formatAnnotationLine, resolveWinnerCivId } from '../../src/ui/annotations';
+import { parseCivAnnotations, parseModelName, applyModelAnnotations, annotationFor, formatAnnotationLine, resolveWinnerCivId } from '../../src/ui/annotations';
 
 describe('parseCivAnnotations', () => {
   it('maps player0 to the first civilization', () => {
@@ -36,6 +37,37 @@ describe('parseCivAnnotations', () => {
 
   it('returns an empty map without player parameters', () => {
     expect(parseCivAnnotations(new URLSearchParams('?file=a&turn=5'))).toEqual({});
+  });
+});
+
+describe('parseModelName', () => {
+  it('reads the model parameter', () => {
+    expect(parseModelName(new URLSearchParams('?model=opus-5'))).toBe('opus-5');
+  });
+
+  it('returns null when the parameter is absent, empty, or blank', () => {
+    expect(parseModelName(new URLSearchParams('?file=a'))).toBeNull();
+    expect(parseModelName(new URLSearchParams('?model='))).toBeNull();
+    expect(parseModelName(new URLSearchParams('?model=%20%20'))).toBeNull();
+  });
+
+  it('trims surrounding whitespace and caps long names', () => {
+    expect(parseModelName(new URLSearchParams('?model=%20GLM-5.2%20'))).toBe('GLM-5.2');
+    expect(parseModelName(new URLSearchParams('?model=' + 'x'.repeat(80)))!.length).toBe(40);
+  });
+});
+
+describe('applyModelAnnotations', () => {
+  it('marks every civilization with decision-making trails', () => {
+    expect(applyModelAnnotations({}, 'opus-5', [1, 4])).toEqual({ 1: 'opus-5', 4: 'opus-5' });
+  });
+
+  it('keeps playerN annotations, which name one specific civilization', () => {
+    expect(applyModelAnnotations({ 1: 'Human' }, 'opus-5', [1, 4])).toEqual({ 1: 'Human', 4: 'opus-5' });
+  });
+
+  it('changes no annotations without trail civilizations', () => {
+    expect(applyModelAnnotations({ 0: 'Qwen' }, 'opus-5', [])).toEqual({ 0: 'Qwen' });
   });
 });
 

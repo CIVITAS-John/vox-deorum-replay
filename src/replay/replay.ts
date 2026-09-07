@@ -18,6 +18,7 @@ import {
   DatasetSeries,
   DataKind,
   DLC,
+  EventType,
   Mod
 } from './types';
 
@@ -224,6 +225,23 @@ export class Replay {
       source: 'link'
     };
     return true;
+  }
+
+  /**
+   * List the civilizations that left decision-making trails, meaning strategy
+   * change events in the event log, ordered by civilization id. A model that
+   * drove the game leaves these trails, so the model parameter can mark them
+   */
+  public getCivIdsWithDecisionTrails(): number[] {
+    const civIds = new Set<number>();
+
+    for (const event of this.events) {
+      if (event.type === EventType.Strategies && event.civId !== undefined && event.civId >= 0) {
+        civIds.add(event.civId);
+      }
+    }
+
+    return [...civIds].sort((a, b) => a - b);
   }
 
   /**

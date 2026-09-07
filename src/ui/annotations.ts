@@ -8,6 +8,11 @@
  * and so on. The annotations appear next to civilization names in the event
  * log and as a summary line in the header.
  *
+ * The model parameter belongs to the same family: it names the model that
+ * drove every civilization with decision-making trails (strategy change
+ * events), regardless of the player number those civilizations sit at, for
+ * example "?model=opus-5".
+ *
  * The same family carries the winner parameter, which asserts who won a
  * game whose file cannot prove the result, for example a save taken one
  * turn before the game was won.
@@ -78,6 +83,44 @@ export function formatAnnotationLine(civNames: string[], annotations: CivAnnotat
   }
 
   return parts.join(' · ');
+}
+
+/**
+ * Read the model parameter, which names the model behind the civilizations
+ * with decision-making trails
+ * @param params The URL search parameters to read from
+ * @returns The trimmed model name, or null when the parameter is absent or blank
+ */
+export function parseModelName(params: URLSearchParams): string | null {
+  const raw = params.get('model');
+  if (raw === null) {
+    return null;
+  }
+
+  const name = raw.trim().slice(0, maxAnnotationLength);
+  return name || null;
+}
+
+/**
+ * Merge the model name into the annotations for every civilization that left
+ * decision-making trails, so a shared link can mark which model drove them
+ * without knowing their player numbers. An explicit playerN annotation wins,
+ * because it names one specific civilization
+ * @param annotations The parsed playerN annotations
+ * @param modelName The model name from the link
+ * @param trailCivIds Ids of the civilizations with decision-making trails
+ * @returns A new annotation map carrying both kinds of labels
+ */
+export function applyModelAnnotations(annotations: CivAnnotations, modelName: string, trailCivIds: number[]): CivAnnotations {
+  const merged: CivAnnotations = { ...annotations };
+
+  for (const civId of trailCivIds) {
+    if (!(civId in merged)) {
+      merged[civId] = modelName;
+    }
+  }
+
+  return merged;
 }
 
 /**

@@ -211,21 +211,17 @@ describe('ReplayParser on examples/test-1.Civ5Replay', () => {
   });
 });
 
-describe.each([
-  ['1.Civ5Replay', 'CIVILIZATION_CHINA', 56, 38],
-  ['2.Civ5Replay', 'CIVILIZATION_ZULU', 56, 38],
-  ['3.Civ5Replay', 'CIVILIZATION_CARTHAGE', 56, 38]
-])('ReplayParser smoke test (%s)', (name, playerCiv, width, height) => {
+describe('ReplayParser smoke test (test-2.Civ5Replay)', () => {
   it('parses the whole file with a consistent map', () => {
-    const file = loadExample(name);
+    const file = loadExample('test-2.Civ5Replay');
     const parser = new ReplayParser(file, file.byteLength);
     const data: Record<string, any> = parser.parse();
 
     expect(data.game).toBe('CIV5');
-    expect(data.playerCiv).toBe(playerCiv);
-    expect(data.mapWidth).toBe(width);
-    expect(data.mapHeight).toBe(height);
-    expect(data.tiles).toHaveLength(width * height);
+    expect(data.playerCiv).toBe('CIVILIZATION_ARABIA');
+    expect(data.mapWidth).toBe(79);
+    expect(data.mapHeight).toBe(53);
+    expect(data.tiles).toHaveLength(79 * 53);
     expect(parser.tell()).toBe(file.byteLength);
   });
 });
